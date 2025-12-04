@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, MessageSquare, Mic, FileAudio, Home } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
@@ -15,7 +15,8 @@ import Transcriber from './components/Transcriber';
 import DraftingAssistant from './components/DraftingAssistant';
 import SettingsPage from './components/Settings';
 import { MOCK_CASES } from './constants';
-import { Case } from './types';
+import { Case, EvidenceItem } from './types';
+import { loadActiveCaseId, loadCases, saveActiveCaseId, saveCases } from './utils/storage';
 
 // Sidebar Component
 const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolean) => void }) => {
@@ -109,30 +110,89 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
 
 // Context for global state
 export const AppContext = React.createContext<{
-  cases: Case[];
-  activeCase: Case | null;
-  setActiveCase: (c: Case) => void;
-  addCase: (c: Case) => void;
-}>({
-  cases: [],
-  activeCase: null,
-  setActiveCase: () => {},
-  addCase: () => {},
-});
+    cases: Case[];
+    activeCase: Case | null;
+    setActiveCase: (c: Case | null) => void;
+    addCase: (c: Case) => void;
+    updateCase: (caseId: string, data: Partial<Case>) => void;
+    deleteCase: (caseId: string) => void;
+    addEvidence: (caseId: string, evidence: EvidenceItem) => void;
+  }>({
+    cases: [],
+    activeCase: null,
+    setActiveCase: () => {},
+    addCase: () => {},
+    updateCase: () => {},
+    deleteCase: () => {},
+    addEvidence: () => {},
+  });
 
 const App = () => {
-  const [cases, setCases] = useState<Case[]>(MOCK_CASES); // Initialize from constants, which is now empty
-  const [activeCase, setActiveCase] = useState<Case | null>(null);
+  const [cases, setCases] = useState<Case[]>([]);
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const existingCases = loadCases();
+    if (existingCases.length > 0) {
+      setCases(existingCases);
+      const savedActiveId = loadActiveCaseId();
+      const fallbackActive = existingCases.find(c => c.id === savedActiveId) || existingCases[0] || null;
+      setActiveCaseId(fallbackActive ? fallbackActive.id : null);
+    } else {
+      setCases(MOCK_CASES);
+      setActiveCaseId(MOCK_CASES[0]?.id || null);
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveCases(cases);
+  }, [cases, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveActiveCaseId(activeCaseId);
+  }, [activeCaseId, hydrated]);
+
+  const activeCase = useMemo(
+    () => cases.find(c => c.id === activeCaseId) || null,
+    [cases, activeCaseId]
+  );
+
+  const setActiveCase = (selected: Case | null) => {
+    setActiveCaseId(selected?.id || null);
+  };
 
   const addCase = (newCase: Case) => {
-    setCases(prev => [...prev, newCase]);
-    if (!activeCase) {
-      setActiveCase(newCase);
+    const enrichedCase = {
+      ...newCase,
+      evidence: newCase.evidence || [],
+      tasks: newCase.tasks || [],
+      tags: newCase.tags || [],
+    };
+    setCases(prev => [...prev, enrichedCase]);
+    setActiveCaseId(enrichedCase.id);
+  };
+
+  const updateCase = (caseId: string, data: Partial<Case>) => {
+    setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...data } : c));
+  };
+
+  const deleteCase = (caseId: string) => {
+    setCases(prev => prev.filter(c => c.id !== caseId));
+    if (activeCaseId === caseId) {
+      setActiveCaseId(null);
     }
   };
 
+  const addEvidence = (caseId: string, evidence: EvidenceItem) => {
+    setCases(prev => prev.map(c => c.id === caseId ? { ...c, evidence: [...(c.evidence || []), evidence] } : c));
+  };
+
   return (
-    <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase }}>
+    <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence }}>
       <HashRouter>
         <Routes>
           {/* Public routes without sidebar */}

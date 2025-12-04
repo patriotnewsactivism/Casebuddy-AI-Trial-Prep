@@ -9,7 +9,7 @@ const STORAGE_KEYS = {
   VERSION: 'lexsim_version',
 };
 
-const CURRENT_VERSION = '1.0.0';
+const CURRENT_VERSION = '1.1.0';
 
 interface UserPreferences {
   autoSave: boolean;
@@ -43,6 +43,14 @@ const isLocalStorageAvailable = (): boolean => {
   }
 };
 
+// Ensure required optional properties exist on cases
+const hydrateCase = (c: Case): Case => ({
+  ...c,
+  evidence: c.evidence || [],
+  tasks: c.tasks || [],
+  tags: c.tags || [],
+});
+
 // Migration function for version updates
 const migrateData = () => {
   const storedVersion = localStorage.getItem(STORAGE_KEYS.VERSION);
@@ -75,7 +83,9 @@ export const loadCases = (): Case[] => {
   try {
     migrateData();
     const data = localStorage.getItem(STORAGE_KEYS.CASES);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed.map(hydrateCase) : [];
   } catch (e) {
     // Silent fail - return empty array
     return [];

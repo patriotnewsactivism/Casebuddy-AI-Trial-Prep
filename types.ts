@@ -27,6 +27,35 @@ export type TrialPhase =
 
 export type SimulationMode = 'learn' | 'practice' | 'trial';
 
+export type RiskLevel = 'low' | 'medium' | 'high';
+export type PriorityLevel = 'low' | 'medium' | 'high';
+export type TaskStatus = 'open' | 'blocked' | 'done';
+
+export interface EvidenceItem {
+  id: string;
+  caseId: string;
+  title: string;
+  type: DocumentType;
+  source: 'text' | 'file';
+  summary: string;
+  keyEntities: string[];
+  risks: string[];
+  addedAt: string;
+  fileName?: string;
+  notes?: string;
+}
+
+export interface CaseTask {
+  id: string;
+  caseId: string;
+  title: string;
+  status: TaskStatus;
+  priority: PriorityLevel;
+  dueDate?: string;
+  owner?: string;
+  notes?: string;
+}
+
 export interface Case {
   id: string;
   title: string;
@@ -37,6 +66,9 @@ export interface Case {
   nextCourtDate: string;
   summary: string;
   winProbability: number;
+  tags?: string[];
+  evidence?: EvidenceItem[];
+  tasks?: CaseTask[];
 }
 
 export interface Document {

@@ -1,15 +1,15 @@
 
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
-import { Case, CaseStatus } from '../types';
-import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library } from 'lucide-react';
+import { Case, CaseStatus, DocumentType, EvidenceItem } from '../types';
+import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag } from 'lucide-react';
 import { analyzeDocument, fileToGenerativePart } from '../services/geminiService';
 import { MOCK_CASE_TEMPLATES } from '../constants';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import { validateFile } from '../utils/fileValidation';
 
 const CaseManager = () => {
-  const { cases, activeCase, setActiveCase, addCase } = useContext(AppContext);
+  const { cases, activeCase, setActiveCase, addCase, addEvidence } = useContext(AppContext);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [inputText, setInputText] = useState('');
@@ -24,12 +24,19 @@ const CaseManager = () => {
     judge: '',
     summary: ''
   });
+  const [evidenceTitle, setEvidenceTitle] = useState('');
+  const [evidenceNotes, setEvidenceNotes] = useState('');
+  const [lastUploadName, setLastUploadName] = useState<string | null>(null);
+  const caseEvidence = activeCase?.evidence || [];
 
   const handleAnalyze = async () => {
     if (!inputText.trim()) {
       handleError(new Error('Empty input'), 'Please enter text to analyze', 'CaseManager');
       return;
     }
+    setLastUploadName(null);
+    setEvidenceTitle(inputText.trim().slice(0, 60) || 'Text analysis');
+    setEvidenceNotes('');
     setAnalyzing(true);
     setAnalysisResult(null);
     try {
@@ -59,6 +66,9 @@ const CaseManager = () => {
       return;
     }
 
+    setLastUploadName(file.name);
+    setEvidenceTitle(file.name);
+    setEvidenceNotes('');
     setAnalyzing(true);
     setAnalysisResult(null);
     try {
@@ -97,7 +107,9 @@ const CaseManager = () => {
       judge: newCaseData.judge?.trim() || 'Unknown',
       nextCourtDate: 'TBD',
       summary: newCaseData.summary?.trim() || 'No summary provided.',
-      winProbability: 50
+      winProbability: 50,
+      evidence: [],
+      tasks: [],
     };
     addCase(newCase);
     handleSuccess(`Case "${newCase.title}" created successfully`);
@@ -111,6 +123,35 @@ const CaseManager = () => {
     addCase(newCase);
     handleSuccess(`Template "${newCase.title}" loaded successfully`);
     setShowLibraryModal(false);
+  };
+
+  const handleSaveEvidence = () => {
+    if (!activeCase) {
+      handleError(new Error('No active case'), 'Select a case before attaching evidence', 'CaseManager');
+      return;
+    }
+    if (!analysisResult) {
+      handleError(new Error('No analysis to save'), 'Run an analysis first', 'CaseManager');
+      return;
+    }
+
+    const evidence: EvidenceItem = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      caseId: activeCase.id,
+      title: evidenceTitle.trim() || lastUploadName || 'Text analysis',
+      type: DocumentType.EVIDENCE,
+      source: lastUploadName ? 'file' : 'text',
+      summary: analysisResult.summary || 'No summary provided.',
+      keyEntities: analysisResult.entities || [],
+      risks: analysisResult.risks || [],
+      addedAt: new Date().toISOString(),
+      fileName: lastUploadName || undefined,
+      notes: evidenceNotes.trim() || undefined,
+    };
+
+    addEvidence(activeCase.id, evidence);
+    handleSuccess('Evidence saved to case');
+    setEvidenceNotes('');
   };
 
   return (
@@ -167,7 +208,7 @@ const CaseManager = () => {
                   className={`p-4 border-b border-slate-700 cursor-pointer transition-colors ${activeCase?.id === c.id ? 'bg-slate-700/50 border-l-4 border-l-gold-500' : 'hover:bg-slate-700/30'}`}
                 >
                   <h3 className="font-semibold text-white">{c.title}</h3>
-                  <p className="text-xs text-slate-400 mt-1">{c.status} • {c.client}</p>
+                  <p className="text-xs text-slate-400 mt-1">{`${c.status} -> ${c.client}`}</p>
                 </div>
               ))}
             </div>
@@ -286,7 +327,7 @@ const CaseManager = () => {
                     <ul className="bg-slate-800 p-3 rounded border border-slate-700 space-y-2">
                       {analysisResult.risks?.map((risk: string, i: number) => (
                         <li key={i} className="text-sm text-slate-300 flex items-start gap-2">
-                          <span className="text-red-500 mt-1">•</span>
+                          <span className="text-red-500 mt-1">-</span>
                           {risk}
                         </li>
                       ))}
@@ -296,6 +337,119 @@ const CaseManager = () => {
               </div>
             )}
           </div>
+          {analysisResult && (
+            <div className="mt-4 border-t border-slate-700 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm text-slate-200 font-semibold flex items-center gap-2">
+                    <Save size={16} />
+                    Attach analysis to case
+                  </p>
+                  <p className="text-xs text-slate-400">Active case: {activeCase ? activeCase.title : 'Select a case from the left panel'}</p>
+                </div>
+                <div className="text-xs text-slate-500 flex items-center gap-2">
+                  <Clock size={14} /> {new Date().toLocaleString()}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">Evidence title</label>
+                  <input 
+                    type="text"
+                    value={evidenceTitle}
+                    onChange={(e) => setEvidenceTitle(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-gold-500 outline-none"
+                    placeholder="e.g., Incident report contradictions"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Source</label>
+                  <div className="bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 flex items-center gap-2">
+                    <Tag size={14} className="text-gold-500" />
+                    {lastUploadName ? `File: ${lastUploadName}` : 'Text input'}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-col md:flex-row gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs text-slate-400 mb-1">Context / notes</label>
+                  <textarea 
+                    rows={2}
+                    value={evidenceNotes}
+                    onChange={(e) => setEvidenceNotes(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-gold-500 outline-none"
+                    placeholder="Chain-of-custody notes, follow-ups, requests to investigators..."
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button 
+                    onClick={handleSaveEvidence}
+                    disabled={!activeCase}
+                    className="bg-gold-600 hover:bg-gold-500 text-slate-900 px-5 py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <Save size={16} />
+                    Save to case
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Evidence Board</h3>
+              <p className="text-xs text-slate-400">Capture AI findings, upload context, and keep them tied to the active matter.</p>
+            </div>
+            <div className="text-xs text-slate-500">{caseEvidence.length} item(s)</div>
+          </div>
+
+          {!activeCase && (
+            <div className="text-slate-400 text-sm bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4 text-center">
+              Select or create a case to start attaching evidence.
+            </div>
+          )}
+
+          {activeCase && caseEvidence.length === 0 && (
+            <div className="text-slate-400 text-sm bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4 text-center">
+              No saved evidence yet. Run an analysis and click "Save to case."
+            </div>
+          )}
+
+          {activeCase && caseEvidence.length > 0 && (
+            <div className="space-y-3">
+              {caseEvidence.map(ev => (
+                <div key={ev.id} className="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-slate-300 font-semibold">{ev.title}</p>
+                      <p className="text-xs text-slate-500">Source: {ev.source === 'file' ? ev.fileName || 'File' : 'Text input'}</p>
+                    </div>
+                    <span className="text-xs text-slate-500">{new Date(ev.addedAt).toLocaleString()}</span>
+                  </div>
+                  <p className="text-sm text-slate-200 mt-2">{ev.summary}</p>
+                  {ev.keyEntities?.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {ev.keyEntities.map((ent, idx) => (
+                        <span key={idx} className="text-xs text-slate-200 bg-slate-800 border border-slate-700 rounded px-2 py-1">{ent}</span>
+                      ))}
+                    </div>
+                  )}
+                  {ev.risks?.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs text-red-300 font-semibold mb-1">Risks</p>
+                      <ul className="list-disc list-inside text-xs text-slate-300 space-y-1">
+                        {ev.risks.map((r, idx) => <li key={idx}>{r}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {ev.notes && (
+                    <p className="text-xs text-slate-400 mt-2">Notes: {ev.notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
