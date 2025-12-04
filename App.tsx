@@ -16,7 +16,8 @@ import DraftingAssistant from './components/DraftingAssistant';
 import SettingsPage from './components/Settings';
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
-import { loadActiveCaseId, loadCases, saveActiveCaseId, saveCases } from './utils/storage';
+import { loadActiveCaseId, saveActiveCaseId, saveCases } from './utils/storage';
+import { appendEvidence, fetchCases, removeCase, supabaseReady, upsertCase } from './services/dataService';
 
 // Sidebar Component
 const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolean) => void }) => {
@@ -113,18 +114,18 @@ export const AppContext = React.createContext<{
     cases: Case[];
     activeCase: Case | null;
     setActiveCase: (c: Case | null) => void;
-    addCase: (c: Case) => void;
-    updateCase: (caseId: string, data: Partial<Case>) => void;
-    deleteCase: (caseId: string) => void;
-    addEvidence: (caseId: string, evidence: EvidenceItem) => void;
+    addCase: (c: Case) => Promise<void>;
+    updateCase: (caseId: string, data: Partial<Case>) => Promise<void>;
+    deleteCase: (caseId: string) => Promise<void>;
+    addEvidence: (caseId: string, evidence: EvidenceItem) => Promise<void>;
   }>({
     cases: [],
     activeCase: null,
     setActiveCase: () => {},
-    addCase: () => {},
-    updateCase: () => {},
-    deleteCase: () => {},
-    addEvidence: () => {},
+    addCase: async () => {},
+    updateCase: async () => {},
+    deleteCase: async () => {},
+    addEvidence: async () => {},
   });
 
 const App = () => {
@@ -133,17 +134,38 @@ const App = () => {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const existingCases = loadCases();
-    if (existingCases.length > 0) {
-      setCases(existingCases);
-      const savedActiveId = loadActiveCaseId();
-      const fallbackActive = existingCases.find(c => c.id === savedActiveId) || existingCases[0] || null;
-      setActiveCaseId(fallbackActive ? fallbackActive.id : null);
-    } else {
-      setCases(MOCK_CASES);
-      setActiveCaseId(MOCK_CASES[0]?.id || null);
-    }
-    setHydrated(true);
+    let cancelled = false;
+
+    const hydrate = async () => {
+      try {
+        const loaded = await fetchCases();
+        const usingSupabase = supabaseReady();
+        const fallback = loaded.length > 0 ? loaded : (usingSupabase ? [] : MOCK_CASES);
+        const savedActiveId = loadActiveCaseId();
+        const fallbackActive = fallback.find(c => c.id === savedActiveId) || fallback[0] || null;
+
+        if (cancelled) return;
+
+        setCases(fallback);
+        setActiveCaseId(fallbackActive ? fallbackActive.id : null);
+      } catch (error) {
+        console.error('Failed to hydrate cases', error);
+        if (!cancelled) {
+          setCases(MOCK_CASES);
+          setActiveCaseId(MOCK_CASES[0]?.id || null);
+        }
+      } finally {
+        if (!cancelled) {
+          setHydrated(true);
+        }
+      }
+    };
+
+    hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -165,30 +187,78 @@ const App = () => {
     setActiveCaseId(selected?.id || null);
   };
 
-  const addCase = (newCase: Case) => {
+  const addCase = async (newCase: Case) => {
     const enrichedCase = {
       ...newCase,
       evidence: newCase.evidence || [],
       tasks: newCase.tasks || [],
       tags: newCase.tags || [],
     };
-    setCases(prev => [...prev, enrichedCase]);
+    setCases(prev => {
+      const next = [...prev, enrichedCase];
+      saveCases(next);
+      return next;
+    });
     setActiveCaseId(enrichedCase.id);
-  };
 
-  const updateCase = (caseId: string, data: Partial<Case>) => {
-    setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...data } : c));
-  };
-
-  const deleteCase = (caseId: string) => {
-    setCases(prev => prev.filter(c => c.id !== caseId));
-    if (activeCaseId === caseId) {
-      setActiveCaseId(null);
+    try {
+      await upsertCase(enrichedCase);
+    } catch (error) {
+      console.error('Failed to sync case to Supabase', error);
     }
   };
 
-  const addEvidence = (caseId: string, evidence: EvidenceItem) => {
-    setCases(prev => prev.map(c => c.id === caseId ? { ...c, evidence: [...(c.evidence || []), evidence] } : c));
+  const updateCase = async (caseId: string, data: Partial<Case>) => {
+    const target = cases.find(c => c.id === caseId);
+    if (!target) return;
+    const updatedCase = { ...target, ...data };
+
+    setCases(prev => {
+      const next = prev.map(c => c.id === caseId ? updatedCase : c);
+      saveCases(next);
+      return next;
+    });
+
+    try {
+      await upsertCase(updatedCase);
+    } catch (error) {
+      console.error('Failed to update case in Supabase', error);
+    }
+  };
+
+  const deleteCase = async (caseId: string) => {
+    setCases(prev => {
+      const filtered = prev.filter(c => c.id !== caseId);
+      saveCases(filtered);
+      if (activeCaseId === caseId) {
+        setActiveCaseId(filtered[0]?.id || null);
+      }
+      return filtered;
+    });
+
+    try {
+      await removeCase(caseId);
+    } catch (error) {
+      console.error('Failed to delete case in Supabase', error);
+    }
+  };
+
+  const addEvidence = async (caseId: string, evidence: EvidenceItem) => {
+    const target = cases.find(c => c.id === caseId);
+    if (!target) return;
+    const updatedCase = { ...target, evidence: [...(target.evidence || []), evidence] };
+
+    setCases(prev => {
+      const next = prev.map(c => c.id === caseId ? updatedCase : c);
+      saveCases(next);
+      return next;
+    });
+
+    try {
+      await appendEvidence(caseId, evidence);
+    } catch (error) {
+      console.error('Failed to append evidence in Supabase', error);
+    }
   };
 
   return (

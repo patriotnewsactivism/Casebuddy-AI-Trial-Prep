@@ -18,3 +18,5 @@ View your app in AI Studio: https://ai.studio/apps/drive/1V2CDhsqj46ydvFpmYDwK7m
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+Optional cloud persistence: add `SUPABASE_URL` and `SUPABASE_ANON_KEY` to `.env.local` and create the `cases` table as described in `SUPABASE_SETUP.md`.

@@ -84,7 +84,7 @@ const CaseManager = () => {
     }
   };
 
-  const handleCreateCase = (e: React.FormEvent) => {
+  const handleCreateCase = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Input validation
@@ -111,21 +111,21 @@ const CaseManager = () => {
       evidence: [],
       tasks: [],
     };
-    addCase(newCase);
+    await addCase(newCase);
     handleSuccess(`Case "${newCase.title}" created successfully`);
     setShowNewCaseModal(false);
     setNewCaseData({ title: '', client: '', opposingCounsel: '', judge: '', summary: '' });
   };
 
-  const handleLoadTemplate = (template: Case) => {
+  const handleLoadTemplate = async (template: Case) => {
     // Create a deep copy with a new ID to avoid conflicts if added multiple times
     const newCase = { ...template, id: Date.now().toString() };
-    addCase(newCase);
+    await addCase(newCase);
     handleSuccess(`Template "${newCase.title}" loaded successfully`);
     setShowLibraryModal(false);
   };
 
-  const handleSaveEvidence = () => {
+  const handleSaveEvidence = async () => {
     if (!activeCase) {
       handleError(new Error('No active case'), 'Select a case before attaching evidence', 'CaseManager');
       return;
@@ -149,7 +149,7 @@ const CaseManager = () => {
       notes: evidenceNotes.trim() || undefined,
     };
 
-    addEvidence(activeCase.id, evidence);
+    await addEvidence(activeCase.id, evidence);
     handleSuccess('Evidence saved to case');
     setEvidenceNotes('');
   };
@@ -161,11 +161,11 @@ const CaseManager = () => {
         <div className="flex items-center justify-between">
            <h2 className="text-2xl font-bold font-serif text-white">Case Files</h2>
            <div className="flex gap-2">
-             <button 
-               onClick={() => setShowLibraryModal(true)}
-               className="p-2 bg-slate-700 hover:bg-slate-600 text-gold-500 rounded-lg transition-colors"
-               title="Practice Library (Mock Cases)"
-             >
+              <button 
+                onClick={() => setShowLibraryModal(true)}
+                className="p-2 bg-slate-700 hover:bg-slate-600 text-gold-500 rounded-lg transition-colors"
+                title="Practice Library (Mock Cases)"
+              >
                <Library size={20} />
              </button>
              <button 
@@ -383,7 +383,7 @@ const CaseManager = () => {
                 </div>
                 <div className="flex items-end">
                   <button 
-                    onClick={handleSaveEvidence}
+                    onClick={() => { void handleSaveEvidence(); }}
                     disabled={!activeCase}
                     className="bg-gold-600 hover:bg-gold-500 text-slate-900 px-5 py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
@@ -547,10 +547,10 @@ const CaseManager = () => {
                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {section.cases.map((templateCase) => (
                              <button 
-                               key={templateCase.id}
-                               onClick={() => handleLoadTemplate(templateCase)}
-                               className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-gold-500/50 rounded-lg p-4 text-left transition-all group"
-                             >
+                              key={templateCase.id}
+                              onClick={() => { void handleLoadTemplate(templateCase); }}
+                              className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-gold-500/50 rounded-lg p-4 text-left transition-all group"
+                            >
                                 <div className="flex justify-between items-start mb-2">
                                    <span className="text-xs font-bold text-gold-500 uppercase tracking-wider border border-gold-500/30 px-2 py-0.5 rounded">
                                       {templateCase.status}

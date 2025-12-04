@@ -12,7 +12,7 @@
 - `npm run dev` — start Vite dev server on `0.0.0.0:5000` with hot reload.
 - `npm run build` — create production bundle in `dist/`.
 - `npm run preview` — serve the built bundle for a local smoke test.
-- Environment: create `.env.local` with `GEMINI_API_KEY=...` (available as `process.env.API_KEY` / `process.env.GEMINI_API_KEY` in code).
+- Environment: create `.env.local` with `GEMINI_API_KEY=...` (available as `process.env.API_KEY` / `process.env.GEMINI_API_KEY` in code) and optional Supabase keys `SUPABASE_URL`, `SUPABASE_ANON_KEY` for cloud persistence.
 
 ## Coding Style & Naming Conventions
 - TypeScript + React 19 function components; favor hooks and component-level state.
@@ -35,3 +35,4 @@
 ## Security & Configuration Tips
 - Never commit `.env.local`; rotate `GEMINI_API_KEY` if exposed and confirm Vite `define` exports remain in sync with env naming.
 - Handle user files safely via `utils/fileValidation` and prefer client-side checks before invoking Gemini endpoints.
+- Supabase: set RLS policies appropriately; anon CRUD is acceptable only for local prototypes. Table `cases` should allow JSON `evidence`/`tasks` columns (see `SUPABASE_SETUP.md`).
