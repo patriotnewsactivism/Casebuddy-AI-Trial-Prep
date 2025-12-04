@@ -20,7 +20,7 @@ The app uses Google's Gemini API (including advanced features like thinking mode
 # Install dependencies
 npm install
 
-# Run development server (http://localhost:3000)
+# Run development server (http://localhost:5000)
 npm run dev
 
 # Build for production
@@ -45,11 +45,15 @@ npm run preview
 - Layout wrapper for all pages
 
 **Routing:**
-- `/` - Dashboard
-- `/cases` - Case Manager
-- `/witness-lab` - Witness Lab (text-based witness simulation)
-- `/practice` - Trial Simulator (live audio-based courtroom practice)
-- `/strategy` - Strategy Room (AI insights using thinking models)
+- `/` - Landing Page
+- `/app` - Dashboard
+- `/app/cases` - Case Manager
+- `/app/witness-lab` - Witness Lab (text-based witness simulation)
+- `/app/practice` - Trial Simulator (live audio-based courtroom practice)
+- `/app/strategy` - Strategy Room (AI insights using thinking models)
+- `/app/transcriber` - Transcriber
+- `/app/docs` - Drafting Assistant
+- `/app/settings` - Settings
 
 ### State Management
 
@@ -154,11 +158,3 @@ Strategy analysis uses `thinkingConfig: { thinkingBudget: 2048 }` for deep reaso
 3. **Empty Mock Data**: `MOCK_CASES` is intentionally empty; use `MOCK_CASE_TEMPLATES` for examples
 4. **Live API Audio Format**: Must be 16kHz PCM mono (not standard WebM/MP3)
 5. **Context Persistence**: AppContext state is lost on refresh; no localStorage persistence implemented
-
-## Testing Notes
-
-No test framework is currently configured. When adding tests:
-- Use the mock case templates from `MOCK_CASE_TEMPLATES`
-- Mock Gemini API responses in tests to avoid API calls
-- Test witness personality variations (hostile/nervous/cooperative)
-- Test trial phase transitions in ArgumentPractice
