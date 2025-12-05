@@ -1,8 +1,10 @@
 
 import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../App';
-import { Settings as SettingsIcon, Key, Database, Download, Upload, AlertCircle, Check, User, Moon, Sun, Volume2, Palette, Shield, Info, Trash2, CheckCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Key, Database, Download, Upload, AlertCircle, Check, User, Moon, Sun, Palette, Shield, Info, Trash2, CheckCircle, Cloud, Loader2 } from 'lucide-react';
 import { exportAllData, importAllData, clearAllData, getStorageInfo, savePreferences, loadPreferences } from '../utils/storage';
+import { getSupabaseClient } from '../services/supabaseClient';
+import { supabaseReady } from '../services/dataService';
 
 const Settings = () => {
   const { cases, theme, setTheme } = useContext(AppContext);
@@ -11,9 +13,12 @@ const Settings = () => {
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [storageInfo, setStorageInfo] = useState({ used: 0, available: 0, percentage: 0 });
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [supabaseStatus, setSupabaseStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
+  const [supabaseMessage, setSupabaseMessage] = useState<string | null>(null);
 
   const currentApiKey = process.env.API_KEY || '';
   const isApiKeyConfigured = currentApiKey && currentApiKey !== '';
+  const supabaseConfigured = supabaseReady();
 
   useEffect(() => {
     const prefs = loadPreferences();
@@ -51,6 +56,32 @@ const Settings = () => {
     const newValue = !autoSaveEnabled;
     setAutoSaveEnabled(newValue);
     savePreferences({ autoSave: newValue });
+  };
+
+  const handleSupabaseCheck = async () => {
+    if (!supabaseConfigured) {
+      setSupabaseStatus('error');
+      setSupabaseMessage('Supabase env vars missing; add SUPABASE_URL and SUPABASE_ANON_KEY to .env.local.');
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      setSupabaseStatus('error');
+      setSupabaseMessage('Supabase client not initialized.');
+      return;
+    }
+
+    setSupabaseStatus('checking');
+    setSupabaseMessage(null);
+    const { error } = await client.from('cases').select('id').limit(1);
+    if (error) {
+      setSupabaseStatus('error');
+      setSupabaseMessage(error.message || 'Connection failed. Check RLS/policies and table name.');
+    } else {
+      setSupabaseStatus('ok');
+      setSupabaseMessage('Connection healthy. cases table accessible.');
+    }
   };
 
   const exportData = () => {
@@ -160,6 +191,36 @@ const Settings = () => {
             </div>
           </div>
         </div>
+
+        {/* Supabase connectivity */}
+        <div className="mt-4 bg-slate-900/50 border border-slate-700 rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Cloud className="text-gold-500" size={18} />
+            <p className="text-slate-200 font-semibold">Supabase (optional, for cloud persistence)</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`text-xs px-2 py-1 rounded ${supabaseConfigured ? 'bg-green-900/40 text-green-300 border border-green-700' : 'bg-yellow-900/40 text-yellow-300 border border-yellow-700'}`}>
+              {supabaseConfigured ? 'Env detected' : 'Not configured'}
+            </span>
+            {supabaseStatus === 'ok' && <span className="text-xs text-green-400 flex items-center gap-1"><Check size={14} /> cases table reachable</span>}
+            {supabaseStatus === 'error' && <span className="text-xs text-red-400 flex items-center gap-1"><AlertCircle size={14} /> {supabaseMessage}</span>}
+            {supabaseStatus === 'checking' && <span className="text-xs text-slate-300 flex items-center gap-1"><Loader2 className="animate-spin" size={14} /> Checking...</span>}
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs text-slate-400">
+            <span>Add SUPABASE_URL and SUPABASE_ANON_KEY to .env.local.</span>
+            <span>Ensure a `cases` table exists (see SUPABASE_SETUP.md).</span>
+          </div>
+          <button
+            onClick={handleSupabaseCheck}
+            className="text-sm px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg border border-slate-600 text-slate-100 inline-flex items-center gap-2"
+          >
+            <Cloud size={16} />
+            Run connection check
+          </button>
+          {supabaseMessage && supabaseStatus !== 'error' && (
+            <p className="text-xs text-green-300">{supabaseMessage}</p>
+          )}
+        </div>
       </div>
 
       {/* Data Management */}
@@ -189,7 +250,7 @@ const Settings = () => {
               />
             </div>
             <p className="text-xs text-slate-400">
-              Data is automatically saved to browser localStorage
+              Data is cached in localStorage and synced to Supabase when configured.
             </p>
           </div>
 
@@ -320,7 +381,7 @@ const Settings = () => {
 
         <div className="space-y-3 text-sm text-slate-300">
           <p>
-            <strong className="text-white">Data Storage:</strong> All case data is stored locally in your browser's memory. No data is sent to any server except Google's Gemini API.
+            <strong className="text-white">Data Storage:</strong> Data is cached locally; if Supabase is configured, cases/evidence sync to your project (see SUPABASE_SETUP.md). No other servers are used.
           </p>
           <p>
             <strong className="text-white">API Usage:</strong> Your prompts and case information are sent to Google's Gemini API for processing. Review <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-gold-400 hover:underline">Google's Privacy Policy</a>.

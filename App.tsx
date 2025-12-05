@@ -1,22 +1,22 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, MessageSquare, Mic, FileAudio, Home } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
-import Dashboard from './components/Dashboard';
-import CaseManager from './components/CaseManager';
-import WitnessLab from './components/WitnessLab';
-import StrategyRoom from './components/StrategyRoom';
-import ArgumentPractice from './components/ArgumentPractice';
-import LandingPage from './components/LandingPage';
-import PrivacyPolicy from './components/PrivacyPolicy';
-import TermsOfService from './components/TermsOfService';
-import Transcriber from './components/Transcriber';
-import DraftingAssistant from './components/DraftingAssistant';
-import SettingsPage from './components/Settings';
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const CaseManager = lazy(() => import('./components/CaseManager'));
+const WitnessLab = lazy(() => import('./components/WitnessLab'));
+const StrategyRoom = lazy(() => import('./components/StrategyRoom'));
+const ArgumentPractice = lazy(() => import('./components/ArgumentPractice'));
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy'));
+const TermsOfService = lazy(() => import('./components/TermsOfService'));
+const Transcriber = lazy(() => import('./components/Transcriber'));
+const DraftingAssistant = lazy(() => import('./components/DraftingAssistant'));
+const SettingsPage = lazy(() => import('./components/Settings'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
-import { loadActiveCaseId, saveActiveCaseId, saveCases } from './utils/storage';
+import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
 import { appendEvidence, fetchCases, removeCase, supabaseReady, upsertCase } from './services/dataService';
 
 // Sidebar Component
@@ -118,6 +118,8 @@ export const AppContext = React.createContext<{
     updateCase: (caseId: string, data: Partial<Case>) => Promise<void>;
     deleteCase: (caseId: string) => Promise<void>;
     addEvidence: (caseId: string, evidence: EvidenceItem) => Promise<void>;
+    theme: 'dark' | 'light';
+    setTheme: (t: 'dark' | 'light') => void;
   }>({
     cases: [],
     activeCase: null,
@@ -126,12 +128,15 @@ export const AppContext = React.createContext<{
     updateCase: async () => {},
     deleteCase: async () => {},
     addEvidence: async () => {},
+    theme: 'dark',
+    setTheme: () => {},
   });
 
 const App = () => {
   const [cases, setCases] = useState<Case[]>([]);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [theme, setThemeState] = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +174,15 @@ const App = () => {
   }, []);
 
   useEffect(() => {
+    const prefs = loadPreferences();
+    setThemeState(prefs.theme || 'dark');
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
     if (!hydrated) return;
     saveCases(cases);
   }, [cases, hydrated]);
@@ -185,6 +199,11 @@ const App = () => {
 
   const setActiveCase = (selected: Case | null) => {
     setActiveCaseId(selected?.id || null);
+  };
+
+  const setTheme = (nextTheme: 'dark' | 'light') => {
+    setThemeState(nextTheme);
+    savePreferences({ theme: nextTheme });
   };
 
   const addCase = async (newCase: Case) => {
@@ -262,27 +281,29 @@ const App = () => {
   };
 
   return (
-    <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence }}>
+    <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence, theme, setTheme }}>
       <HashRouter>
-        <Routes>
-          {/* Public routes without sidebar */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-          <Route path="/tos" element={<TermsOfService />} />
-          
-          {/* App routes with sidebar layout */}
-          <Route path="/app" element={<Layout><Dashboard /></Layout>} />
-          <Route path="/app/cases" element={<Layout><CaseManager /></Layout>} />
-          <Route path="/app/witness-lab" element={<Layout><WitnessLab /></Layout>} />
-          <Route path="/app/practice" element={<Layout><ArgumentPractice /></Layout>} />
-          <Route path="/app/strategy" element={<Layout><StrategyRoom /></Layout>} />
-          <Route path="/app/transcriber" element={<Layout><Transcriber /></Layout>} />
-          <Route path="/app/docs" element={<Layout><DraftingAssistant /></Layout>} />
-          <Route path="/app/settings" element={<Layout><SettingsPage /></Layout>} />
-          
-          {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<div className="p-8 text-slate-400">Loading...</div>}>
+          <Routes>
+            {/* Public routes without sidebar */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/tos" element={<TermsOfService />} />
+            
+            {/* App routes with sidebar layout */}
+            <Route path="/app" element={<Layout><Dashboard /></Layout>} />
+            <Route path="/app/cases" element={<Layout><CaseManager /></Layout>} />
+            <Route path="/app/witness-lab" element={<Layout><WitnessLab /></Layout>} />
+            <Route path="/app/practice" element={<Layout><ArgumentPractice /></Layout>} />
+            <Route path="/app/strategy" element={<Layout><StrategyRoom /></Layout>} />
+            <Route path="/app/transcriber" element={<Layout><Transcriber /></Layout>} />
+            <Route path="/app/docs" element={<Layout><DraftingAssistant /></Layout>} />
+            <Route path="/app/settings" element={<Layout><SettingsPage /></Layout>} />
+            
+            {/* Catch-all redirect */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </HashRouter>
       <ToastContainer aria-label="Notifications" />
     </AppContext.Provider>

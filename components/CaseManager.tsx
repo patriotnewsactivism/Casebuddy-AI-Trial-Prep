@@ -1,17 +1,17 @@
 
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
-import { Case, CaseStatus, DocumentType, EvidenceItem } from '../types';
-import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag } from 'lucide-react';
+import { Case, CaseStatus, CaseTask, DocumentType, EvidenceItem, PriorityLevel, TaskStatus } from '../types';
+import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag, ListChecks } from 'lucide-react';
 import { analyzeDocument, fileToGenerativePart } from '../services/geminiService';
 import { MOCK_CASE_TEMPLATES } from '../constants';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import { validateFile } from '../utils/fileValidation';
 
-const CaseManager = () => {
-  const { cases, activeCase, setActiveCase, addCase, addEvidence } = useContext(AppContext);
+const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any }) => {
+  const { cases, activeCase, setActiveCase, addCase, addEvidence, updateCase } = useContext(AppContext);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [analysisResult, setAnalysisResult] = useState<any>(initialAnalysisResult || null);
   const [inputText, setInputText] = useState('');
   
   const [showNewCaseModal, setShowNewCaseModal] = useState(false);
@@ -28,6 +28,10 @@ const CaseManager = () => {
   const [evidenceNotes, setEvidenceNotes] = useState('');
   const [lastUploadName, setLastUploadName] = useState<string | null>(null);
   const caseEvidence = activeCase?.evidence || [];
+  const caseTasks = activeCase?.tasks || [];
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskPriority, setTaskPriority] = useState<PriorityLevel>('medium');
+  const [taskDue, setTaskDue] = useState('');
 
   const handleAnalyze = async () => {
     if (!inputText.trim()) {
@@ -152,6 +156,38 @@ const CaseManager = () => {
     await addEvidence(activeCase.id, evidence);
     handleSuccess('Evidence saved to case');
     setEvidenceNotes('');
+  };
+
+  const handleAddTask = async () => {
+    if (!activeCase) {
+      handleError(new Error('No active case'), 'Select a case before adding tasks', 'CaseManager');
+      return;
+    }
+    if (!taskTitle.trim()) {
+      handleError(new Error('Missing task title'), 'Enter a task description', 'CaseManager');
+      return;
+    }
+
+    const newTask: CaseTask = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      caseId: activeCase.id,
+      title: taskTitle.trim(),
+      status: 'open',
+      priority: taskPriority,
+      dueDate: taskDue || undefined,
+    };
+
+    const nextTasks = [...(activeCase.tasks || []), newTask];
+    await updateCase(activeCase.id, { tasks: nextTasks });
+    handleSuccess('Task added');
+    setTaskTitle('');
+    setTaskDue('');
+  };
+
+  const handleTaskStatusChange = async (taskId: string, status: TaskStatus) => {
+    if (!activeCase) return;
+    const nextTasks = (activeCase.tasks || []).map(t => t.id === taskId ? { ...t, status } : t);
+    await updateCase(activeCase.id, { tasks: nextTasks });
   };
 
   return (
@@ -449,6 +485,101 @@ const CaseManager = () => {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Docket & Tasks</h3>
+              <p className="text-xs text-slate-400">Track deadlines, follow-ups, and filings per case.</p>
+            </div>
+            <ListChecks className="text-gold-500" size={18} />
+          </div>
+
+          {!activeCase && (
+            <div className="text-slate-400 text-sm bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4 text-center">
+              Select or create a case to manage tasks.
+            </div>
+          )}
+
+          {activeCase && (
+            <>
+              <div className="grid md:grid-cols-3 gap-3 mb-3">
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">Task title</label>
+                  <input
+                    type="text"
+                    value={taskTitle}
+                    onChange={(e) => setTaskTitle(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-gold-500 outline-none"
+                    placeholder="File motion to compel, prep witness outline..."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Priority</label>
+                    <select
+                      value={taskPriority}
+                      onChange={(e) => setTaskPriority(e.target.value as PriorityLevel)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Due date</label>
+                    <input
+                      type="date"
+                      value={taskDue}
+                      onChange={(e) => setTaskDue(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={() => { void handleAddTask(); }}
+                  className="bg-gold-600 hover:bg-gold-500 text-slate-900 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Add Task
+                </button>
+              </div>
+
+              {caseTasks.length === 0 ? (
+                <div className="text-slate-400 text-sm bg-slate-900/40 border border-dashed border-slate-700 rounded-lg p-4 text-center">
+                  No tasks yet. Add your first deadline or follow-up.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {caseTasks.map(task => (
+                    <div key={task.id} className="bg-slate-900/50 border border-slate-700 rounded-lg p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm text-slate-200 font-semibold">{task.title}</p>
+                          <div className="text-xs text-slate-500 flex gap-3 mt-1">
+                            <span>Priority: {task.priority}</span>
+                            {task.dueDate && <span>Due: {task.dueDate}</span>}
+                          </div>
+                        </div>
+                        <select
+                          value={task.status}
+                          onChange={(e) => { void handleTaskStatusChange(task.id, e.target.value as TaskStatus); }}
+                          className="text-xs bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200"
+                        >
+                          <option value="open">Open</option>
+                          <option value="blocked">Blocked</option>
+                          <option value="done">Done</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
