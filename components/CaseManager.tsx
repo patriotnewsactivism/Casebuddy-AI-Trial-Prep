@@ -27,6 +27,7 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
   const [evidenceTitle, setEvidenceTitle] = useState('');
   const [evidenceNotes, setEvidenceNotes] = useState('');
   const [lastUploadName, setLastUploadName] = useState<string | null>(null);
+  const [batchUploadProgress, setBatchUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
   const caseEvidence = activeCase?.evidence || [];
   const caseTasks = activeCase?.tasks || [];
   const [taskTitle, setTaskTitle] = useState('');
@@ -86,6 +87,70 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
       setAnalyzing(false);
       e.target.value = ''; // Reset file input after upload
     }
+  };
+
+  const handleBatchFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (!activeCase) {
+      handleError(new Error('No active case'), 'Select a case before uploading files', 'CaseManager');
+      e.target.value = '';
+      return;
+    }
+
+    const validFiles: File[] = [];
+    for (const file of files) {
+      const validation = validateFile(file, {
+        maxSizeBytes: 10 * 1024 * 1024,
+        allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf']
+      });
+      if (validation.valid) {
+        validFiles.push(file);
+      } else {
+        handleError(new Error(validation.error), `${file.name}: ${validation.error}`, 'CaseManager');
+      }
+    }
+
+    if (validFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
+
+    setAnalyzing(true);
+    setBatchUploadProgress({ current: 0, total: validFiles.length, fileName: '' });
+
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
+      setBatchUploadProgress({ current: i + 1, total: validFiles.length, fileName: file.name });
+
+      try {
+        const imagePart = await fileToGenerativePart(file);
+        const result = await analyzeDocument("Analyze this image document.", imagePart);
+
+        const evidence: EvidenceItem = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          caseId: activeCase.id,
+          title: file.name,
+          type: DocumentType.EVIDENCE,
+          source: 'file',
+          summary: result.summary || 'No summary provided.',
+          keyEntities: result.entities || [],
+          risks: result.risks || [],
+          addedAt: new Date().toISOString(),
+          fileName: file.name,
+        };
+
+        await addEvidence(activeCase.id, evidence);
+        handleSuccess(`Analyzed and saved: ${file.name}`);
+      } catch (err) {
+        handleError(err, `Failed to process ${file.name}`, 'CaseManager');
+      }
+    }
+
+    setBatchUploadProgress(null);
+    setAnalyzing(false);
+    e.target.value = '';
   };
 
   const handleCreateCase = async (e: React.FormEvent) => {
@@ -289,19 +354,35 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
             </div>
             
             <div className="flex items-center justify-between">
-              <div className="relative">
-                 <input 
-                    type="file" 
-                    id="doc-upload" 
-                    className="hidden" 
-                    accept="image/*,application/pdf"
-                    onChange={handleFileUpload}
-                 />
-                 <label htmlFor="doc-upload" className="flex items-center gap-2 cursor-pointer text-sm text-slate-400 hover:text-white transition-colors px-3 py-2 rounded-lg hover:bg-slate-700">
-                    <Upload size={16} />
-                    Upload Scan/Image
-                 </label>
-              </div>
+               <div className="flex gap-2">
+                  <div className="relative">
+                     <input 
+                        type="file" 
+                        id="doc-upload" 
+                        className="hidden" 
+                        accept="image/*,application/pdf"
+                        onChange={handleFileUpload}
+                     />
+                     <label htmlFor="doc-upload" className="flex items-center gap-2 cursor-pointer text-sm text-slate-400 hover:text-white transition-colors px-3 py-2 rounded-lg hover:bg-slate-700">
+                        <Upload size={16} />
+                        Upload Single
+                     </label>
+                  </div>
+                  <div className="relative">
+                     <input 
+                        type="file" 
+                        id="batch-doc-upload" 
+                        className="hidden" 
+                        accept="image/*,application/pdf"
+                        multiple
+                        onChange={handleBatchFileUpload}
+                     />
+                     <label htmlFor="batch-doc-upload" className="flex items-center gap-2 cursor-pointer text-sm text-slate-400 hover:text-white transition-colors px-3 py-2 rounded-lg hover:bg-slate-700 border border-slate-600">
+                        <Upload size={16} />
+                        Batch Upload
+                     </label>
+                  </div>
+               </div>
               <button 
                 onClick={handleAnalyze}
                 disabled={analyzing}
