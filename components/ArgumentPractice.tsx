@@ -90,6 +90,34 @@ const TrialSim = () => {
   const currentInputTranscription = useRef('');
   const currentOutputTranscription = useRef('');
 
+  const getLiveSessionErrorMessage = (error: unknown): string => {
+    if (!process.env.API_KEY) {
+      return 'Missing GEMINI_API_KEY. Add it to .env.local and restart the app.';
+    }
+
+    if (error instanceof DOMException) {
+      if (error.name === 'NotAllowedError') {
+        return 'Microphone access was denied. Allow microphone permission in your browser settings and try again.';
+      }
+      if (error.name === 'NotFoundError') {
+        return 'No microphone was found. Connect a microphone and try again.';
+      }
+      if (error.name === 'SecurityError') {
+        return 'Microphone access requires a secure context (localhost or HTTPS).';
+      }
+    }
+
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    if (/api key|unauthori[sz]ed|401|403|forbidden|invalid/i.test(message)) {
+      return 'Gemini API authentication failed. Verify GEMINI_API_KEY in .env.local and restart the app.';
+    }
+    if (/network|fetch|timeout|socket|econn/i.test(message)) {
+      return 'Network connection to Gemini failed. Check connectivity and try again.';
+    }
+
+    return 'Failed to connect to the live session. Check microphone permission, API key, and network, then retry.';
+  };
+
   const opponentName = activeCase?.opposingCounsel && activeCase.opposingCounsel !== 'Unknown' 
   ? activeCase.opposingCounsel 
   : MOCK_OPPONENT.name;
@@ -119,6 +147,12 @@ const TrialSim = () => {
 
     setIsConnecting(true);
     try {
+      if (!process.env.API_KEY) {
+        setIsConnecting(false);
+        alert('Missing GEMINI_API_KEY. Add it to .env.local and restart the app.');
+        return;
+      }
+
       // 1. Ensure AudioContext is resumed (User Gesture)
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -295,9 +329,9 @@ const TrialSim = () => {
       sessionRef.current = sessionPromise;
 
     } catch (e) {
-      console.error(e);
+      console.error('Failed to start live session', e);
       setIsConnecting(false);
-      alert("Failed to connect. Please ensure microphone permissions are granted.");
+      alert(getLiveSessionErrorMessage(e));
     }
   };
 
