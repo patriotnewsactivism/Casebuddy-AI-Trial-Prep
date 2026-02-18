@@ -189,12 +189,29 @@ const TrialSim = () => {
   };
 
   const startKeepalive = (session: any) => {
+    // Clear any existing keepalive first
+    if (keepaliveRef.current) {
+      clearInterval(keepaliveRef.current);
+      keepaliveRef.current = null;
+    }
+    
     keepaliveRef.current = setInterval(() => {
-      if (session && isLiveRef.current) {
+      // Only send if we're still live AND session exists
+      if (isLiveRef.current && session) {
         try {
           session.sendRealtimeInput({ activity: { timestamp: Date.now() } });
         } catch (e) {
-          console.log('Keepalive failed, connection may be lost');
+          console.log('Keepalive failed, stopping interval');
+          if (keepaliveRef.current) {
+            clearInterval(keepaliveRef.current);
+            keepaliveRef.current = null;
+          }
+        }
+      } else {
+        // Not live anymore, stop the interval
+        if (keepaliveRef.current) {
+          clearInterval(keepaliveRef.current);
+          keepaliveRef.current = null;
         }
       }
     }, 20000);
@@ -321,6 +338,9 @@ const TrialSim = () => {
             const source = inputCtx.createMediaStreamSource(stream);
             const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
             scriptProcessor.onaudioprocess = (e) => {
+              // Only process if we're still live
+              if (!isLiveRef.current) return;
+              
               const inputData = e.inputBuffer.getChannelData(0);
               // Viz
               let sum = 0;
@@ -328,10 +348,22 @@ const TrialSim = () => {
               setLiveVolume(Math.sqrt(sum / inputData.length) * 100);
 
               const pcmBlob = createBlob(inputData);
-              sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
+              sessionPromise.then(s => {
+                if (isLiveRef.current) {
+                  try {
+                    s.sendRealtimeInput({ media: pcmBlob });
+                  } catch (err) {
+                    // Connection likely closed, ignore
+                  }
+                }
+              });
             };
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputCtx.destination);
+            
+            // Store reference for cleanup
+            const processorRef = { current: scriptProcessor };
+            sessionRef.current = { session: sessionPromise, processor: processorRef };
           },
           onmessage: async (msg: LiveServerMessage) => {
              // Audio Output
