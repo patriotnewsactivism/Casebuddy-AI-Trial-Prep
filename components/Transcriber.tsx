@@ -1,8 +1,12 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../App';
 import { Transcription } from '../types';
-import { Mic, Upload, Trash2, Play, Pause, Download, Tag, FileAudio, Clock, Users, Save, Edit2, X } from 'lucide-react';
+import { Mic, Upload, Trash2, Play, Pause, Download, Tag, FileAudio, Clock, Users, Save, Edit2, X, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { GoogleGenAI } from "@google/genai";
+
+const apiKey = process.env.API_KEY || '';
+const ai = new GoogleGenAI({ apiKey });
 
 const Transcriber = () => {
   const { activeCase } = useContext(AppContext);
@@ -15,6 +19,70 @@ const Transcriber = () => {
   const [editedText, setEditedText] = useState('');
   const [editedNotes, setEditedNotes] = useState('');
   const [newTags, setNewTags] = useState('');
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        const base64Content = base64data.split(',')[1];
+        resolve(base64Content);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const transcribeWithGemini = async (file: File): Promise<{ text: string; speakers: string[] }> => {
+    if (!apiKey) {
+      throw new Error('API key not configured. Please set GEMINI_API_KEY in .env.local');
+    }
+
+    const base64Audio = await fileToBase64(file);
+    const mimeType = file.type || 'audio/mpeg';
+
+    const prompt = `You are a professional legal transcriptionist. Transcribe the following audio file completely and accurately.
+
+IMPORTANT INSTRUCTIONS:
+1. Transcribe EVERYTHING spoken in the audio - do not summarize or skip any parts
+2. Identify and label different speakers (Speaker 1, Speaker 2, etc.) if multiple voices are present
+3. Include timestamps in [MM:SS] format where possible
+4. Preserve the exact words spoken - do not correct grammar or paraphrase
+5. For unclear sections, indicate [inaudible] or [unclear]
+6. Note any background noises or audio quality issues in [brackets]
+
+Format the transcript as:
+[00:00] Speaker 1: [text]
+[00:05] Speaker 2: [text]
+...
+
+If this is a legal proceeding, deposition, interview, or discovery audio, maintain formal transcription standards.
+
+Provide the complete transcription:`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { data: base64Audio, mimeType } },
+            { text: prompt }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.1,
+      }
+    });
+
+    const transcriptText = response.text || '';
+    const speakerMatches = transcriptText.match(/Speaker \d+/g) || [];
+    const speakers = [...new Set(speakerMatches)].map(s => s);
+
+    return { text: transcriptText, speakers };
+  };
 
   // Load transcriptions from localStorage for the active case
   useEffect(() => {
@@ -40,15 +108,15 @@ const Transcriber = () => {
     const file = e.target.files?.[0];
     if (file) {
       // Check file type
-      const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a', 'audio/ogg', 'audio/webm'];
-      if (!validTypes.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|ogg|webm)$/i)) {
-        toast.error('Please select a valid audio file (MP3, WAV, M4A, OGG, or WebM)');
+      const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a', 'audio/ogg', 'audio/webm', 'video/mp4'];
+      if (!validTypes.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|ogg|webm|mp4)$/i)) {
+        toast.error('Please select a valid audio/video file (MP3, WAV, M4A, OGG, WebM, or MP4)');
         return;
       }
 
       // Check file size (max 100MB)
-      if (file.size > 100 * 1024 * 1024) {
-        toast.error('File size must be less than 100MB');
+      if (file.size > 200 * 1024 * 1024) {
+        toast.error('File size must be less than 200MB');
         return;
       }
 
@@ -66,34 +134,17 @@ const Transcriber = () => {
     setIsTranscribing(true);
 
     try {
-      const formData = new FormData();
-      formData.append('audio', selectedFile);
-      formData.append('caseId', activeCase.id);
+      toast.info('Transcribing audio with AI... This may take a few minutes for large files.');
+      
+      const result = await transcribeWithGemini(selectedFile);
 
-      // Call the transcription service
-      // NOTE: This assumes the transcribe.casebuddy.live service has an API endpoint
-      // You'll need to adjust this URL based on the actual API structure
-      const response = await fetch('https://transcribe.casebuddy.live/api/transcribe', {
-        method: 'POST',
-        body: formData,
-        // Add authentication headers if needed
-        // headers: { 'Authorization': `Bearer ${yourToken}` }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Transcription failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-
-      // Create new transcription record
       const newTranscription: Transcription = {
         id: Date.now().toString(),
         caseId: activeCase.id,
         fileName: selectedFile.name,
-        text: result.text || result.transcript || '',
-        duration: result.duration,
-        speakers: result.speakers || [],
+        text: result.text,
+        duration: 0,
+        speakers: result.speakers,
         timestamp: Date.now(),
         tags: [],
         notes: ''
@@ -105,35 +156,76 @@ const Transcriber = () => {
       toast.success('Transcription completed successfully!');
       setSelectedFile(null);
 
-      // Reset file input
       const fileInput = document.getElementById('audio-upload') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
 
     } catch (error) {
       console.error('Transcription error:', error);
-
-      // Fallback: For demo purposes, create a placeholder transcription
-      // Remove this in production when the API is fully implemented
-      toast.warning('Transcription service unavailable. Creating placeholder for testing.');
-
-      const placeholderTranscription: Transcription = {
-        id: Date.now().toString(),
-        caseId: activeCase.id,
-        fileName: selectedFile.name,
-        text: `[Placeholder transcription for ${selectedFile.name}]\n\nThis is a demo transcription. In production, this would contain the actual transcribed text from the audio file.\n\nTo enable real transcription:\n1. Ensure the transcribe.casebuddy.live service is running\n2. Configure the API endpoint in this component\n3. Add authentication if required`,
-        duration: 0,
-        speakers: ['Speaker 1', 'Speaker 2'],
-        timestamp: Date.now(),
-        tags: ['demo'],
-        notes: 'Placeholder - replace with real transcription service'
-      };
-
-      const updated = [...transcriptions, placeholderTranscription];
-      saveTranscriptions(updated);
-      setSelectedFile(null);
+      toast.error(`Transcription failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsTranscribing(false);
     }
+  };
+
+  const handleBatchUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (!activeCase) {
+      toast.error('Please select a case first');
+      e.target.value = '';
+      return;
+    }
+
+    const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a', 'audio/ogg', 'audio/webm', 'video/mp4'];
+    const validFiles = files.filter(file => 
+      validTypes.includes(file.type) || file.name.match(/\.(mp3|wav|m4a|ogg|webm|mp4)$/i)
+    );
+
+    if (validFiles.length === 0) {
+      toast.error('No valid audio files selected');
+      e.target.value = '';
+      return;
+    }
+
+    setIsTranscribing(true);
+    setBatchProgress({ current: 0, total: validFiles.length, fileName: '' });
+
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
+      setBatchProgress({ current: i + 1, total: validFiles.length, fileName: file.name });
+
+      try {
+        toast.info(`Transcribing ${file.name} (${i + 1}/${validFiles.length})...`);
+        
+        const result = await transcribeWithGemini(file);
+
+        const newTranscription: Transcription = {
+          id: `${Date.now()}-${i}`,
+          caseId: activeCase.id,
+          fileName: file.name,
+          text: result.text,
+          duration: 0,
+          speakers: result.speakers,
+          timestamp: Date.now(),
+          tags: [],
+          notes: ''
+        };
+
+        const updated = [...transcriptions, newTranscription];
+        setTranscriptions(updated);
+        saveTranscriptions(updated);
+        
+        toast.success(`Completed: ${file.name}`);
+      } catch (error) {
+        console.error(`Failed to transcribe ${file.name}:`, error);
+        toast.error(`Failed: ${file.name} - ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    setBatchProgress(null);
+    setIsTranscribing(false);
+    e.target.value = '';
   };
 
   const deleteTranscription = (id: string) => {
@@ -246,16 +338,48 @@ ${transcription.text}
           <div className="space-y-4">
             <div>
               <label htmlFor="audio-upload" className="block text-sm font-medium text-slate-300 mb-2">
-                Select Audio File (MP3, WAV, M4A, OGG, WebM - Max 100MB)
+                Select Audio File (MP3, WAV, M4A, OGG, WebM, MP4 - Max 200MB)
               </label>
-              <input
-                id="audio-upload"
-                type="file"
-                accept="audio/*"
-                onChange={handleFileSelect}
-                className="block w-full text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gold-500 file:text-slate-900 hover:file:bg-gold-600 file:cursor-pointer cursor-pointer bg-slate-700/50 border border-slate-600 rounded-lg"
-              />
+              <div className="flex gap-3">
+                <input
+                  id="audio-upload"
+                  type="file"
+                  accept="audio/*,video/mp4"
+                  onChange={handleFileSelect}
+                  className="flex-1 text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gold-500 file:text-slate-900 hover:file:bg-gold-600 file:cursor-pointer cursor-pointer bg-slate-700/50 border border-slate-600 rounded-lg"
+                />
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-300 hover:text-white transition-colors px-4 py-2 rounded-lg border border-slate-600 hover:border-gold-500 bg-slate-700/50">
+                  <Upload size={16} />
+                  Batch Upload
+                  <input
+                    type="file"
+                    accept="audio/*,video/mp4"
+                    multiple
+                    onChange={handleBatchUpload}
+                    className="hidden"
+                    disabled={isTranscribing}
+                  />
+                </label>
+              </div>
             </div>
+
+            {batchProgress && (
+              <div className="bg-slate-700/50 border border-gold-500/30 rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <Loader2 className="animate-spin text-gold-500" size={20} />
+                  <span className="text-white font-medium">Batch Transcription in Progress</span>
+                </div>
+                <p className="text-sm text-slate-300 mb-2">
+                  Processing {batchProgress.current} of {batchProgress.total}: {batchProgress.fileName}
+                </p>
+                <div className="w-full bg-slate-600 rounded-full h-2">
+                  <div 
+                    className="bg-gold-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             {selectedFile && (
               <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-4">
@@ -300,9 +424,9 @@ ${transcription.text}
 
           <div className="mt-4 p-4 bg-blue-900/20 border border-blue-700/30 rounded-lg">
             <p className="text-sm text-blue-200">
-              <strong>Powered by transcribe.casebuddy.live</strong>
+              <strong>AI-Powered Transcription</strong>
               <br />
-              Your audio files are securely processed and transcribed using advanced speech-to-text AI.
+              Audio files are transcribed using Google's Gemini AI with speaker identification and timestamps. Supports large discovery files, depositions, and interviews.
             </p>
           </div>
         </div>
