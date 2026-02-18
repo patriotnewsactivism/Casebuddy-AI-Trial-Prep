@@ -125,6 +125,79 @@ const TrialSim = () => {
   ? activeCase.opposingCounsel 
   : MOCK_OPPONENT.name;
 
+  // --- Session Management Functions (defined before useEffect that uses them) ---
+  
+  const stopLiveSession = (preserveForReconnect = false) => {
+    if (keepaliveRef.current) {
+      clearInterval(keepaliveRef.current);
+      keepaliveRef.current = null;
+    }
+    
+    if (!preserveForReconnect) {
+      reconnectAttemptsRef.current = 0;
+    }
+    
+    setIsLive(false);
+    setIsConnecting(false);
+    setLiveVolume(0);
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    inputContextRef.current?.close();
+    outputContextRef.current?.close();
+    sourcesRef.current.forEach(s => s.stop());
+    sourcesRef.current.clear();
+    nextStartTimeRef.current = 0;
+  };
+
+  const handleStopClick = () => {
+    stopLiveSession();
+  };
+
+  const attemptReconnect = async () => {
+    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+      console.log('Max reconnect attempts reached');
+      stopLiveSession();
+      setMessages(prev => [...prev, { 
+        id: Date.now()+'e', 
+        sender: 'system', 
+        text: 'Connection lost. Click Start to reconnect.', 
+        timestamp: Date.now() 
+      }]);
+      return;
+    }
+
+    reconnectAttemptsRef.current++;
+    console.log(`Attempting reconnect ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
+    setMessages(prev => [...prev, { 
+      id: Date.now()+'r', 
+      sender: 'system', 
+      text: `Reconnecting (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`, 
+      timestamp: Date.now() 
+    }]);
+    
+    stopLiveSession(true);
+    
+    // Wait a moment before reconnecting
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    try {
+      await startLiveSession();
+    } catch (e) {
+      console.error('Reconnect failed', e);
+    }
+  };
+
+  const startKeepalive = (session: any) => {
+    keepaliveRef.current = setInterval(() => {
+      if (session && isLive) {
+        try {
+          session.sendRealtimeInput({ activity: { timestamp: Date.now() } });
+        } catch (e) {
+          console.log('Keepalive failed, connection may be lost');
+        }
+      }
+    }, 20000);
+  };
+
   // Cleanup
   useEffect(() => {
     return () => {
@@ -234,15 +307,21 @@ const TrialSim = () => {
             console.log("Live Connected");
             setIsLive(true);
             setIsConnecting(false);
+            reconnectAttemptsRef.current = 0; // Reset reconnect counter on successful connection
 
             // Send initial "Start" signal
-            sessionPromise.then(session => session.sendToolResponse({
+            sessionPromise.then(session => {
+              session.sendToolResponse({
                 functionResponses: {
                     name: 'initial_context_trigger',
                     id: 'init',
                     response: { status: 'ready' }
                 }
-            }));
+              });
+              
+              // Start keepalive to maintain connection
+              startKeepalive(session);
+            });
 
             // Audio Processing - Use 4096 buffer for better stability (less dropouts)
             const source = inputCtx.createMediaStreamSource(stream);
@@ -322,10 +401,22 @@ const TrialSim = () => {
                  }
              }
           },
-          onclose: () => stopLiveSession(),
-          onerror: (e) => {
-              console.error(e);
+          onclose: () => {
+            console.log('Live session closed');
+            if (isLive) {
+              // Connection was active when closed - attempt reconnect
+              attemptReconnect();
+            } else {
               stopLiveSession();
+            }
+          },
+          onerror: (e) => {
+              console.error('Live session error:', e);
+              if (isLive) {
+                attemptReconnect();
+              } else {
+                stopLiveSession();
+              }
           }
         }
       });
@@ -336,78 +427,6 @@ const TrialSim = () => {
       setIsConnecting(false);
       alert(getLiveSessionErrorMessage(e));
     }
-  };
-
-  const handleStopClick = () => {
-    stopLiveSession();
-  };
-    if (keepaliveRef.current) {
-      clearInterval(keepaliveRef.current);
-      keepaliveRef.current = null;
-    }
-    
-    if (!preserveForReconnect) {
-      reconnectAttemptsRef.current = 0;
-    }
-    
-    setIsLive(false);
-    setIsConnecting(false);
-    setLiveVolume(0);
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    inputContextRef.current?.close();
-    outputContextRef.current?.close();
-    sourcesRef.current.forEach(s => s.stop());
-    sourcesRef.current.clear();
-    nextStartTimeRef.current = 0;
-  };
-
-  const attemptReconnect = async () => {
-    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-      console.log('Max reconnect attempts reached');
-      stopLiveSession();
-      setMessages(prev => [...prev, { 
-        id: Date.now()+'e', 
-        sender: 'system', 
-        text: 'Connection lost. Click Start to reconnect.', 
-        timestamp: Date.now() 
-      }]);
-      return;
-    }
-
-    reconnectAttemptsRef.current++;
-    console.log(`Attempting reconnect ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
-    setMessages(prev => [...prev, { 
-      id: Date.now()+'r', 
-      sender: 'system', 
-      text: `Reconnecting (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`, 
-      timestamp: Date.now() 
-    }]);
-    
-    stopLiveSession(true);
-    
-    // Wait a moment before reconnecting
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    try {
-      await startLiveSession();
-    } catch (e) {
-      console.error('Reconnect failed', e);
-      // Will try again via onclose handler
-    }
-  };
-
-  const startKeepalive = (session: any) => {
-    // Send periodic activity to keep connection alive
-    keepaliveRef.current = setInterval(() => {
-      if (session && isLive) {
-        // Send a small activity ping every 20 seconds
-        try {
-          session.sendRealtimeInput({ activity: { timestamp: Date.now() } });
-        } catch (e) {
-          console.log('Keepalive failed, connection may be lost');
-        }
-      }
-    }, 20000);
   };
 
   // --- Render Logic ---
@@ -611,11 +630,11 @@ const TrialSim = () => {
                    </div>
                    <span className="text-xs text-gold-500 font-bold uppercase">{isConnecting ? 'Connecting' : 'Start'}</span>
                 </button>
-             ) : (
-                <button 
-                  onClick={stopLiveSession}
-                  className="flex flex-col items-center gap-1 group"
-                >
+              ) : (
+                 <button 
+                   onClick={handleStopClick}
+                   className="flex flex-col items-center gap-1 group"
+                 >
                    <div className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white transition-transform group-hover:scale-110 shadow-lg animate-pulse">
                       <MicOff size={28} />
                    </div>
