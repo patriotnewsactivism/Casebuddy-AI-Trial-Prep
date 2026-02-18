@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { MOCK_WITNESSES } from '../constants';
 import { AppContext } from '../App';
-import { generateWitnessResponse } from '../services/geminiService';
+import { generateWitnessResponse, clearChatSession } from '../services/geminiService';
 import { Message, Witness } from '../types';
 import { Send, Mic, User, ShieldAlert, HeartPulse } from 'lucide-react';
 
@@ -14,6 +14,8 @@ const WitnessLab = () => {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const getSessionId = (witnessId: string) => `witness-${witnessId}-${activeCase?.id || 'default'}`;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -38,19 +40,9 @@ const WitnessLab = () => {
     setInput('');
     setIsTyping(true);
 
-    // Prepare history for AI
-    const history = messages
-      .filter(m => m.sender !== 'system')
-      .map(m => ({
-        role: m.sender === 'user' ? 'user' : 'model',
-        parts: [{ text: m.text }]
-      }));
-    
-    // Add current user message to history for the call context
-    history.push({ role: 'user', parts: [{ text: userMsg.text }] });
-
     const responseText = await generateWitnessResponse(
-      history, 
+      getSessionId(selectedWitness.id),
+      userMsg.text,
       selectedWitness.name, 
       selectedWitness.personality, 
       activeCase?.summary || "A generic legal case."
@@ -76,6 +68,7 @@ const WitnessLab = () => {
           <button
             key={w.id}
             onClick={() => {
+              clearChatSession(getSessionId(selectedWitness.id));
               setSelectedWitness(w);
               setMessages([{ id: '0', sender: 'system', text: `Simulation with ${w.name} started.`, timestamp: Date.now() }]);
             }}

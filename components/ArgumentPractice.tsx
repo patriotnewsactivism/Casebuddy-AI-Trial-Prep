@@ -85,6 +85,9 @@ const TrialSim = () => {
   const streamRef = useRef<MediaStream | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const keepaliveRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const maxReconnectAttempts = 3;
   
   // Transcription Buffer
   const currentInputTranscription = useRef('');
@@ -335,7 +338,18 @@ const TrialSim = () => {
     }
   };
 
-  const stopLiveSession = () => {
+  const handleStopClick = () => {
+    stopLiveSession();
+  };
+    if (keepaliveRef.current) {
+      clearInterval(keepaliveRef.current);
+      keepaliveRef.current = null;
+    }
+    
+    if (!preserveForReconnect) {
+      reconnectAttemptsRef.current = 0;
+    }
+    
     setIsLive(false);
     setIsConnecting(false);
     setLiveVolume(0);
@@ -345,6 +359,55 @@ const TrialSim = () => {
     sourcesRef.current.forEach(s => s.stop());
     sourcesRef.current.clear();
     nextStartTimeRef.current = 0;
+  };
+
+  const attemptReconnect = async () => {
+    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+      console.log('Max reconnect attempts reached');
+      stopLiveSession();
+      setMessages(prev => [...prev, { 
+        id: Date.now()+'e', 
+        sender: 'system', 
+        text: 'Connection lost. Click Start to reconnect.', 
+        timestamp: Date.now() 
+      }]);
+      return;
+    }
+
+    reconnectAttemptsRef.current++;
+    console.log(`Attempting reconnect ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
+    setMessages(prev => [...prev, { 
+      id: Date.now()+'r', 
+      sender: 'system', 
+      text: `Reconnecting (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`, 
+      timestamp: Date.now() 
+    }]);
+    
+    stopLiveSession(true);
+    
+    // Wait a moment before reconnecting
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    try {
+      await startLiveSession();
+    } catch (e) {
+      console.error('Reconnect failed', e);
+      // Will try again via onclose handler
+    }
+  };
+
+  const startKeepalive = (session: any) => {
+    // Send periodic activity to keep connection alive
+    keepaliveRef.current = setInterval(() => {
+      if (session && isLive) {
+        // Send a small activity ping every 20 seconds
+        try {
+          session.sendRealtimeInput({ activity: { timestamp: Date.now() } });
+        } catch (e) {
+          console.log('Keepalive failed, connection may be lost');
+        }
+      }
+    }, 20000);
   };
 
   // --- Render Logic ---

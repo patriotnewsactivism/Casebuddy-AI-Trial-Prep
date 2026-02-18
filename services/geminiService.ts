@@ -6,6 +6,57 @@ import { retryWithBackoff, withTimeout } from "../utils/errorHandler";
 const apiKey = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
 
+interface ChatSession {
+  id: string;
+  chat: ReturnType<typeof ai.chats.create>;
+  type: 'witness' | 'opponent' | 'trial';
+  createdAt: number;
+}
+
+const chatSessions = new Map<string, ChatSession>();
+
+export const createChatSession = (
+  id: string,
+  type: 'witness' | 'opponent' | 'trial',
+  systemInstruction: string,
+  initialHistory: { role: 'user' | 'model'; parts: { text: string }[] }[] = []
+) => {
+  const existing = chatSessions.get(id);
+  if (existing) {
+    return existing.chat;
+  }
+
+  const chat = ai.chats.create({
+    model: 'gemini-2.5-flash',
+    config: {
+      systemInstruction,
+      temperature: 0.9,
+    },
+    history: initialHistory
+  });
+
+  chatSessions.set(id, {
+    id,
+    chat,
+    type,
+    createdAt: Date.now()
+  });
+
+  return chat;
+};
+
+export const getChatSession = (id: string) => {
+  return chatSessions.get(id)?.chat || null;
+};
+
+export const clearChatSession = (id: string) => {
+  chatSessions.delete(id);
+};
+
+export const clearAllChatSessions = () => {
+  chatSessions.clear();
+};
+
 // Helper to convert file blob to base64
 export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } }> => {
   return new Promise((resolve, reject) => {
@@ -65,10 +116,12 @@ export const analyzeDocument = async (text: string, imagePart?: any) => {
 };
 
 export const generateWitnessResponse = async (
-  history: { role: string, parts: { text: string }[] }[],
+  sessionId: string,
+  message: string,
   witnessName: string,
   personality: string,
-  caseContext: string
+  caseContext: string,
+  forceNew: boolean = false
 ) => {
   try {
     const systemInstruction = `You are roleplaying as a witness named ${witnessName} in a legal trial.
@@ -84,22 +137,18 @@ export const generateWitnessResponse = async (
     6. Keep responses relatively concise, as in a courtroom cross-examination.
     `;
 
-    const chat = ai.chats.create({
-      model: 'gemini-2.5-flash',
-      config: {
-        systemInstruction,
-        temperature: 0.9,
-      },
-      history: history.map(h => ({
-        role: h.role === 'user' ? 'user' : 'model',
-        parts: h.parts
-      }))
-    });
+    if (forceNew) {
+      clearChatSession(sessionId);
+    }
 
-    const lastMessage = history[history.length - 1].parts[0].text;
+    let chat = getChatSession(sessionId);
+    if (!chat) {
+      chat = createChatSession(sessionId, 'witness', systemInstruction);
+    }
+
     const response = await withTimeout(
-      chat.sendMessage({ message: lastMessage }),
-      20000 // 20 second timeout
+      chat.sendMessage({ message }),
+      20000
     );
 
     return response.text;
@@ -149,10 +198,12 @@ export const predictStrategy = async (caseSummary: string, opponentProfile: stri
 };
 
 export const generateOpponentResponse = async (
-  history: { role: string, text: string }[],
+  sessionId: string,
+  message: string,
   opponentName: string,
   opponentStyle: string,
-  caseContext: string
+  caseContext: string,
+  forceNew: boolean = false
 ) => {
   try {
     const systemInstruction = `You are ${opponentName}, opposing counsel in a trial.
@@ -167,21 +218,18 @@ export const generateOpponentResponse = async (
     5. Do not admit defeat easily; pivot if cornered.
     `;
 
-    const formattedHistory = history.map(h => ({
-      role: h.role === 'user' ? 'user' : 'model',
-      parts: [{ text: h.text }]
-    }));
+    if (forceNew) {
+      clearChatSession(sessionId);
+    }
 
-    const chat = ai.chats.create({
-      model: 'gemini-2.5-flash',
-      config: { systemInstruction },
-      history: formattedHistory.slice(0, -1)
-    });
+    let chat = getChatSession(sessionId);
+    if (!chat) {
+      chat = createChatSession(sessionId, 'opponent', systemInstruction);
+    }
 
-    const lastMessage = formattedHistory[formattedHistory.length - 1].parts[0].text;
     const response = await withTimeout(
-      chat.sendMessage({ message: lastMessage }),
-      20000 // 20 second timeout
+      chat.sendMessage({ message }),
+      20000
     );
 
     return response.text;
