@@ -135,3 +135,94 @@ export interface Transcription {
   tags?: string[];
   notes?: string;
 }
+
+export type TimelineEventType = 'incident' | 'evidence' | 'witness' | 'filing' | 'hearing' | 'other';
+export type TimelineEventImportance = 'low' | 'medium' | 'high' | 'critical';
+
+export interface TimelineEvent {
+  id: string;
+  title: string;
+  date: string;
+  time?: string;
+  description: string;
+  type: TimelineEventType;
+  importance: TimelineEventImportance;
+  tags?: string[];
+  linkedEvidence?: string[];
+  linkedWitnesses?: string[];
+}
+
+export type EvidenceStatus = 'pending' | 'admitted' | 'excluded' | 'challenged';
+
+export interface Evidence {
+  id: string;
+  name: string;
+  type: DocumentType;
+  description: string;
+  dateObtained: string;
+  exhibitNumber?: string;
+  source?: string;
+  status: EvidenceStatus;
+  tags?: string[];
+  notes?: string;
+}
+
+export interface Juror {
+  id: string;
+  name: string;
+  age: number;
+  occupation: string;
+  education: string;
+  background: string;
+  biases: string[];
+  leaningScore: number;
+  avatar: string;
+}
+
+export interface JuryDeliberation {
+  jurorId: string;
+  statement: string;
+  timestamp: number;
+}
+
+export interface JuryVerdict {
+  verdict: 'guilty' | 'not guilty' | 'hung';
+  confidence: number;
+  voteTally: {
+    guilty: number;
+    notGuilty: number;
+  };
+  reasoning: string;
+  weaknesses: string[];
+  strengths: string[];
+}
+
+export interface TrialSessionMetrics {
+  objectionsReceived: number;
+  fallaciesCommitted: number;
+  avgRhetoricalScore: number;
+  wordCount: number;
+  fillerWordsCount: number;
+}
+
+export interface TrialSessionTranscriptEntry {
+  id: string;
+  sender: Message['sender'];
+  text: string;
+  timestamp: number;
+}
+
+export interface TrialSession {
+  id: string;
+  caseId: string;
+  caseTitle: string;
+  phase: TrialPhase | string;
+  mode: SimulationMode | string;
+  date: string;
+  duration: number;
+  transcript: TrialSessionTranscriptEntry[];
+  audioUrl?: string;
+  score?: number;
+  feedback?: string;
+  metrics?: Partial<TrialSessionMetrics>;
+}

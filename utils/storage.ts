@@ -1,4 +1,4 @@
-import { Case } from '../types';
+import { Case, TrialSession, TrialSessionMetrics, TrialSessionTranscriptEntry } from '../types';
 
 const STORAGE_KEYS = {
   CASES: 'lexsim_cases',
@@ -18,18 +18,80 @@ interface UserPreferences {
   title: string;
 }
 
-interface TrialSession {
-  id: string;
-  caseId: string;
-  phase: string;
-  mode: string;
-  date: string;
-  duration: number;
-  transcript: Array<{ sender: string; text: string; timestamp: number }>;
-  audioUrl?: string;
-  score?: number;
-  feedback?: any;
-}
+const DEFAULT_TRIAL_METRICS: TrialSessionMetrics = {
+  objectionsReceived: 0,
+  fallaciesCommitted: 0,
+  avgRhetoricalScore: 0,
+  wordCount: 0,
+  fillerWordsCount: 0,
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null;
+};
+
+const toFiniteNumber = (value: unknown, fallback = 0): number => {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+};
+
+const normalizeTranscriptEntry = (entry: unknown, index: number): TrialSessionTranscriptEntry => {
+  if (!isObjectRecord(entry)) {
+    return {
+      id: `msg-${Date.now()}-${index}`,
+      sender: 'system',
+      text: '',
+      timestamp: Date.now(),
+    };
+  }
+
+  const senderValue = typeof entry.sender === 'string' ? entry.sender : 'system';
+  const sender: TrialSessionTranscriptEntry['sender'] =
+    senderValue === 'user' ||
+    senderValue === 'witness' ||
+    senderValue === 'system' ||
+    senderValue === 'opponent' ||
+    senderValue === 'coach'
+      ? senderValue
+      : 'system';
+
+  return {
+    id: typeof entry.id === 'string' && entry.id.trim() ? entry.id : `msg-${Date.now()}-${index}`,
+    sender,
+    text: typeof entry.text === 'string' ? entry.text : '',
+    timestamp: toFiniteNumber(entry.timestamp, Date.now()),
+  };
+};
+
+const normalizeTrialSession = (value: unknown): TrialSession | null => {
+  if (!isObjectRecord(value)) return null;
+
+  const metricsInput = isObjectRecord(value.metrics) ? value.metrics : {};
+  const transcript = Array.isArray(value.transcript)
+    ? value.transcript.map((entry, index) => normalizeTranscriptEntry(entry, index))
+    : [];
+
+  return {
+    id: typeof value.id === 'string' && value.id.trim() ? value.id : `session-${Date.now()}`,
+    caseId: typeof value.caseId === 'string' ? value.caseId : '',
+    caseTitle: typeof value.caseTitle === 'string' && value.caseTitle.trim() ? value.caseTitle : 'Untitled Case',
+    phase: typeof value.phase === 'string' ? value.phase : 'opening-statement',
+    mode: typeof value.mode === 'string' ? value.mode : 'practice',
+    date: typeof value.date === 'string' ? value.date : new Date().toISOString(),
+    duration: toFiniteNumber(value.duration, 0),
+    transcript,
+    audioUrl: typeof value.audioUrl === 'string' ? value.audioUrl : undefined,
+    score: toFiniteNumber(value.score, 0),
+    feedback: typeof value.feedback === 'string' ? value.feedback : '',
+    metrics: {
+      ...DEFAULT_TRIAL_METRICS,
+      objectionsReceived: toFiniteNumber(metricsInput.objectionsReceived, 0),
+      fallaciesCommitted: toFiniteNumber(metricsInput.fallaciesCommitted, 0),
+      avgRhetoricalScore: toFiniteNumber(metricsInput.avgRhetoricalScore, 0),
+      wordCount: toFiniteNumber(metricsInput.wordCount, 0),
+      fillerWordsCount: toFiniteNumber(metricsInput.fillerWordsCount, 0),
+    },
+  };
+};
 
 // Check if localStorage is available
 const isLocalStorageAvailable = (): boolean => {
@@ -172,8 +234,11 @@ export const saveTrialSession = (session: TrialSession): boolean => {
   if (!isLocalStorageAvailable()) return false;
 
   try {
+    const normalizedSession = normalizeTrialSession(session);
+    if (!normalizedSession) return false;
+
     const sessions = loadTrialSessions();
-    sessions.push(session);
+    sessions.push(normalizedSession);
     // Keep only last 50 sessions to avoid storage limits
     const trimmed = sessions.slice(-50);
     localStorage.setItem(STORAGE_KEYS.TRIAL_SESSIONS, JSON.stringify(trimmed));
@@ -189,7 +254,13 @@ export const loadTrialSessions = (): TrialSession[] => {
 
   try {
     const data = localStorage.getItem(STORAGE_KEYS.TRIAL_SESSIONS);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+
+    const parsed = JSON.parse(data);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((session) => normalizeTrialSession(session))
+      .filter((session): session is TrialSession => session !== null);
   } catch (e) {
     // Silent fail - return empty array
     return [];
@@ -233,8 +304,11 @@ export const importAllData = (data: any): boolean => {
     if (data.cases) saveCases(data.cases);
     if (data.activeCaseId) saveActiveCaseId(data.activeCaseId);
     if (data.preferences) savePreferences(data.preferences);
-    if (data.trialSessions) {
-      localStorage.setItem(STORAGE_KEYS.TRIAL_SESSIONS, JSON.stringify(data.trialSessions));
+    if (Array.isArray(data.trialSessions)) {
+      const normalizedSessions = data.trialSessions
+        .map((session: unknown) => normalizeTrialSession(session))
+        .filter((session: TrialSession | null): session is TrialSession => session !== null);
+      localStorage.setItem(STORAGE_KEYS.TRIAL_SESSIONS, JSON.stringify(normalizedSessions));
     }
     return true;
   } catch (e) {

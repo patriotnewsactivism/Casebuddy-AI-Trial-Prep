@@ -1,5 +1,6 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import React from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
+import { AlertTriangle, Home, RefreshCw } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
@@ -14,9 +15,9 @@ interface State {
 
 /**
  * Error Boundary component to catch React component errors
- * and prevent the entire app from crashing
+ * and prevent the entire app from crashing.
  */
-class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = {
@@ -27,7 +28,6 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
-    // Update state so the next render will show the fallback UI
     return {
       hasError: true,
       error,
@@ -35,20 +35,12 @@ class ErrorBoundary extends Component<Props, State> {
     };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error details for debugging
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
-
-    this.setState({
-      error,
-      errorInfo,
-    });
-
-    // You could also log the error to an error reporting service here
-    // Example: logErrorToService(error, errorInfo);
+    this.setState({ error, errorInfo });
   }
 
-  handleReset = () => {
+  handleReset = (): void => {
     this.setState({
       hasError: false,
       error: null,
@@ -56,18 +48,16 @@ class ErrorBoundary extends Component<Props, State> {
     });
   };
 
-  handleGoHome = () => {
+  handleGoHome = (): void => {
     window.location.href = '/';
   };
 
   render() {
     if (this.state.hasError) {
-      // Custom fallback UI
       if (this.props.fallback) {
         return this.props.fallback;
       }
 
-      // Default fallback UI
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
           <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-lg p-8">
@@ -77,15 +67,13 @@ class ErrorBoundary extends Component<Props, State> {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-white mb-1">Something went wrong</h1>
-                <p className="text-slate-400">
-                  We encountered an unexpected error. Don't worry, your data is safe.
-                </p>
+                <p className="text-slate-400">We encountered an unexpected error. Your data is safe.</p>
               </div>
             </div>
 
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <div className="mb-6 bg-slate-950 border border-red-500/30 rounded p-4">
-                <h2 className="text-sm font-semibold text-red-400 mb-2">Error Details (Development Only):</h2>
+                <h2 className="text-sm font-semibold text-red-400 mb-2">Error Details (Development Only)</h2>
                 <pre className="text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">
                   {this.state.error.toString()}
                 </pre>
@@ -120,14 +108,12 @@ class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <div className="mt-6 pt-6 border-t border-slate-800">
-              <p className="text-sm text-slate-400">
-                If this problem persists, please try:
-              </p>
+              <p className="text-sm text-slate-400">If this problem persists, try:</p>
               <ul className="mt-2 space-y-1 text-sm text-slate-300">
-                <li>• Refreshing the page</li>
-                <li>• Clearing your browser cache</li>
-                <li>• Checking your internet connection</li>
-                <li>• Contacting support if the issue continues</li>
+                <li>- Refreshing the page</li>
+                <li>- Clearing your browser cache</li>
+                <li>- Checking your internet connection</li>
+                <li>- Contacting support if the issue continues</li>
               </ul>
             </div>
           </div>
