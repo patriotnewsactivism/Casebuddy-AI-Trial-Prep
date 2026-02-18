@@ -948,6 +948,14 @@ export function getJurisdictionVariation(objection: ObjectionRule, jurisdiction:
   return objection.jurisdictionVariations[jurisdiction];
 }
 
+export function getHearsayExceptions(jurisdiction: Jurisdiction): HearsayException[] {
+  return HEARSAY_EXCEPTIONS.filter(e => e.applicableIn.includes(jurisdiction));
+}
+
+export function getAuthenticationMethods(evidenceType: string): string[] {
+  return AUTHENTICATION_METHODS[evidenceType] || AUTHENTICATION_METHODS.documents;
+}
+
 export function generateObjectionPrompt(ground: string, jurisdiction: Jurisdiction, phase: TrialPhase): string {
   const rule = getObjectionByGround(ground);
   if (!rule) {

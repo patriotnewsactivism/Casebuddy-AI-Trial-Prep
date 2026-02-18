@@ -11,13 +11,18 @@
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
+    "@ricky0123/vad-web": "^0.0.30",
     "@supabase/supabase-js": "^2.86.2",
+    "date-fns": "^4.1.0",
     "lucide-react": "^0.554.0",
+    "mammoth": "^1.11.0",
+    "openai": "^6.22.0",
+    "pdf-parse": "^2.4.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.6",
     "react-toastify": "^11.0.5",
-    "recharts": "^3.4.1"
+    "recharts": "^3.7.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
