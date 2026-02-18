@@ -2,10 +2,18 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../App';
 import { Link } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Briefcase, Calendar, TrendingUp, Activity, Users, BrainCircuit, Mic, Plus } from 'lucide-react';
 
-const StatCard = ({ icon: Icon, title, value, subtext, color }: any) => (
+interface StatCardProps {
+  icon: React.ComponentType<{ className?: string; size?: number }>;
+  title: string;
+  value: string;
+  subtext?: string;
+  color?: string;
+}
+
+const StatCard = ({ icon: Icon, title, value, subtext, color = 'text-slate-400' }: StatCardProps) => (
   <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
     <div className="flex items-start justify-between">
       <div>
@@ -25,7 +33,7 @@ const Dashboard = () => {
 
   // Mock data removed. We will visualize real case distribution if available, or show empty state.
   // Simple distribution of case statuses for the chart if cases exist.
-  const statusCounts = cases.reduce((acc: any, curr) => {
+  const statusCounts = cases.reduce<Record<string, number>>((acc, curr) => {
     acc[curr.status] = (acc[curr.status] || 0) + 1;
     return acc;
   }, {});
@@ -110,7 +118,7 @@ const Dashboard = () => {
               <div className="h-full flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-slate-700 rounded-lg">
                 <Briefcase size={32} className="mb-3 opacity-50" />
                 <p>No case data available.</p>
-                <Link to="/cases" className="text-gold-500 hover:underline text-sm mt-2">Create your first case</Link>
+                <Link to="/app/cases" className="text-gold-500 hover:underline text-sm mt-2">Create your first case</Link>
               </div>
             )}
           </div>
@@ -120,19 +128,19 @@ const Dashboard = () => {
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
           <div className="space-y-3">
-            <Link to="/cases" className="w-full flex items-center justify-between p-4 bg-slate-700/30 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors text-left group">
+            <Link to="/app/cases" className="w-full flex items-center justify-between p-4 bg-slate-700/30 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors text-left group">
               <span className="text-sm font-medium group-hover:text-white text-slate-200">Add New Case</span>
               <Plus size={18} className="text-green-400"/>
             </Link>
-            <Link to="/practice" className="w-full flex items-center justify-between p-4 bg-slate-700/30 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors text-left group">
+            <Link to="/app/practice" className="w-full flex items-center justify-between p-4 bg-slate-700/30 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors text-left group">
               <span className="text-sm font-medium group-hover:text-white text-slate-200">Trial Simulator</span>
               <Mic size={18} className="text-gold-500"/>
             </Link>
-            <Link to="/witness-lab" className="w-full flex items-center justify-between p-4 bg-slate-700/30 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors text-left group">
+            <Link to="/app/witness-lab" className="w-full flex items-center justify-between p-4 bg-slate-700/30 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors text-left group">
               <span className="text-sm font-medium group-hover:text-white text-slate-200">Witness Lab</span>
               <Users size={18} className="text-blue-400"/>
             </Link>
-            <Link to="/strategy" className="w-full flex items-center justify-between p-4 bg-slate-700/30 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors text-left group">
+            <Link to="/app/strategy" className="w-full flex items-center justify-between p-4 bg-slate-700/30 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors text-left group">
               <span className="text-sm font-medium group-hover:text-white text-slate-200">Strategy & Tactics</span>
               <BrainCircuit size={18} className="text-purple-400"/>
             </Link>
@@ -146,7 +154,7 @@ const Dashboard = () => {
                   <p className="text-xs text-slate-400 mt-1">Opponent: {activeCase.opposingCounsel}</p>
                </div>
             ) : (
-               <Link to="/cases" className="block bg-slate-900/50 p-4 rounded-lg border border-slate-700 border-dashed hover:border-gold-500/50 text-center transition-colors">
+               <Link to="/app/cases" className="block bg-slate-900/50 p-4 rounded-lg border border-slate-700 border-dashed hover:border-gold-500/50 text-center transition-colors">
                   <p className="text-sm text-slate-400 flex items-center justify-center gap-2">
                     <Briefcase size={14} />
                     Select Case

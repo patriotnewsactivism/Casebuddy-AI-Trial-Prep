@@ -127,7 +127,7 @@ ${transcript}
           <p className="text-slate-400 mt-2 text-sm sm:text-base">Review your past trial simulation sessions and track improvement</p>
         </div>
         <Link
-          to="/practice"
+          to="/app/practice"
           className="bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
         >
           New Session
@@ -156,7 +156,7 @@ ${transcript}
           <h3 className="text-xl font-semibold text-white mb-2">No Sessions Yet</h3>
           <p className="text-slate-400 mb-6">Start a Trial Simulator session to begin tracking your progress</p>
           <Link
-            to="/practice"
+            to="/app/practice"
             className="inline-block bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-colors"
           >
             Start Practice Session

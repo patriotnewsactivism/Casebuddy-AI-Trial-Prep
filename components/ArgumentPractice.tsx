@@ -594,7 +594,7 @@ const TrialSim = () => {
         <p className="text-sm mt-2 max-w-md text-center leading-relaxed mb-6">
            Please select a case in "Case Files". You can create a new real-life case or load a mock scenario from our library.
         </p>
-        <Link to="/cases" className="bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors">
+        <Link to="/app/cases" className="bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors">
            Go to Case Files
         </Link>
      </div>

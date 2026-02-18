@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CaseManager from '../components/CaseManager';
 import { AppContext } from '../App';
-import { Case, CaseStatus } from '../types';
+import { Case, CaseStatus, EvidenceItem } from '../types';
 
 vi.mock('../services/geminiService', () => ({
   analyzeDocument: vi.fn().mockResolvedValue({
@@ -31,7 +31,7 @@ describe('CaseManager evidence flow', () => {
   };
 
   const renderWithContext = (overrides?: Partial<React.ComponentProps<typeof CaseManager>>) => {
-    const addEvidence = vi.fn(async () => {});
+    const addEvidence = vi.fn<(caseId: string, evidence: EvidenceItem) => Promise<void>>().mockResolvedValue(undefined);
 
     render(
       <AppContext.Provider
@@ -68,8 +68,8 @@ describe('CaseManager evidence flow', () => {
     await user.click(saveButton);
 
     await waitFor(() => expect(addEvidence).toHaveBeenCalledTimes(1));
-    const callArgs = addEvidence.mock.calls[0];
-    expect(callArgs[0]).toBe(baseCase.id);
-    expect(callArgs[1].summary).toBe('Mock summary');
+    const [caseId, evidence] = addEvidence.mock.calls[0] as [string, EvidenceItem];
+    expect(caseId).toBe(baseCase.id);
+    expect(evidence.summary).toBe('Mock summary');
   });
 });

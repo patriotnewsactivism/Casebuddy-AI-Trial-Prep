@@ -264,7 +264,7 @@ Return JSON with:
         <p className="text-sm mt-2 max-w-md text-center leading-relaxed mb-6">
           Select a case to simulate jury deliberation and predict the verdict.
         </p>
-        <Link to="/cases" className="bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors">
+        <Link to="/app/cases" className="bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors">
           Go to Case Files
         </Link>
       </div>

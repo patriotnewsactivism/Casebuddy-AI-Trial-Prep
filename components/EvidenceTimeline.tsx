@@ -1,8 +1,8 @@
 
-import React, { useState, useContext, useRef } from 'react';
+import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
-import { TimelineEvent, Evidence } from '../types';
-import { Calendar, Clock, Plus, Edit2, Trash2, AlertCircle, FileText, Users, MapPin, Tag, Filter, Download, Upload } from 'lucide-react';
+import { DocumentType, Evidence, EvidenceStatus, TimelineEvent, TimelineEventImportance, TimelineEventType } from '../types';
+import { Calendar, Clock, Plus, Edit2, Trash2, AlertCircle, FileText, Filter, Download } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const EvidenceTimeline = () => {
@@ -24,7 +24,7 @@ const EvidenceTimeline = () => {
 
   // New evidence form
   const [newEvidence, setNewEvidence] = useState<Partial<Evidence>>({
-    type: 'EVIDENCE' as any,
+    type: DocumentType.EVIDENCE,
     status: 'pending',
     dateObtained: new Date().toISOString().split('T')[0]
   });
@@ -38,8 +38,8 @@ const EvidenceTimeline = () => {
       date: newEvent.date,
       time: newEvent.time,
       description: newEvent.description || '',
-      type: newEvent.type as any,
-      importance: newEvent.importance as any,
+      type: newEvent.type as TimelineEventType,
+      importance: newEvent.importance as TimelineEventImportance,
       tags: newEvent.tags,
       linkedEvidence: newEvent.linkedEvidence,
       linkedWitnesses: newEvent.linkedWitnesses
@@ -65,14 +65,14 @@ const EvidenceTimeline = () => {
       dateObtained: newEvidence.dateObtained!,
       exhibitNumber: newEvidence.exhibitNumber,
       source: newEvidence.source,
-      status: newEvidence.status as any,
+      status: newEvidence.status as EvidenceStatus,
       tags: newEvidence.tags,
       notes: newEvidence.notes
     };
 
     setEvidenceList([...evidenceList, evidence]);
     setNewEvidence({
-      type: 'EVIDENCE' as any,
+      type: DocumentType.EVIDENCE,
       status: 'pending',
       dateObtained: new Date().toISOString().split('T')[0]
     });
@@ -138,7 +138,7 @@ const EvidenceTimeline = () => {
     if (sortBy === 'date') {
       return new Date(a.date).getTime() - new Date(b.date).getTime();
     } else {
-      const importanceOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+      const importanceOrder: Record<TimelineEventImportance, number> = { critical: 4, high: 3, medium: 2, low: 1 };
       return importanceOrder[b.importance] - importanceOrder[a.importance];
     }
   });
@@ -151,7 +151,7 @@ const EvidenceTimeline = () => {
         <p className="text-sm mt-2 max-w-md text-center leading-relaxed mb-6">
           Select a case to organize its evidence timeline.
         </p>
-        <Link to="/cases" className="bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors">
+        <Link to="/app/cases" className="bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors">
           Go to Case Files
         </Link>
       </div>
@@ -424,7 +424,7 @@ const EvidenceTimeline = () => {
                   <label className="block text-sm font-medium text-slate-300 mb-2">Type</label>
                   <select
                     value={newEvent.type}
-                    onChange={(e) => setNewEvent({ ...newEvent, type: e.target.value as any })}
+                    onChange={(e) => setNewEvent({ ...newEvent, type: e.target.value as TimelineEventType })}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
                   >
                     <option value="incident">Incident</option>
@@ -440,7 +440,7 @@ const EvidenceTimeline = () => {
                   <label className="block text-sm font-medium text-slate-300 mb-2">Importance</label>
                   <select
                     value={newEvent.importance}
-                    onChange={(e) => setNewEvent({ ...newEvent, importance: e.target.value as any })}
+                    onChange={(e) => setNewEvent({ ...newEvent, importance: e.target.value as TimelineEventImportance })}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
                   >
                     <option value="low">Low</option>
@@ -534,7 +534,7 @@ const EvidenceTimeline = () => {
                   <label className="block text-sm font-medium text-slate-300 mb-2">Status</label>
                   <select
                     value={newEvidence.status}
-                    onChange={(e) => setNewEvidence({ ...newEvidence, status: e.target.value as any })}
+                    onChange={(e) => setNewEvidence({ ...newEvidence, status: e.target.value as EvidenceStatus })}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
                   >
                     <option value="pending">Pending</option>
@@ -568,7 +568,7 @@ const EvidenceTimeline = () => {
                   onClick={() => {
                     setShowAddEvidence(false);
                     setNewEvidence({
-                      type: 'EVIDENCE' as any,
+                      type: DocumentType.EVIDENCE,
                       status: 'pending',
                       dateObtained: new Date().toISOString().split('T')[0]
                     });
