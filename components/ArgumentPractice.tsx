@@ -87,6 +87,7 @@ const TrialSim = () => {
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const keepaliveRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef<number>(0);
+  const isLiveRef = useRef<boolean>(false); // Use ref for callback access
   const maxReconnectAttempts = 3;
   
   // Transcription Buffer
@@ -138,6 +139,7 @@ const TrialSim = () => {
     }
     
     setIsLive(false);
+    isLiveRef.current = false;
     setIsConnecting(false);
     setLiveVolume(0);
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -188,7 +190,7 @@ const TrialSim = () => {
 
   const startKeepalive = (session: any) => {
     keepaliveRef.current = setInterval(() => {
-      if (session && isLive) {
+      if (session && isLiveRef.current) {
         try {
           session.sendRealtimeInput({ activity: { timestamp: Date.now() } });
         } catch (e) {
@@ -306,20 +308,12 @@ const TrialSim = () => {
           onopen: () => {
             console.log("Live Connected");
             setIsLive(true);
+            isLiveRef.current = true;
             setIsConnecting(false);
-            reconnectAttemptsRef.current = 0; // Reset reconnect counter on successful connection
+            reconnectAttemptsRef.current = 0;
 
-            // Send initial "Start" signal
+            // Start keepalive to maintain connection
             sessionPromise.then(session => {
-              session.sendToolResponse({
-                functionResponses: {
-                    name: 'initial_context_trigger',
-                    id: 'init',
-                    response: { status: 'ready' }
-                }
-              });
-              
-              // Start keepalive to maintain connection
               startKeepalive(session);
             });
 
@@ -401,23 +395,23 @@ const TrialSim = () => {
                  }
              }
           },
-          onclose: () => {
-            console.log('Live session closed');
-            if (isLive) {
-              // Connection was active when closed - attempt reconnect
-              attemptReconnect();
-            } else {
-              stopLiveSession();
-            }
-          },
-          onerror: (e) => {
-              console.error('Live session error:', e);
-              if (isLive) {
-                attemptReconnect();
-              } else {
-                stopLiveSession();
-              }
-          }
+           onclose: () => {
+             console.log('Live session closed, isLiveRef:', isLiveRef.current);
+             if (isLiveRef.current) {
+               // Connection was active when closed - attempt reconnect
+               attemptReconnect();
+             } else {
+               stopLiveSession();
+             }
+           },
+           onerror: (e) => {
+               console.error('Live session error:', e);
+               if (isLiveRef.current) {
+                 attemptReconnect();
+               } else {
+                 stopLiveSession();
+               }
+           }
         }
       });
       sessionRef.current = sessionPromise;
