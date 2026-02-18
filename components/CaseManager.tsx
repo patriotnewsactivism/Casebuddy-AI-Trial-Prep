@@ -394,8 +394,23 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
           </div>
 
           {/* Results Area */}
-          <div className="flex-1 bg-slate-900/50 rounded-lg border border-slate-700 p-4 overflow-y-auto">
-            {!analysisResult && !analyzing && (
+           <div className="flex-1 bg-slate-900/50 rounded-lg border border-slate-700 p-4 overflow-y-auto">
+            {batchUploadProgress && (
+              <div className="h-full flex flex-col items-center justify-center text-gold-500">
+                <BrainCircuit size={48} className="mb-4 animate-pulse" />
+                <p className="font-semibold">Batch Upload Progress</p>
+                <p className="text-sm text-slate-300 mt-2">
+                  Processing {batchUploadProgress.current} of {batchUploadProgress.total}: {batchUploadProgress.fileName}
+                </p>
+                <div className="w-full max-w-xs mt-4 bg-slate-700 rounded-full h-2">
+                  <div 
+                    className="bg-gold-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(batchUploadProgress.current / batchUploadProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {!analysisResult && !analyzing && !batchUploadProgress && (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-50">
                 <FileText size={48} className="mb-4" />
                 <p>No analysis results yet.</p>
