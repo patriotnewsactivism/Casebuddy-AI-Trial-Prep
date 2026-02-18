@@ -2,8 +2,8 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import { Case, CaseStatus, CaseTask, DocumentType, EvidenceItem, PriorityLevel, TaskStatus } from '../types';
-import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag, ListChecks } from 'lucide-react';
-import { analyzeDocument, fileToGenerativePart } from '../services/geminiService';
+import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag, ListChecks, File } from 'lucide-react';
+import { analyzeDocument, fileToGenerativePart, extractTextFromPDF } from '../services/geminiService';
 import { MOCK_CASE_TEMPLATES } from '../constants';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import { validateFile } from '../utils/fileValidation';
@@ -59,15 +59,14 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file before uploading
     const validation = validateFile(file, {
-      maxSizeBytes: 10 * 1024 * 1024, // 10MB
+      maxSizeBytes: 50 * 1024 * 1024,
       allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf']
     });
 
     if (!validation.valid) {
       handleError(new Error(validation.error), validation.error || 'File validation failed', 'CaseManager');
-      e.target.value = ''; // Reset file input
+      e.target.value = '';
       return;
     }
 
@@ -76,16 +75,27 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
     setEvidenceNotes('');
     setAnalyzing(true);
     setAnalysisResult(null);
+
     try {
-      const imagePart = await fileToGenerativePart(file);
-      const result = await analyzeDocument("Analyze this image document.", imagePart);
+      let result;
+      const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      
+      if (isPDF) {
+        handleSuccess('Processing PDF with OCR...');
+        const filePart = await fileToGenerativePart(file);
+        result = await analyzeDocument("Extract and analyze all text from this PDF document. Identify key legal entities, risks, dates, and provide a comprehensive summary.", filePart);
+      } else {
+        const imagePart = await fileToGenerativePart(file);
+        result = await analyzeDocument("Analyze this image document. Extract all text, identify key information, and provide a comprehensive analysis.", imagePart);
+      }
+      
       setAnalysisResult(result);
       handleSuccess('File analyzed successfully');
     } catch (e) {
       handleError(e, 'Failed to process file. Please check your API key and try again.', 'CaseManager');
     } finally {
       setAnalyzing(false);
-      e.target.value = ''; // Reset file input after upload
+      e.target.value = '';
     }
   };
 
@@ -102,7 +112,7 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
     const validFiles: File[] = [];
     for (const file of files) {
       const validation = validateFile(file, {
-        maxSizeBytes: 10 * 1024 * 1024,
+        maxSizeBytes: 50 * 1024 * 1024,
         allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf']
       });
       if (validation.valid) {
@@ -122,11 +132,18 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
 
     for (let i = 0; i < validFiles.length; i++) {
       const file = validFiles[i];
+      const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       setBatchUploadProgress({ current: i + 1, total: validFiles.length, fileName: file.name });
 
       try {
-        const imagePart = await fileToGenerativePart(file);
-        const result = await analyzeDocument("Analyze this image document.", imagePart);
+        let result;
+        if (isPDF) {
+          const filePart = await fileToGenerativePart(file);
+          result = await analyzeDocument("Extract and analyze all text from this PDF document.", filePart);
+        } else {
+          const imagePart = await fileToGenerativePart(file);
+          result = await analyzeDocument("Analyze this image document.", imagePart);
+        }
 
         const evidence: EvidenceItem = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

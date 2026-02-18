@@ -64,10 +64,18 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
     reader.onloadend = () => {
       const base64data = reader.result as string;
       const base64Content = base64data.split(',')[1];
+      
+      let mimeType = file.type;
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        mimeType = 'application/pdf';
+      } else if (file.type.startsWith('image/')) {
+        mimeType = file.type || 'image/jpeg';
+      }
+      
       resolve({
         inlineData: {
           data: base64Content,
-          mimeType: file.type,
+          mimeType,
         },
       });
     };
@@ -76,20 +84,69 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
   });
 };
 
+export const extractTextFromPDF = async (file: File): Promise<{ text: string; pageCount: number }> => {
+  try {
+    const filePart = await fileToGenerativePart(file);
+    
+    const prompt = `You are an OCR expert. Extract ALL text from this PDF document.
+
+IMPORTANT INSTRUCTIONS:
+1. Extract EVERY piece of text from the document - do not summarize or skip anything
+2. Maintain the document structure (headers, paragraphs, lists, tables)
+3. For tables, preserve the tabular structure
+4. If there are handwritten notes, transcribe them
+5. Include page numbers if visible
+6. For legal documents, preserve all formatting, citations, and references
+7. If text is unclear or illegible, indicate [ILLEGIBLE]
+
+Return the complete extracted text.`;
+
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [filePart, { text: prompt }]
+          }
+        ],
+        config: {
+          temperature: 0.1,
+        }
+      }),
+      120000
+    );
+
+    const text = response.text || '';
+    const pageCount = Math.max(1, (text.match(/--- Page \d+/g) || []).length) || 1;
+    
+    return { text, pageCount };
+  } catch (error) {
+    throw new Error(`PDF text extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
 export const analyzeDocument = async (text: string, imagePart?: any) => {
   return retryWithBackoff(async () => {
-    const model = imagePart ? 'gemini-2.5-flash' : 'gemini-2.5-flash';
-    const prompt = `Analyze the following legal document content.
-    Extract:
-    1. A concise summary (max 3 sentences).
-    2. Key legal entities (people, organizations, statutes).
-    3. A list of potential risks or contradictions found in the text.
+    const model = 'gemini-2.5-flash';
+    const prompt = `You are a legal document analyst. Analyze the following document content thoroughly.
 
-    Return the response in JSON format.
-    `;
+For PDF documents and images: Extract and analyze ALL text, tables, and key information.
 
-    const parts = [];
-    if (imagePart) parts.push(imagePart);
+Extract and provide:
+1. A comprehensive summary of the document's content and purpose (3-5 sentences for complex documents)
+2. Key legal entities mentioned (people, organizations, statutes, case citations, dates)
+3. Potential legal risks, contradictions, or issues found
+4. Document type classification (contract, motion, deposition, correspondence, etc.)
+5. Key dates and deadlines mentioned
+6. Monetary amounts or financial figures if present
+
+Return the response in JSON format.`;
+
+    const parts: any[] = [];
+    if (imagePart) {
+      parts.push(imagePart);
+    }
     parts.push({ text: prompt + "\n\nDocument Content:\n" + text });
 
     const response = await withTimeout(
@@ -103,16 +160,20 @@ export const analyzeDocument = async (text: string, imagePart?: any) => {
             properties: {
               summary: { type: Type.STRING },
               entities: { type: Type.ARRAY, items: { type: Type.STRING } },
-              risks: { type: Type.ARRAY, items: { type: Type.STRING } }
+              risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+              documentType: { type: Type.STRING },
+              keyDates: { type: Type.ARRAY, items: { type: Type.STRING } },
+              monetaryAmounts: { type: Type.ARRAY, items: { type: Type.STRING } },
+              keyTerms: { type: Type.ARRAY, items: { type: Type.STRING } }
             }
           }
         }
       }),
-      30000 // 30 second timeout
+      60000
     );
 
     return JSON.parse(response.text || '{}');
-  }, 3); // Retry up to 3 times
+  }, 3);
 };
 
 export const generateWitnessResponse = async (

@@ -78,8 +78,6 @@ Return JSON with:
 
       setScenario(newScenario);
       setOpponentPersona(result.opponentPersona || 'Insurance adjuster');
-
-      setScenario(newScenario);
       setCurrentPosition(result.settlementRange?.[1] || 150000);
       toast.success('Negotiation started');
     } catch (error) {

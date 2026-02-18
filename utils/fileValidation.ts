@@ -9,7 +9,7 @@ export interface FileValidationResult {
   error?: string;
 }
 
-const DEFAULT_MAX_SIZE = 10 * 1024 * 1024; // 10MB
+const DEFAULT_MAX_SIZE = 50 * 1024 * 1024; // 50MB (increased for PDFs)
 const DEFAULT_ALLOWED_TYPES = [
   'image/jpeg',
   'image/jpg',
