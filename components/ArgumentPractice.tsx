@@ -80,6 +80,7 @@ const TrialSim = () => {
 
   // Refs
   const sessionRef = useRef<any>(null);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
   const outputContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -134,17 +135,33 @@ const TrialSim = () => {
       keepaliveRef.current = null;
     }
     
+    // Disconnect script processor
+    if (scriptProcessorRef.current) {
+      try {
+        scriptProcessorRef.current.disconnect();
+      } catch (e) {
+        // Ignore disconnect errors
+      }
+      if (!preserveForReconnect) {
+        scriptProcessorRef.current = null;
+      }
+    }
+    
     if (!preserveForReconnect) {
       reconnectAttemptsRef.current = 0;
+      // Only fully clean up when NOT reconnecting
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      inputContextRef.current?.close();
+      inputContextRef.current = null;
+      outputContextRef.current?.close();
+      outputContextRef.current = null;
     }
     
     setIsLive(false);
     isLiveRef.current = false;
     setIsConnecting(false);
     setLiveVolume(0);
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    inputContextRef.current?.close();
-    outputContextRef.current?.close();
     sourcesRef.current.forEach(s => s.stop());
     sourcesRef.current.clear();
     nextStartTimeRef.current = 0;
@@ -248,30 +265,39 @@ const TrialSim = () => {
         return;
       }
 
-      // 1. Ensure AudioContext is resumed (User Gesture)
-      const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      // 1. Reuse or create AudioContext
+      let inputCtx = inputContextRef.current;
+      let outputCtx = outputContextRef.current;
       
-      await inputCtx.resume();
-      await outputCtx.resume();
-
-      inputContextRef.current = inputCtx;
-      outputContextRef.current = outputCtx;
+      if (!inputCtx || inputCtx.state === 'closed') {
+        inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        await inputCtx.resume();
+        inputContextRef.current = inputCtx;
+      }
+      
+      if (!outputCtx || outputCtx.state === 'closed') {
+        outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        await outputCtx.resume();
+        outputContextRef.current = outputCtx;
+      }
       
       const outputNode = outputCtx.createGain();
       outputNode.connect(outputCtx.destination);
 
-      // 2. Get Media Stream with HIGH FIDELITY Constraints
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 16000
-        }
-      });
-      streamRef.current = stream;
+      // 2. Reuse or get Media Stream
+      let stream = streamRef.current;
+      if (!stream || !stream.active) {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 16000
+          }
+        });
+        streamRef.current = stream;
+      }
 
       // 3. Connect to Gemini
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -337,6 +363,7 @@ const TrialSim = () => {
             // Audio Processing - Use 4096 buffer for better stability (less dropouts)
             const source = inputCtx.createMediaStreamSource(stream);
             const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
+            scriptProcessorRef.current = scriptProcessor; // Store reference
             scriptProcessor.onaudioprocess = (e) => {
               // Only process if we're still live
               if (!isLiveRef.current) return;
@@ -360,10 +387,6 @@ const TrialSim = () => {
             };
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputCtx.destination);
-            
-            // Store reference for cleanup
-            const processorRef = { current: scriptProcessor };
-            sessionRef.current = { session: sessionPromise, processor: processorRef };
           },
           onmessage: async (msg: LiveServerMessage) => {
              // Audio Output
