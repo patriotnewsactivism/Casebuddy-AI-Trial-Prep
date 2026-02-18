@@ -1,7 +1,6 @@
-
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, MessageSquare, Mic, FileAudio, Home } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const CaseManager = lazy(() => import('./components/CaseManager'));
@@ -14,30 +13,56 @@ const TermsOfService = lazy(() => import('./components/TermsOfService'));
 const Transcriber = lazy(() => import('./components/Transcriber'));
 const DraftingAssistant = lazy(() => import('./components/DraftingAssistant'));
 const SettingsPage = lazy(() => import('./components/Settings'));
+const SettlementCalculator = lazy(() => import('./components/SettlementCalculator'));
+const DiscoveryManager = lazy(() => import('./components/DiscoveryManager'));
+const CaseLawResearch = lazy(() => import('./components/CaseLawResearch'));
+const EvidenceAdmissibility = lazy(() => import('./components/EvidenceAdmissibility'));
+const PerformanceAnalytics = lazy(() => import('./components/PerformanceAnalytics'));
+const DepositionOutlineGenerator = lazy(() => import('./components/DepositionOutlineGenerator'));
+const NegotiationSimulator = lazy(() => import('./components/NegotiationSimulator'));
+const EvidenceTimeline = lazy(() => import('./components/EvidenceTimeline'));
+const MockJury = lazy(() => import('./components/MockJury'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
 import { appendEvidence, fetchCases, removeCase, supabaseReady, upsertCase } from './services/dataService';
 
-// Sidebar Component
 const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolean) => void }) => {
   const location = useLocation();
+  const [showTools, setShowTools] = useState(true);
+  const [showPrep, setShowPrep] = useState(true);
+  
   const isActive = (path: string) => location.pathname === path ? 'bg-slate-800 text-gold-500 border-r-4 border-gold-500' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white';
 
   const NavItem = ({ path, icon: Icon, label }: { path: string, icon: any, label: string }) => (
     <Link 
       to={path} 
       onClick={() => setIsOpen(false)}
-      className={`flex items-center gap-3 px-6 py-4 transition-all duration-200 ${isActive(path)}`}
+      className={`flex items-center gap-3 px-6 py-3 transition-all duration-200 ${isActive(path)}`}
     >
-      <Icon size={20} />
-      <span className="font-medium">{label}</span>
+      <Icon size={18} />
+      <span className="font-medium text-sm">{label}</span>
     </Link>
+  );
+
+  const NavGroup = ({ title, icon: Icon, isOpen: open, toggle, children }: { title: string; icon: any; isOpen: boolean; toggle: () => void; children: React.ReactNode }) => (
+    <div className="border-b border-slate-800/50">
+      <button
+        onClick={toggle}
+        className="flex items-center justify-between w-full px-6 py-3 text-slate-300 hover:text-white transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Icon size={16} />
+          <span className="text-xs font-semibold uppercase tracking-wider">{title}</span>
+        </div>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {open && <div className="pb-2">{children}</div>}
+    </div>
   );
 
   return (
     <>
-      {/* Mobile Overlay */}
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
@@ -45,31 +70,47 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         />
       )}
       
-      {/* Sidebar */}
       <aside className={`
         fixed top-0 left-0 z-50 h-full w-64 bg-slate-950 border-r border-slate-800 
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
       `}>
-        <div className="h-20 flex items-center px-6 border-b border-slate-800">
+        <div className="h-16 flex items-center px-4 border-b border-slate-800">
           <Link to="/" className="flex items-center gap-2 text-gold-500 hover:opacity-80 transition-opacity">
-            <Gavel size={28} />
-            <span className="text-xl font-serif font-bold text-white">CaseBuddy</span>
+            <Gavel size={24} />
+            <span className="text-lg font-serif font-bold text-white">CaseBuddy</span>
           </Link>
           <button className="ml-auto md:hidden text-slate-400" onClick={() => setIsOpen(false)}>
             <X size={24} />
           </button>
         </div>
 
-        <nav className="mt-6 flex flex-col">
+        <nav className="mt-2 flex flex-col overflow-y-auto h-[calc(100vh-4rem)]">
           <NavItem path="/app" icon={LayoutDashboard} label="Dashboard" />
           <NavItem path="/app/cases" icon={Gavel} label="Case Files" />
-          <NavItem path="/app/practice" icon={Mic} label="Trial Simulator" />
-          <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
-          <NavItem path="/app/strategy" icon={BrainCircuit} label="Strategy & AI" />
+          
+          <NavGroup title="Preparation" icon={FolderOpen} isOpen={showPrep} toggle={() => setShowPrep(!showPrep)}>
+            <NavItem path="/app/practice" icon={Mic} label="Trial Simulator" />
+            <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
+            <NavItem path="/app/mock-jury" icon={Scale} label="Mock Jury" />
+            <NavItem path="/app/deposition" icon={FileText} label="Deposition Outlines" />
+            <NavItem path="/app/performance" icon={BarChart2} label="Performance" />
+          </NavGroup>
+
+          <NavGroup title="Tools" icon={BrainCircuit} isOpen={showTools} toggle={() => setShowTools(!showTools)}>
+            <NavItem path="/app/strategy" icon={BrainCircuit} label="Strategy & AI" />
+            <NavItem path="/app/settlement" icon={Calculator} label="Settlement Calculator" />
+            <NavItem path="/app/discovery" icon={FileSearch} label="Discovery Manager" />
+            <NavItem path="/app/case-law" icon={BookOpen} label="Case Law Research" />
+            <NavItem path="/app/admissibility" icon={Target} label="Evidence Analyzer" />
+            <NavItem path="/app/timeline" icon={Scale} label="Evidence Timeline" />
+          </NavGroup>
+
           <NavItem path="/app/transcriber" icon={FileAudio} label="Transcriber" />
           <NavItem path="/app/docs" icon={FileText} label="Drafting Assistant" />
-          <div className="mt-auto border-t border-slate-800 pt-4 mb-6">
+          <NavItem path="/app/negotiation" icon={Handshake} label="Negotiation Sim" />
+          
+          <div className="mt-auto border-t border-slate-800 pt-2 mb-4">
             <NavItem path="/app/settings" icon={SettingsIcon} label="Settings" />
           </div>
         </nav>
@@ -86,7 +127,7 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
       
       <div className="md:ml-64 min-h-screen flex flex-col">
-        <header className="h-16 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-6 flex items-center justify-between">
+        <header className="h-14 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-4 flex items-center justify-between">
           <button className="md:hidden text-slate-400" onClick={() => setIsSidebarOpen(true)}>
             <Menu size={24} />
           </button>
@@ -95,13 +136,13 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
                <span className="text-sm font-semibold text-white">Attorney J. Doe</span>
                <span className="text-xs text-slate-400">Senior Litigator</span>
              </div>
-             <div className="h-10 w-10 rounded-full bg-slate-700 border border-slate-600 overflow-hidden">
+             <div className="h-9 w-9 rounded-full bg-slate-700 border border-slate-600 overflow-hidden">
                 <img src="https://picsum.photos/id/1005/100/100" alt="Profile" className="h-full w-full object-cover"/>
              </div>
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-x-hidden">
+        <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden">
           {children}
         </main>
       </div>
@@ -109,7 +150,6 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
   );
 };
 
-// Context for global state
 export const AppContext = React.createContext<{
     cases: Case[];
     activeCase: Case | null;
@@ -285,12 +325,10 @@ const App = () => {
       <HashRouter>
         <Suspense fallback={<div className="p-8 text-slate-400">Loading...</div>}>
           <Routes>
-            {/* Public routes without sidebar */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/tos" element={<TermsOfService />} />
             
-            {/* App routes with sidebar layout */}
             <Route path="/app" element={<Layout><Dashboard /></Layout>} />
             <Route path="/app/cases" element={<Layout><CaseManager /></Layout>} />
             <Route path="/app/witness-lab" element={<Layout><WitnessLab /></Layout>} />
@@ -299,8 +337,16 @@ const App = () => {
             <Route path="/app/transcriber" element={<Layout><Transcriber /></Layout>} />
             <Route path="/app/docs" element={<Layout><DraftingAssistant /></Layout>} />
             <Route path="/app/settings" element={<Layout><SettingsPage /></Layout>} />
+            <Route path="/app/settlement" element={<Layout><SettlementCalculator /></Layout>} />
+            <Route path="/app/discovery" element={<Layout><DiscoveryManager /></Layout>} />
+            <Route path="/app/case-law" element={<Layout><CaseLawResearch /></Layout>} />
+            <Route path="/app/admissibility" element={<Layout><EvidenceAdmissibility /></Layout>} />
+            <Route path="/app/performance" element={<Layout><PerformanceAnalytics /></Layout>} />
+            <Route path="/app/deposition" element={<Layout><DepositionOutlineGenerator /></Layout>} />
+            <Route path="/app/negotiation" element={<Layout><NegotiationSimulator /></Layout>} />
+            <Route path="/app/timeline" element={<Layout><EvidenceTimeline /></Layout>} />
+            <Route path="/app/mock-jury" element={<Layout><MockJury /></Layout>} />
             
-            {/* Catch-all redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

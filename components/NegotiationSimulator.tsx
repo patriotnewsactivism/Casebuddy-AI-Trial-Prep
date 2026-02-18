@@ -103,7 +103,7 @@ Return JSON with:
     try {
       const prompt = `You are a ${scenario.opponentType} negotiator in a settlement negotiation.
 
-Your persona: ${scenario.opponentPersona}
+Your persona: ${opponentPersona}
 Your tactics: ${scenario.opponentTactics.join(', ')}
 Settlement range you're authorized to accept: $${scenario.settlementRange[0].toLocaleString()} - $${scenario.settlementRange[1].toLocaleString()}
 Your current offer: $${scenario.currentOffer.toLocaleString()}
@@ -263,7 +263,7 @@ Return JSON with:
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">{scenario.opponentType.charAt(0).toUpperCase() + scenario.opponentType.slice(1)} Negotiator</h3>
-                  <p className="text-sm text-slate-400">{scenario.opponentPersona}</p>
+                  <p className="text-sm text-slate-400">{opponentPersona}</p>
                   <div className="flex gap-2 mt-1">
                     {scenario.opponentTactics.slice(0, 3).map((t, i) => (
                       <span key={i} className="text-xs px-2 py-0.5 bg-slate-700 text-slate-400 rounded">
