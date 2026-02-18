@@ -344,8 +344,6 @@ const TrialSim = () => {
           },
           systemInstruction: systemInstruction,
           tools: [{ functionDeclarations: [coachingTool, objectionTool] }],
-          inputAudioTranscription: { model: "gemini-2.5-flash-native-audio-preview-09-2025" },
-          outputAudioTranscription: { model: "gemini-2.5-flash-native-audio-preview-09-2025" },
         },
         callbacks: {
           onopen: () => {
@@ -451,21 +449,12 @@ const TrialSim = () => {
              }
           },
            onclose: () => {
-             console.log('Live session closed, isLiveRef:', isLiveRef.current);
-             if (isLiveRef.current) {
-               // Connection was active when closed - attempt reconnect
-               attemptReconnect();
-             } else {
-               stopLiveSession();
-             }
+             console.log('Live session closed');
+             stopLiveSession();
            },
            onerror: (e) => {
-               console.error('Live session error:', e);
-               if (isLiveRef.current) {
-                 attemptReconnect();
-               } else {
-                 stopLiveSession();
-               }
+             console.error('Live session error:', e);
+             stopLiveSession();
            }
         }
       });

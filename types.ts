@@ -226,3 +226,91 @@ export interface TrialSession {
   feedback?: string;
   metrics?: Partial<TrialSessionMetrics>;
 }
+
+export type Jurisdiction = 'federal' | 'texas' | 'louisiana' | 'mississippi';
+
+export interface ObjectionEvent {
+  id: string;
+  timestamp: number;
+  ground: string;
+  ruling: 'sustained' | 'overruled' | 'pending';
+  explanation?: string;
+  wasCured: boolean;
+}
+
+export interface JurorDemographics {
+  age: number;
+  gender: 'male' | 'female' | 'non-binary';
+  race: string;
+  education: string;
+  occupation: string;
+  income: string;
+  maritalStatus: string;
+  hasChildren: boolean;
+  religion?: string;
+  politicalLean: string;
+  urbanRural: 'urban' | 'suburban' | 'rural';
+  priorJuryService: boolean;
+  crimeVictim: boolean;
+  lawEnforcementFamily: boolean;
+}
+
+export interface PsychographicProfile {
+  authorityRespect: number;
+  justiceOrientation: 'retributive' | 'restorative' | 'mixed';
+  skepticismLevel: number;
+  empathyLevel: number;
+  cognitiveStyle: 'analytical' | 'intuitive' | 'balanced';
+  decisionSpeed: 'quick' | 'deliberate' | 'thorough';
+  opennessToExperience: number;
+  conscientiousness: number;
+  extraversion: number;
+  agreeableness: number;
+  neuroticism: number;
+}
+
+export interface EnhancedJuror extends Juror {
+  demographics: JurorDemographics;
+  psychographics: PsychographicProfile;
+  initialLeaning: number;
+  currentLeaning: number;
+  reasoningNotes: string[];
+}
+
+export interface CaseLawCitation {
+  caseName: string;
+  citation: string;
+  court: string;
+  date: string;
+  summary: string;
+  holding: string;
+  favorableTo: 'plaintiff' | 'defendant' | 'neutral';
+  stillGoodLaw: boolean;
+  url: string;
+}
+
+export interface PerformanceMetrics {
+  objectionsReceived: number;
+  objectionsSustained: number;
+  objectionsOverruled: number;
+  successfulCures: number;
+  rhetoricalScore: number;
+  legalAccuracyScore: number;
+  overallScore: number;
+}
+
+export interface AdmissibilityIssue {
+  type: string;
+  severity: 'fatal' | 'serious' | 'minor';
+  rule: string;
+  explanation: string;
+  potentialCure: string;
+}
+
+export interface AdmissibilityAnalysis {
+  overallAdmissibility: 'admissible' | 'conditionally_admissible' | 'inadmissible';
+  confidenceScore: number;
+  issues: AdmissibilityIssue[];
+  suggestedFoundations: string[];
+  caseLawSupport: CaseLawCitation[];
+}
