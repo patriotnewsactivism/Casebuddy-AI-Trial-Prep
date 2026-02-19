@@ -1,7 +1,7 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode } from "../types";
-import { retryWithBackoff, withTimeout } from "../utils/errorHandler";
+import { retryWithBackoff, withTimeout, isRateLimitError, getErrorMessage } from "../utils/errorHandler";
+import { toast } from "react-toastify";
 
 const apiKey = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
@@ -14,6 +14,61 @@ interface ChatSession {
 }
 
 const chatSessions = new Map<string, ChatSession>();
+
+type QueuedRequest = {
+  fn: () => Promise<any>;
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+};
+
+let requestQueue: QueuedRequest[] = [];
+let isProcessing = false;
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 1500;
+
+const processQueue = async () => {
+  if (isProcessing || requestQueue.length === 0) return;
+  
+  isProcessing = true;
+  
+  while (requestQueue.length > 0) {
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTime;
+    
+    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+      await new Promise(r => setTimeout(r, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+    }
+    
+    const request = requestQueue.shift();
+    if (!request) continue;
+    
+    lastRequestTime = Date.now();
+    
+    try {
+      const result = await request.fn();
+      request.resolve(result);
+    } catch (error) {
+      if (isRateLimitError(error)) {
+        console.log('Rate limited, waiting before retry...');
+        toast.warning('Rate limit reached, waiting...');
+        await new Promise(r => setTimeout(r, 10000));
+        requestQueue.unshift(request);
+        lastRequestTime = Date.now();
+      } else {
+        request.reject(error);
+      }
+    }
+  }
+  
+  isProcessing = false;
+};
+
+const queueRequest = async <T>(fn: () => Promise<T>): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ fn, resolve, reject });
+    processQueue();
+  });
+};
 
 export const createChatSession = (
   id: string,
@@ -57,7 +112,6 @@ export const clearAllChatSessions = () => {
   chatSessions.clear();
 };
 
-// Helper to convert file blob to base64
 export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -65,11 +119,17 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
       const base64data = reader.result as string;
       const base64Content = base64data.split(',')[1];
       
-      let mimeType = file.type;
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      let mimeType = file.type || 'application/octet-stream';
+      if (file.name.toLowerCase().endsWith('.pdf')) {
         mimeType = 'application/pdf';
       } else if (file.type.startsWith('image/')) {
-        mimeType = file.type || 'image/jpeg';
+        mimeType = file.type;
+      } else if (file.name.toLowerCase().match(/\.(jpg|jpeg)$/)) {
+        mimeType = 'image/jpeg';
+      } else if (file.name.toLowerCase().endsWith('.png')) {
+        mimeType = 'image/png';
+      } else if (file.name.toLowerCase().endsWith('.webp')) {
+        mimeType = 'image/webp';
       }
       
       resolve({
@@ -84,96 +144,47 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
   });
 };
 
-export const extractTextFromPDF = async (file: File): Promise<{ text: string; pageCount: number }> => {
-  try {
-    const filePart = await fileToGenerativePart(file);
-    
-    const prompt = `You are an OCR expert. Extract ALL text from this PDF document.
-
-IMPORTANT INSTRUCTIONS:
-1. Extract EVERY piece of text from the document - do not summarize or skip anything
-2. Maintain the document structure (headers, paragraphs, lists, tables)
-3. For tables, preserve the tabular structure
-4. If there are handwritten notes, transcribe them
-5. Include page numbers if visible
-6. For legal documents, preserve all formatting, citations, and references
-7. If text is unclear or illegible, indicate [ILLEGIBLE]
-
-Return the complete extracted text.`;
-
-    const response = await withTimeout(
-      ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [filePart, { text: prompt }]
-          }
-        ],
-        config: {
-          temperature: 0.1,
-        }
-      }),
-      120000
-    );
-
-    const text = response.text || '';
-    const pageCount = Math.max(1, (text.match(/--- Page \d+/g) || []).length) || 1;
-    
-    return { text, pageCount };
-  } catch (error) {
-    throw new Error(`PDF text extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-};
-
-export const analyzeDocument = async (text: string, imagePart?: any) => {
-  return retryWithBackoff(async () => {
-    const model = 'gemini-2.5-flash';
-    const prompt = `You are a legal document analyst. Analyze the following document content thoroughly.
-
-For PDF documents and images: Extract and analyze ALL text, tables, and key information.
+export const analyzeDocument = async (text: string, filePart?: any) => {
+  return queueRequest(async () => {
+    const prompt = `You are a legal document analyst. Analyze the following document thoroughly.
 
 Extract and provide:
-1. A comprehensive summary of the document's content and purpose (3-5 sentences for complex documents)
-2. Key legal entities mentioned (people, organizations, statutes, case citations, dates)
-3. Potential legal risks, contradictions, or issues found
-4. Document type classification (contract, motion, deposition, correspondence, etc.)
+1. A comprehensive summary (3-5 sentences for complex documents)
+2. Key entities: people, organizations, statutes, dates, case citations
+3. Potential legal risks, contradictions, or issues
+4. Document type classification
 5. Key dates and deadlines mentioned
-6. Monetary amounts or financial figures if present
+6. Monetary amounts if present
 
-Return the response in JSON format.`;
+Return JSON format.`;
 
     const parts: any[] = [];
-    if (imagePart) {
-      parts.push(imagePart);
+    if (filePart) {
+      parts.push(filePart);
     }
-    parts.push({ text: prompt + "\n\nDocument Content:\n" + text });
+    parts.push({ text: prompt + "\n\n" + (text || "Analyze this uploaded document.") });
 
-    const response = await withTimeout(
-      ai.models.generateContent({
-        model: model,
-        contents: { parts },
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              summary: { type: Type.STRING },
-              entities: { type: Type.ARRAY, items: { type: Type.STRING } },
-              risks: { type: Type.ARRAY, items: { type: Type.STRING } },
-              documentType: { type: Type.STRING },
-              keyDates: { type: Type.ARRAY, items: { type: Type.STRING } },
-              monetaryAmounts: { type: Type.ARRAY, items: { type: Type.STRING } },
-              keyTerms: { type: Type.ARRAY, items: { type: Type.STRING } }
-            }
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            summary: { type: Type.STRING },
+            entities: { type: Type.ARRAY, items: { type: Type.STRING } },
+            risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+            documentType: { type: Type.STRING },
+            keyDates: { type: Type.ARRAY, items: { type: Type.STRING } },
+            monetaryAmounts: { type: Type.ARRAY, items: { type: Type.STRING } },
           }
         }
-      }),
-      60000
-    );
+      }
+    });
 
     return JSON.parse(response.text || '{}');
-  }, 3);
+  });
 };
 
 export const generateWitnessResponse = async (
@@ -184,7 +195,7 @@ export const generateWitnessResponse = async (
   caseContext: string,
   forceNew: boolean = false
 ) => {
-  try {
+  return queueRequest(async () => {
     const systemInstruction = `You are roleplaying as a witness named ${witnessName} in a legal trial.
     Your personality is: ${personality}.
     Case Context: ${caseContext}.
@@ -195,8 +206,7 @@ export const generateWitnessResponse = async (
     3. If you are 'nervous', stutter occasionally and be unsure.
     4. If you are 'cooperative', provide helpful details but only what you know.
     5. Do not break character or mention you are an AI.
-    6. Keep responses relatively concise, as in a courtroom cross-examination.
-    `;
+    6. Keep responses relatively concise, as in a courtroom cross-examination.`;
 
     if (forceNew) {
       clearChatSession(sessionId);
@@ -207,150 +217,41 @@ export const generateWitnessResponse = async (
       chat = createChatSession(sessionId, 'witness', systemInstruction);
     }
 
-    const response = await withTimeout(
-      chat.sendMessage({ message }),
-      20000
-    );
-
+    const response = await chat.sendMessage({ message });
     return response.text;
-
-  } catch (error) {
-    throw new Error(`Witness simulation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+  });
 };
 
 export const predictStrategy = async (caseSummary: string, opponentProfile: string): Promise<StrategyInsight[]> => {
-  try {
-    // Using thinking model for complex reasoning
-    const response = await withTimeout(
-      ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: `Analyze this case and the opposing counsel profile.
-        Case: ${caseSummary}
-        Opponent: ${opponentProfile}
+  return queueRequest(async () => {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Analyze this case and the opposing counsel profile.
+      Case: ${caseSummary}
+      Opponent: ${opponentProfile}
 
-        Provide 3 strategic insights (Risks, Opportunities, or Predictions).
-        Think deeply about the opponent's psychological tendencies and legal history.
-        `,
-        config: {
-          thinkingConfig: { thinkingBudget: 2048 },
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                description: { type: Type.STRING },
-                confidence: { type: Type.NUMBER, description: "0 to 100" },
-                type: { type: Type.STRING, enum: ['risk', 'opportunity', 'prediction'] }
-              }
-            }
-          }
-        }
-      }),
-      45000 // 45 second timeout for thinking model
-    );
-
-    return JSON.parse(response.text || '[]');
-  } catch (error) {
-    throw new Error(`Strategy prediction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-};
-
-export const generateOpponentResponse = async (
-  sessionId: string,
-  message: string,
-  opponentName: string,
-  opponentStyle: string,
-  caseContext: string,
-  forceNew: boolean = false
-) => {
-  try {
-    const systemInstruction = `You are ${opponentName}, opposing counsel in a trial.
-    Style: ${opponentStyle}.
-    Case Context: ${caseContext}.
-
-    Rules:
-    1. Argue effectively against the user's points.
-    2. Be professional but adversarial.
-    3. Use objections if the user violates legal procedure (e.g., hearsay, leading).
-    4. Keep responses under 4 sentences to maintain flow.
-    5. Do not admit defeat easily; pivot if cornered.
-    `;
-
-    if (forceNew) {
-      clearChatSession(sessionId);
-    }
-
-    let chat = getChatSession(sessionId);
-    if (!chat) {
-      chat = createChatSession(sessionId, 'opponent', systemInstruction);
-    }
-
-    const response = await withTimeout(
-      chat.sendMessage({ message }),
-      20000
-    );
-
-    return response.text;
-
-  } catch (error) {
-    throw new Error(`Opponent simulation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-};
-
-export const getCoachingTip = async (
-  lastUserMessage: string,
-  lastOpponentMessage: string,
-  caseContext: string
-): Promise<CoachingAnalysis | null> => {
-  try {
-    const response = await withTimeout(
-      ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `You are a senior legal strategist coaching a junior attorney during a mock argument.
-
-        Context: ${caseContext}
-
-        The exchange just happened:
-        Attorney (User): "${lastUserMessage}"
-        Opposing Counsel: "${lastOpponentMessage}"
-
-        Provide a JSON response with:
-        1. "critique": A 1-sentence critique of the user's last argument.
-        2. "suggestion": A short tip on what to say or do next.
-        3. "sampleResponse": A recommended strong rebuttal string.
-        4. "fallaciesIdentified": A list of any logical fallacies committed by EITHER the user or the opponent (e.g., Ad Hominem, Straw Man, Red Herring, False Equivalence). If none, return empty list.
-        5. "rhetoricalEffectiveness": A score from 0-100 of how persuasive and rhetorically sound the user's argument was.
-        6. "rhetoricalFeedback": A brief comment on tone, pacing, or persuasive impact (e.g. "Tone was too defensive", "Great use of ethos").
-        `,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
+      Provide 3 strategic insights (Risks, Opportunities, or Predictions).`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
             type: Type.OBJECT,
             properties: {
-              critique: { type: Type.STRING },
-              suggestion: { type: Type.STRING },
-              sampleResponse: { type: Type.STRING },
-              fallaciesIdentified: { type: Type.ARRAY, items: { type: Type.STRING } },
-              rhetoricalEffectiveness: { type: Type.NUMBER },
-              rhetoricalFeedback: { type: Type.STRING },
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              confidence: { type: Type.NUMBER },
+              type: { type: Type.STRING, enum: ['risk', 'opportunity', 'prediction'] }
             }
           }
         }
-      }),
-      20000 // 20 second timeout
-    );
+      }
+    });
 
-    return JSON.parse(response.text || '{}');
-  } catch (error) {
-    // Return null for coaching failures - it's not critical
-    return null;
-  }
+    return JSON.parse(response.text || '[]');
+  });
 };
 
-// New helper for Trial Sim System Instructions
 export const getTrialSimSystemInstruction = (
   phase: TrialPhase,
   mode: SimulationMode,
@@ -359,143 +260,30 @@ export const getTrialSimSystemInstruction = (
 ) => {
   const baseRole = `You are an advanced legal AI simulator. The user is a practicing attorney. You must simulate the courtroom environment realistically.`;
   
-  // Aggressiveness based on mode
   let objectionPolicy = "";
   if (mode === 'trial') {
-    objectionPolicy = `
-      MODE: TRIAL (HARD).
-      - You MUST be aggressive.
-      - Interrupt the user IMMEDIATELY if they make a mistake.
-      - Do not give hints.
-      - Object to everything that is even slightly objectionable.
-    `;
+    objectionPolicy = `MODE: TRIAL (HARD). Be aggressive. Interrupt immediately on mistakes. No hints. Object to everything objectionable.`;
   } else if (mode === 'practice') {
-    objectionPolicy = `
-      MODE: PRACTICE (MEDIUM).
-      - Object if the user makes a clear error.
-      - Offer brief guidance after the objection on how to cure it.
-    `;
+    objectionPolicy = `MODE: PRACTICE (MEDIUM). Object on clear errors. Offer brief guidance after objections.`;
   } else {
-    objectionPolicy = `
-      MODE: LEARN (EASY).
-      - Rarely object, mainly explain concepts.
-      - Focus on guiding the user.
-    `;
+    objectionPolicy = `MODE: LEARN (EASY). Rarely object. Focus on guiding the user.`;
   }
 
-  let phaseInstructions = "";
-  switch (phase) {
-    case 'pre-trial-motions':
-      phaseInstructions = `
-        PHASE: PRE-TRIAL MOTIONS (e.g., Motion to Suppress, Motion in Limine).
-        Role: You are the JUDGE and OPPOSING COUNSEL (${opponentName}).
-        
-        ACTION:
-        - As Judge: Listen to the user's argument on admissibility/procedure. Ask clarification questions. Rule on the motion.
-        - As Opposing Counsel: Interject with counter-arguments regarding the legal basis.
-      `;
-      break;
-    case 'voir-dire':
-      phaseInstructions = `
-        PHASE: VOIR DIRE (Jury Selection).
-        Role: You play individual JURORS (switch personas often) and the OPPOSING COUNSEL (${opponentName}).
-        
-        OPPOSING COUNSEL OBJECTIONS:
-        - "Objection! Pre-conditioning the jury." (If user argues facts of case)
-        - "Objection! Asking for a commitment." (If user asks "Would you vote X?")
-        - "Objection! Personal question."
-      `;
-      break;
-    case 'opening-statement':
-      phaseInstructions = `
-        PHASE: OPENING STATEMENT.
-        Role: You are the JUDGE and OPPOSING COUNSEL (${opponentName}).
-        
-        OPPOSING COUNSEL OBJECTIONS:
-        - "Objection! Argumentative." (If user starts arguing inferences instead of stating facts)
-        - "Objection! Facts not in evidence."
-        - "Objection! Vouching for credibility."
-        
-        As JUDGE, sustain/overrule.
-      `;
-      break;
-    case 'direct-examination':
-      phaseInstructions = `
-        PHASE: DIRECT EXAMINATION.
-        Role: You are the WITNESS (Cooperative).
-        
-        OPPOSING COUNSEL OBJECTIONS (CRITICAL):
-        - "Objection! LEADING QUESTION." (If user asks Yes/No questions suggesting the answer).
-        - "Objection! Hearsay."
-        - "Objection! Calls for speculation."
-        - "Objection! Compound question."
-      `;
-      break;
-    case 'cross-examination':
-      phaseInstructions = `
-        PHASE: CROSS EXAMINATION.
-        Role: You are the HOSTILE WITNESS.
-        
-        OPPOSING COUNSEL OBJECTIONS:
-        - "Objection! Badgering the witness." (If user is shouting or repetitive)
-        - "Objection! Asked and answered."
-        - "Objection! Argumentative."
-        - "Objection! Assumes facts not in evidence."
-        
-        As WITNESS: Be evasive, admit nothing unless pinned down.
-      `;
-      break;
-    case 'closing-argument':
-      phaseInstructions = `
-        PHASE: CLOSING ARGUMENT.
-        Role: You are the JUDGE and OPPOSING COUNSEL (${opponentName}).
-        
-        OPPOSING COUNSEL OBJECTIONS:
-        - "Objection! Misstating the evidence."
-        - "Objection! Misstating the law."
-        - "Objection! Personal attack on counsel."
-        - "Objection! Golden Rule argument." (Asking jury to step in victim's shoes)
-      `;
-      break;
-    case 'defendant-testimony':
-      phaseInstructions = `
-        PHASE: DEFENDANT TESTIMONY (User is Defendant).
-        Role: You are the PROSECUTOR (${opponentName}).
-        
-        ACTION:
-        - Cross-examine the user aggressively.
-        - Try to catch them in lies regarding: ${caseContext}
-        - Use Leading Questions against the user.
-        - Impeach them with prior statements if they contradict themselves.
-      `;
-      break;
-    case 'sentencing':
-      phaseInstructions = `
-        PHASE: SENTENCING HEARING.
-        Role: You are the JUDGE.
-        
-        ACTION:
-        - Listen to the user's allocution or sentencing recommendation.
-        - Weigh factors of mitigation (remorse, lack of history) and aggravation (harm caused).
-        - Deliver the sentence at the end.
-      `;
-      break;
-  }
+  const phaseInstructions: Record<TrialPhase, string> = {
+    'pre-trial-motions': `PHASE: PRE-TRIAL MOTIONS. Role: JUDGE and OPPOSING COUNSEL (${opponentName}).`,
+    'voir-dire': `PHASE: VOIR DIRE. Role: JURORS and OPPOSING COUNSEL (${opponentName}).`,
+    'opening-statement': `PHASE: OPENING STATEMENT. Role: JUDGE and OPPOSING COUNSEL (${opponentName}). Object to argumentative statements.`,
+    'direct-examination': `PHASE: DIRECT EXAMINATION. Role: WITNESS (Cooperative). Object to leading questions.`,
+    'cross-examination': `PHASE: CROSS EXAMINATION. Role: HOSTILE WITNESS. Be evasive.`,
+    'closing-argument': `PHASE: CLOSING ARGUMENT. Role: JUDGE and OPPOSING COUNSEL (${opponentName}).`,
+    'defendant-testimony': `PHASE: DEFENDANT TESTIMONY. Role: PROSECUTOR (${opponentName}). Cross-examine aggressively.`,
+    'sentencing': `PHASE: SENTENCING. Role: JUDGE. Listen and deliver sentence.`
+  };
 
-  return `
-    ${baseRole}
-    ${phaseInstructions}
-    ${objectionPolicy}
-    
-    Case Context: ${caseContext}
+  return `${baseRole}
+${phaseInstructions[phase] || ''}
+${objectionPolicy}
+Case Context: ${caseContext}
 
-    CRITICAL TOOLS INSTRUCTIONS:
-    1. 'sendCoachingTip': Use this to provide scripts or feedback text to the user.
-    2. 'raiseObjection': IF you object verbally, you MUST also call this tool immediately to flash the objection on screen.
-    
-    AUDIO BEHAVIOR:
-    - Speak clearly and professionally.
-    - If objecting, speak loudly: "OBJECTION! [Grounds]."
-    - Do not ramble.
-  `;
+CRITICAL: Use 'sendCoachingTip' for feedback and 'raiseObjection' to flash objections on screen.`;
 };

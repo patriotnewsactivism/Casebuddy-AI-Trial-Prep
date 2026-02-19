@@ -121,21 +121,61 @@ export const retryWithBackoff = async <T>(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
-    } catch (error) {
+    } catch (error: any) {
       lastError = error;
 
-      // Don't retry on last attempt
       if (attempt === maxRetries) {
         break;
       }
 
-      // Exponential backoff: 1s, 2s, 4s
-      const delay = baseDelay * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      const isRateLimit = error?.status === 429 || 
+        error?.message?.includes('429') || 
+        error?.message?.toLowerCase().includes('rate limit') ||
+        error?.message?.toLowerCase().includes('quota');
+
+      if (isRateLimit) {
+        const delay = baseDelay * Math.pow(3, attempt) + Math.random() * 1000;
+        console.log(`Rate limited. Waiting ${Math.round(delay/1000)}s before retry ${attempt + 1}/${maxRetries}`);
+        handleWarning(`Rate limit reached. Waiting ${Math.round(delay/1000)}s...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        const delay = baseDelay * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
   }
 
   throw lastError;
+};
+
+/**
+ * Check if error is a rate limit error
+ */
+export const isRateLimitError = (error: any): boolean => {
+  return error?.status === 429 || 
+    error?.message?.includes('429') || 
+    error?.message?.toLowerCase().includes('rate limit') ||
+    error?.message?.toLowerCase().includes('quota') ||
+    error?.message?.toLowerCase().includes('too many requests');
+};
+
+/**
+ * Get user-friendly error message
+ */
+export const getErrorMessage = (error: any): string => {
+  if (isRateLimitError(error)) {
+    return 'API rate limit reached. Please wait a moment and try again.';
+  }
+  if (error?.status === 401 || error?.message?.includes('401')) {
+    return 'API key invalid. Check your GEMINI_API_KEY in .env.local';
+  }
+  if (error?.status === 403 || error?.message?.includes('403')) {
+    return 'API access forbidden. Check your API key permissions.';
+  }
+  if (error?.message?.includes('timeout')) {
+    return 'Request timed out. Please try again.';
+  }
+  return error?.message || 'An unexpected error occurred.';
 };
 
 /**

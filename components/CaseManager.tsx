@@ -2,10 +2,10 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import { Case, CaseStatus, CaseTask, DocumentType, EvidenceItem, PriorityLevel, TaskStatus } from '../types';
-import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag, ListChecks, File } from 'lucide-react';
-import { analyzeDocument, fileToGenerativePart, extractTextFromPDF } from '../services/geminiService';
+import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag, ListChecks, File, Loader2 } from 'lucide-react';
+import { analyzeDocument, fileToGenerativePart } from '../services/geminiService';
 import { MOCK_CASE_TEMPLATES } from '../constants';
-import { handleError, handleSuccess } from '../utils/errorHandler';
+import { handleError, handleSuccess, getErrorMessage } from '../utils/errorHandler';
 import { validateFile } from '../utils/fileValidation';
 
 const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any }) => {
