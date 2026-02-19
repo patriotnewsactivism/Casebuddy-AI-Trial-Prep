@@ -1,14 +1,26 @@
-import * as Tesseract from 'tesseract.js';
+import { createWorker, type Worker } from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import { OCRResult } from '../types';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + pdfjsLib.version + '/pdf.worker.min.js';
+// Set PDF.js worker source - use local bundled worker for reliability
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url
+).toString();
 
-let tesseractWorker: Tesseract.Worker | null = null;
+let tesseractWorker: Worker | null = null;
 
-const getTesseractWorker = async (): Promise<Tesseract.Worker> => {
+const getTesseractWorker = async (): Promise<Worker> => {
   if (!tesseractWorker) {
-    tesseractWorker = await Tesseract.createWorker('eng', 1);
+    console.log('[OCR] Initializing Tesseract worker...');
+    tesseractWorker = await createWorker('eng', 1, {
+      logger: (m) => {
+        if (m.status === 'recognizing text') {
+          console.log(`[OCR] Progress: ${Math.round(m.progress * 100)}%`);
+        }
+      }
+    });
+    console.log('[OCR] Tesseract worker ready');
   }
   return tesseractWorker;
 };
@@ -38,11 +50,12 @@ const renderPageToCanvas = async (
   canvas.height = viewport.height;
   
   const context = canvas.getContext('2d')!;
-  await page.render({
+  const renderParams: any = {
     canvasContext: context,
     viewport,
     canvas
-  }).promise;
+  };
+  await page.render(renderParams).promise;
   
   return canvas;
 };
@@ -52,21 +65,12 @@ const ocrImage = async (
 ): Promise<{ text: string; confidence: number }> => {
   const worker = await getTesseractWorker();
   
-  const result = await worker.recognize(
-    image,
-    {},
-    {
-      text: true,
-      blocks: true,
-      hocr: false,
-      tsv: false
-    }
-  );
+  const result = await worker.recognize(image);
   
-  const confidence = result.data.confidence || 0;
-  const text = result.data.text || '';
-  
-  return { text, confidence };
+  return { 
+    text: result.data.text || '', 
+    confidence: result.data.confidence || 0 
+  };
 };
 
 const extractPdfText = async (pdf: pdfjsLib.PDFDocumentProxy): Promise<string[]> => {
