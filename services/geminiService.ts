@@ -2,6 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode } from "../types";
 import { retryWithBackoff, withTimeout, isRateLimitError, getErrorMessage } from "../utils/errorHandler";
 import { toast } from "react-toastify";
+import { performDocumentOCR } from "./ocrService";
 
 const apiKey = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
@@ -152,7 +153,10 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
   });
 };
 
-export const analyzePDFDocument = async (file: File): Promise<{ 
+export const analyzePDFDocument = async (
+  file: File,
+  onProgress?: (progress: number, status: string) => void
+): Promise<{ 
   text: string; 
   pageCount: number; 
   summary: string;
@@ -161,56 +165,60 @@ export const analyzePDFDocument = async (file: File): Promise<{
   monetaryAmounts: string[];
   risks: string[];
 }> => {
-  const filePart = await fileToGenerativePart(file);
+  onProgress?.(10, 'Extracting text with OCR...');
+  const ocrResult = await performDocumentOCR(file, (p, s) => onProgress?.(10 + p * 0.6, s));
   
-  const prompt = `You are an expert legal document OCR and analysis system. This is a PDF document that needs to be fully processed.
+  const extractedText = ocrResult.text;
+  const pageCount = ocrResult.pages?.length || 1;
+  
+  onProgress?.(80, 'Analyzing document...');
+  
+  const prompt = `Analyze this legal document text and extract key information.
 
-TASK: Extract and analyze ALL text content from this PDF document.
+Document Text:
+${extractedText.substring(0, 50000)}
 
-INSTRUCTIONS:
-1. Perform OCR if this is a scanned document - extract ALL text verbatim
-2. For multi-page documents, process EVERY page completely
-3. Preserve the document structure and formatting where possible
-4. Extract the full text content
-5. Identify the document type (contract, motion, deposition, discovery, etc.)
+Provide:
+1. A comprehensive summary (3-5 sentences)
+2. All entities mentioned (people, organizations, companies)
+3. All dates and deadlines
+4. All monetary amounts with context
+5. Potential legal risks or issues
 
-For legal documents, specifically identify:
-- All parties mentioned
-- All dates and deadlines
-- All monetary amounts with context
-- Case citations and references
-- Key legal provisions or clauses
-- Signatures and execution dates
-
-Return comprehensive analysis in JSON format.`;
+Return JSON format.`;
 
   return queueRequest(async () => {
     return retryWithBackoff(async () => {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: [
-          { inlineData: filePart.inlineData },
-          { text: prompt }
-        ],
+        contents: prompt,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              text: { type: Type.STRING, description: "Full extracted text content from the document" },
-              pageCount: { type: Type.NUMBER, description: "Estimated number of pages processed" },
-              summary: { type: Type.STRING, description: "Comprehensive summary of the document" },
-              entities: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All people, organizations, and entities mentioned" },
-              keyDates: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All dates and deadlines mentioned" },
-              monetaryAmounts: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All monetary amounts with context" },
-              risks: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Potential legal risks or issues identified" },
+              summary: { type: Type.STRING },
+              entities: { type: Type.ARRAY, items: { type: Type.STRING } },
+              keyDates: { type: Type.ARRAY, items: { type: Type.STRING } },
+              monetaryAmounts: { type: Type.ARRAY, items: { type: Type.STRING } },
+              risks: { type: Type.ARRAY, items: { type: Type.STRING } },
             }
           }
         }
       });
 
-      return JSON.parse(response.text || '{}');
-    }, 3, 2000); // 3 retries with 2s base delay
+      const analysis = JSON.parse(response.text || '{}');
+      
+      return {
+        text: extractedText,
+        pageCount,
+        summary: analysis.summary || 'No summary available',
+        entities: analysis.entities || [],
+        keyDates: analysis.keyDates || [],
+        monetaryAmounts: analysis.monetaryAmounts || [],
+        risks: analysis.risks || [],
+      };
+    }, 3, 2000);
   });
 };
 
@@ -225,13 +233,13 @@ export const batchAnalyzeDocuments = async (
     onProgress?.(i + 1, files.length, file.name);
     
     try {
-      const filePart = await fileToGenerativePart(file);
       const isPDF = file.name.toLowerCase().endsWith('.pdf');
       
       if (isPDF) {
         const result = await analyzePDFDocument(file);
         results.push({ fileName: file.name, result });
       } else {
+        const filePart = await fileToGenerativePart(file);
         const result = await analyzeDocument("Analyze this uploaded document.", filePart);
         results.push({ fileName: file.name, result });
       }
