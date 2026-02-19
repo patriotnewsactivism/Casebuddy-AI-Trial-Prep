@@ -18,12 +18,14 @@
     "mammoth": "^1.11.0",
     "openai": "^6.22.0",
     "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^5.4.624",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-is": "^19.2.4",
     "react-router-dom": "^7.9.6",
     "react-toastify": "^11.0.5",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
