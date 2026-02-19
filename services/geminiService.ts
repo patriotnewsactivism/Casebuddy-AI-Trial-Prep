@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode } from "../types";
+import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode, SimulatorSettings } from "../types";
 import { retryWithBackoff, withTimeout, isRateLimitError, getErrorMessage } from "../utils/errorHandler";
 import { toast } from "react-toastify";
 import { performDocumentOCR } from "./ocrService";
@@ -371,9 +371,14 @@ export const getTrialSimSystemInstruction = (
   phase: TrialPhase,
   mode: SimulationMode,
   opponentName: string,
-  caseContext: string
+  caseContext: string,
+  settings?: SimulatorSettings
 ) => {
   const baseRole = `You are an advanced legal AI simulator. The user is a practicing attorney. You must simulate the courtroom environment realistically.`;
+  
+  const realismLevel = settings?.realismLevel || 'professional';
+  const interruptionFreq = settings?.interruptionFrequency || 'medium';
+  const coachingVerbosity = settings?.coachingVerbosity || 'moderate';
   
   let objectionPolicy = "";
   if (mode === 'trial') {
@@ -383,6 +388,10 @@ export const getTrialSimSystemInstruction = (
   } else {
     objectionPolicy = `MODE: LEARN (EASY). Rarely object. Focus on guiding the user.`;
   }
+
+  objectionPolicy += `\n\nREALISM: ${realismLevel.toUpperCase()}. ${realismLevel === 'intense' ? 'High-stakes, high-pressure environment.' : realismLevel === 'casual' ? 'Relaxed, educational environment.' : 'Professional courtroom atmosphere.'}`;
+  objectionPolicy += `\nINTERRUPTION FREQUENCY: ${interruptionFreq.toUpperCase()}. ${interruptionFreq === 'high' ? 'Frequent interruptions and objections.' : interruptionFreq === 'low' ? 'Minimal interruptions.' : 'Balanced interruption pattern.'}`;
+  objectionPolicy += `\nCOACHING DETAIL: ${coachingVerbosity.toUpperCase()}. ${coachingVerbosity === 'detailed' ? 'Provide extensive, thorough coaching feedback.' : coachingVerbosity === 'minimal' ? 'Brief, concise feedback only.' : 'Balanced coaching feedback.'}`;
 
   const phaseInstructions: Record<TrialPhase, string> = {
     'pre-trial-motions': `PHASE: PRE-TRIAL MOTIONS. Role: JUDGE and OPPOSING COUNSEL (${opponentName}).`,

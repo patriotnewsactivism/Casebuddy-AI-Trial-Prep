@@ -646,3 +646,29 @@ export interface MotionDraft {
   createdDate: string;
   modifiedDate: string;
 }
+
+// Voice Simulator Configuration Types
+export type VoicePersonality = 'authoritative' | 'friendly' | 'neutral' | 'aggressive' | 'calm';
+
+export interface VoiceConfig {
+  voiceName: string;
+  personality: VoicePersonality;
+  languageCode: string;
+}
+
+export interface VoiceProfile {
+  id: string;
+  name: string;
+  description: string;
+  personality: VoicePersonality;
+  recommendedFor: TrialPhase[];
+  voiceName: string;
+}
+
+export interface SimulatorSettings {
+  voice: VoiceConfig;
+  realismLevel: 'casual' | 'professional' | 'intense';
+  interruptionFrequency: 'low' | 'medium' | 'high';
+  coachingVerbosity: 'minimal' | 'moderate' | 'detailed';
+  audioQuality: 'standard' | 'high';
+}

@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 import { MOCK_OPPONENT } from '../constants';
-import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession } from '../types';
-import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link } from 'lucide-react';
+import { AVAILABLE_VOICES, VOICE_PROFILES, VOICE_DESCRIPTIONS, DEFAULT_VOICE_BY_PHASE } from '../constants/voiceConstants';
+import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession, VoiceConfig, SimulatorSettings } from '../types';
+import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link, Settings, Volume2, ChevronUp } from 'lucide-react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { getTrialSimSystemInstruction } from '../services/geminiService';
 import { toast } from 'react-toastify';
@@ -71,6 +72,19 @@ const TrialSim = () => {
   const [savedSessions, setSavedSessions] = useState<TrialSession[]>([]);
   const [playingSession, setPlayingSession] = useState<string | null>(null);
   const [showCoaching, setShowCoaching] = useState(false);
+  const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({
+    voiceName: 'Schedar',
+    personality: 'neutral',
+    languageCode: 'en-US',
+  });
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [simulatorSettings, setSimulatorSettings] = useState<SimulatorSettings>({
+    voice: { voiceName: 'Schedar', personality: 'neutral', languageCode: 'en-US' },
+    realismLevel: 'professional',
+    interruptionFrequency: 'medium',
+    coachingVerbosity: 'moderate',
+    audioQuality: 'high',
+  });
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<any>(null);
@@ -106,6 +120,16 @@ const TrialSim = () => {
       return () => clearTimeout(timer);
     }
   }, [objectionAlert]);
+
+  useEffect(() => {
+    if (phase && DEFAULT_VOICE_BY_PHASE[phase]) {
+      setVoiceConfig(prev => ({ ...prev, voiceName: DEFAULT_VOICE_BY_PHASE[phase]! }));
+      setSimulatorSettings(prev => ({
+        ...prev,
+        voice: { ...prev.voice, voiceName: DEFAULT_VOICE_BY_PHASE[phase]! }
+      }));
+    }
+  }, [phase]);
 
   const opponentName = activeCase?.opposingCounsel && activeCase.opposingCounsel !== 'Unknown' 
     ? activeCase.opposingCounsel 
@@ -297,13 +321,20 @@ const TrialSim = () => {
         }
       };
 
-      const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary);
+      const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary, simulatorSettings);
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
+          speechConfig: { 
+            voiceConfig: { 
+              prebuiltVoiceConfig: { 
+                voiceName: voiceConfig.voiceName 
+              } 
+            },
+            languageCode: voiceConfig.languageCode,
+          },
           systemInstruction,
           tools: [{ functionDeclarations: [coachingTool, objectionTool] }],
         },
@@ -478,6 +509,142 @@ const TrialSim = () => {
             </div>
           </div>
 
+          <div>
+            <button 
+              onClick={() => setShowVoiceSettings(!showVoiceSettings)}
+              className="w-full flex items-center justify-between p-4 bg-slate-800 rounded-lg text-slate-300"
+            >
+              <div className="flex items-center gap-3">
+                <Volume2 size={20} className="text-gold-500" />
+                <div className="text-left">
+                  <p className="font-semibold">Voice & Settings</p>
+                  <p className="text-xs opacity-60">{voiceConfig.voiceName} • {simulatorSettings.realismLevel}</p>
+                </div>
+              </div>
+              {showVoiceSettings ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+            
+            {showVoiceSettings && (
+              <div className="mt-3 p-4 bg-slate-800 rounded-lg space-y-4 border border-slate-700">
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">Voice Selection</label>
+                  <select
+                    value={voiceConfig.voiceName}
+                    onChange={(e) => {
+                      setVoiceConfig(prev => ({ ...prev, voiceName: e.target.value }));
+                      setSimulatorSettings(prev => ({ ...prev, voice: { ...prev.voice, voiceName: e.target.value } }));
+                    }}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white"
+                  >
+                    {AVAILABLE_VOICES.map((voice) => (
+                      <option key={voice} value={voice}>
+                        {voice} - {VOICE_DESCRIPTIONS[voice]?.tone || 'Custom voice'}
+                      </option>
+                    ))}
+                  </select>
+                  {voiceConfig.voiceName && VOICE_DESCRIPTIONS[voiceConfig.voiceName] && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Best for: {VOICE_DESCRIPTIONS[voiceConfig.voiceName].bestFor}
+                    </p>
+                  )}
+                </div>
+
+                {phase && (
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2">Personality Presets</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {VOICE_PROFILES.filter(p => p.recommendedFor.includes(phase)).map((profile) => (
+                        <button
+                          key={profile.id}
+                          onClick={() => {
+                            setVoiceConfig(prev => ({ 
+                              ...prev, 
+                              voiceName: profile.voiceName,
+                              personality: profile.personality 
+                            }));
+                            setSimulatorSettings(prev => ({ 
+                              ...prev, 
+                              voice: { 
+                                ...prev.voice, 
+                                voiceName: profile.voiceName,
+                                personality: profile.personality 
+                              } 
+                            }));
+                          }}
+                          className={`p-2 rounded-lg text-left text-xs transition-all ${
+                            voiceConfig.voiceName === profile.voiceName 
+                              ? 'bg-gold-500 text-slate-900' 
+                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          <p className="font-semibold">{profile.name}</p>
+                          <p className="opacity-70 line-clamp-2">{profile.description}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">Realism Level</label>
+                  <div className="flex gap-2">
+                    {(['casual', 'professional', 'intense'] as const).map((level) => (
+                      <button
+                        key={level}
+                        onClick={() => setSimulatorSettings(prev => ({ ...prev, realismLevel: level }))}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium capitalize transition-all ${
+                          simulatorSettings.realismLevel === level 
+                            ? 'bg-gold-500 text-slate-900' 
+                            : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                        }`}
+                      >
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">Interruption Frequency</label>
+                  <div className="flex gap-2">
+                    {(['low', 'medium', 'high'] as const).map((freq) => (
+                      <button
+                        key={freq}
+                        onClick={() => setSimulatorSettings(prev => ({ ...prev, interruptionFrequency: freq }))}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium capitalize transition-all ${
+                          simulatorSettings.interruptionFrequency === freq 
+                            ? 'bg-gold-500 text-slate-900' 
+                            : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                        }`}
+                      >
+                        {freq}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">Coaching Detail</label>
+                  <div className="flex gap-2">
+                    {(['minimal', 'moderate', 'detailed'] as const).map((verbosity) => (
+                      <button
+                        key={verbosity}
+                        onClick={() => setSimulatorSettings(prev => ({ ...prev, coachingVerbosity: verbosity }))}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium capitalize transition-all ${
+                          simulatorSettings.coachingVerbosity === verbosity 
+                            ? 'bg-gold-500 text-slate-900' 
+                            : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                        }`}
+                      >
+                        {verbosity}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             disabled={!phase || !mode}
             onClick={() => { setMessages([]); setCoachingTip(null); setSimState('active'); }}
@@ -569,12 +736,18 @@ const TrialSim = () => {
             <p className="text-xs text-slate-400">{mode} mode</p>
           </div>
         </div>
-        {isLive && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-red-900/50 rounded-full">
-            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-            <span className="text-xs text-red-300 font-bold">REC</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1 bg-slate-700 rounded-full">
+            <Volume2 size={14} className="text-gold-500" />
+            <span className="text-xs text-slate-300">{voiceConfig.voiceName}</span>
           </div>
-        )}
+          {isLive && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-red-900/50 rounded-full">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span className="text-xs text-red-300 font-bold">REC</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Content */}
