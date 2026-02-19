@@ -3,11 +3,17 @@ import { AppContext } from '../App';
 import { MOCK_OPPONENT } from '../constants';
 import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession } from '../types';
 import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link } from 'lucide-react';
-import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration, Blob } from "@google/genai";
+import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { getTrialSimSystemInstruction } from '../services/geminiService';
 import { toast } from 'react-toastify';
 
-function createBlob(data: Float32Array): Blob {
+// Type for Google GenAI SDK media blob
+interface GenAIBlob {
+  data: string;
+  mimeType: string;
+}
+
+function createBlob(data: Float32Array): GenAIBlob {
   const l = data.length;
   const int16 = new Int16Array(l);
   for (let i = 0; i < l; i++) {

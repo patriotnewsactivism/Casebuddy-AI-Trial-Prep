@@ -178,27 +178,6 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
     setAnalyzing(false);
     e.target.value = '';
   };
-          title: file.name,
-          type: DocumentType.EVIDENCE,
-          source: 'file',
-          summary: result.summary || 'No summary provided.',
-          keyEntities: result.entities || [],
-          risks: result.risks || [],
-          addedAt: new Date().toISOString(),
-          fileName: file.name,
-        };
-
-        await addEvidence(activeCase.id, evidence);
-        handleSuccess(`Analyzed and saved: ${file.name}`);
-      } catch (err) {
-        handleError(err, `Failed to process ${file.name}`, 'CaseManager');
-      }
-    }
-
-    setBatchUploadProgress(null);
-    setAnalyzing(false);
-    e.target.value = '';
-  };
 
   const handleCreateCase = async (e: React.FormEvent) => {
     e.preventDefault();
