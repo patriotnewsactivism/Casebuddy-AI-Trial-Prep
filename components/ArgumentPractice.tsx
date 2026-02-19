@@ -179,7 +179,12 @@ const TrialSim = () => {
       mode: mode || 'practice',
       date: new Date().toISOString(),
       duration: Math.round((Date.now() - sessionStartTime.current) / 1000),
-      transcript: messages.map(m => `${m.sender}: ${m.text}`).join('\n'),
+      transcript: messages.map(m => ({
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        sender: m.sender,
+        text: m.text,
+        timestamp: m.timestamp
+      })),
       audioUrl,
       score: coachingTip?.rhetoricalEffectiveness || 50
     };
@@ -523,9 +528,11 @@ const TrialSim = () => {
                       </button>
                     </div>
                   </div>
-                  {session.transcript && (
+                  {session.transcript && session.transcript.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-slate-700">
-                      <p className="text-xs text-slate-400 line-clamp-3">{session.transcript}</p>
+                      <p className="text-xs text-slate-400 line-clamp-3">
+                        {session.transcript.map(m => `${m.sender}: ${m.text}`).join('\n')}
+                      </p>
                     </div>
                   )}
                 </div>

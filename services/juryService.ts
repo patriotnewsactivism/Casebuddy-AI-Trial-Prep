@@ -169,4 +169,51 @@ export const simulateDeliberation = async (
         responseSchema: {
           type: Type.OBJECT,
           properties: {
- 
+            deliberations: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  jurorId: { type: Type.STRING },
+                  jurorName: { type: Type.STRING },
+                  statement: { type: Type.STRING },
+                  leaningAfter: { type: Type.NUMBER }
+                }
+              }
+            },
+            verdict: {
+              type: Type.OBJECT,
+              properties: {
+                verdict: { type: Type.STRING, enum: ['guilty', 'not guilty', 'hung'] },
+                confidence: { type: Type.NUMBER },
+                voteTally: { type: Type.STRING },
+                reasoning: { type: Type.STRING },
+                weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
+                strengths: { type: Type.ARRAY, items: { type: Type.STRING } }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    return JSON.parse(response.text || '{}');
+
+  } catch (error) {
+    console.error('Deliberation simulation error:', error);
+    return {
+      deliberations: [],
+      verdict: {
+        verdict: 'hung',
+        confidence: 0,
+        voteTally: {
+          guilty: 0,
+          notGuilty: 0
+        },
+        reasoning: 'Unable to simulate deliberation due to error',
+        weaknesses: [],
+        strengths: []
+      }
+    };
+  }
+};

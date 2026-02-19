@@ -51,7 +51,7 @@ Return JSON.`;
 
 export const calculateDeadlines = (requests: DiscoveryRequest[]): DiscoveryDeadline[] => {
   return requests
-    .filter(r => r.servedDate && r.status !== 'responded' && r.status !== 'completed')
+    .filter(r => r.servedDate && r.status !== 'responded')
     .map(r => {
       const servedDate = new Date(r.servedDate!);
       const dueDate = addDays(servedDate, 30); // Standard 30-day response

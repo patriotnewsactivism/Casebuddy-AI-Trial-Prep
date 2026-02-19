@@ -260,4 +260,38 @@ export const predictRuling = async (
     ${judgeProfile ? `Judge Profile: ${judgeProfile}` : ''}
     
     Consider:
-    1. The strength of the l
+    1. The strength of the legal arguments
+    2. Precedent and case law
+    3. Judicial discretion tendencies
+    4. Any limiting instructions that might apply
+    
+    Return JSON with prediction, confidence (0-100), reasoning, and any conditions.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            prediction: { type: Type.STRING, enum: ['admitted', 'excluded', 'limited'] },
+            confidence: { type: Type.NUMBER },
+            reasoning: { type: Type.STRING },
+            conditions: { type: Type.ARRAY, items: { type: Type.STRING } }
+          }
+        }
+      }
+    });
+
+    return JSON.parse(response.text || '{}');
+
+  } catch (error) {
+    console.error('Ruling prediction error:', error);
+    return {
+      prediction: 'admitted',
+      confidence: 50,
+      reasoning: 'Unable to predict ruling due to error'
+    };
+  }
+};
