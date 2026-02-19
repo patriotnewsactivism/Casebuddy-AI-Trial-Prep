@@ -184,30 +184,34 @@ For legal documents, specifically identify:
 
 Return comprehensive analysis in JSON format.`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: [
-      { inlineData: filePart.inlineData },
-      { text: prompt }
-    ],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          text: { type: Type.STRING, description: "Full extracted text content from the document" },
-          pageCount: { type: Type.NUMBER, description: "Estimated number of pages processed" },
-          summary: { type: Type.STRING, description: "Comprehensive summary of the document" },
-          entities: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All people, organizations, and entities mentioned" },
-          keyDates: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All dates and deadlines mentioned" },
-          monetaryAmounts: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All monetary amounts with context" },
-          risks: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Potential legal risks or issues identified" },
+  return queueRequest(async () => {
+    return retryWithBackoff(async () => {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          { inlineData: filePart.inlineData },
+          { text: prompt }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING, description: "Full extracted text content from the document" },
+              pageCount: { type: Type.NUMBER, description: "Estimated number of pages processed" },
+              summary: { type: Type.STRING, description: "Comprehensive summary of the document" },
+              entities: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All people, organizations, and entities mentioned" },
+              keyDates: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All dates and deadlines mentioned" },
+              monetaryAmounts: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All monetary amounts with context" },
+              risks: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Potential legal risks or issues identified" },
+            }
+          }
         }
-      }
-    }
-  });
+      });
 
-  return JSON.parse(response.text || '{}');
+      return JSON.parse(response.text || '{}');
+    }, 3, 2000); // 3 retries with 2s base delay
+  });
 };
 
 export const batchAnalyzeDocuments = async (

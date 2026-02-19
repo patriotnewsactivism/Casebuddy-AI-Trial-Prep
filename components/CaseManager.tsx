@@ -169,6 +169,11 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
 
         await addEvidence(activeCase.id, evidence);
         handleSuccess(`Analyzed and saved: ${file.name}`);
+        
+        // Add delay between files to avoid rate limiting
+        if (i < validFiles.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       } catch (err) {
         handleError(err, `Failed to process ${file.name}`, 'CaseManager');
       }
