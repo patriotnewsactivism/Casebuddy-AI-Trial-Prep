@@ -120,16 +120,24 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
       const base64Content = base64data.split(',')[1];
       
       let mimeType = file.type || 'application/octet-stream';
-      if (file.name.toLowerCase().endsWith('.pdf')) {
+      const fileName = file.name.toLowerCase();
+      
+      if (fileName.endsWith('.pdf')) {
         mimeType = 'application/pdf';
+      } else if (fileName.match(/\.(jpg|jpeg)$/)) {
+        mimeType = 'image/jpeg';
+      } else if (fileName.endsWith('.png')) {
+        mimeType = 'image/png';
+      } else if (fileName.endsWith('.webp')) {
+        mimeType = 'image/webp';
+      } else if (fileName.endsWith('.gif')) {
+        mimeType = 'image/gif';
+      } else if (fileName.match(/\.(mp3|m4a|wav|ogg|webm)$/)) {
+        mimeType = file.type || 'audio/mpeg';
+      } else if (fileName.match(/\.(mp4|mov|avi)$/)) {
+        mimeType = file.type || 'video/mp4';
       } else if (file.type.startsWith('image/')) {
         mimeType = file.type;
-      } else if (file.name.toLowerCase().match(/\.(jpg|jpeg)$/)) {
-        mimeType = 'image/jpeg';
-      } else if (file.name.toLowerCase().endsWith('.png')) {
-        mimeType = 'image/png';
-      } else if (file.name.toLowerCase().endsWith('.webp')) {
-        mimeType = 'image/webp';
       }
       
       resolve({
@@ -142,6 +150,101 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+};
+
+export const analyzePDFDocument = async (file: File): Promise<{ 
+  text: string; 
+  pageCount: number; 
+  summary: string;
+  entities: string[];
+  keyDates: string[];
+  monetaryAmounts: string[];
+  risks: string[];
+}> => {
+  const filePart = await fileToGenerativePart(file);
+  
+  const prompt = `You are an expert legal document OCR and analysis system. This is a PDF document that needs to be fully processed.
+
+TASK: Extract and analyze ALL text content from this PDF document.
+
+INSTRUCTIONS:
+1. Perform OCR if this is a scanned document - extract ALL text verbatim
+2. For multi-page documents, process EVERY page completely
+3. Preserve the document structure and formatting where possible
+4. Extract the full text content
+5. Identify the document type (contract, motion, deposition, discovery, etc.)
+
+For legal documents, specifically identify:
+- All parties mentioned
+- All dates and deadlines
+- All monetary amounts with context
+- Case citations and references
+- Key legal provisions or clauses
+- Signatures and execution dates
+
+Return comprehensive analysis in JSON format.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: [
+      { inlineData: filePart.inlineData },
+      { text: prompt }
+    ],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          text: { type: Type.STRING, description: "Full extracted text content from the document" },
+          pageCount: { type: Type.NUMBER, description: "Estimated number of pages processed" },
+          summary: { type: Type.STRING, description: "Comprehensive summary of the document" },
+          entities: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All people, organizations, and entities mentioned" },
+          keyDates: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All dates and deadlines mentioned" },
+          monetaryAmounts: { type: Type.ARRAY, items: { type: Type.STRING }, description: "All monetary amounts with context" },
+          risks: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Potential legal risks or issues identified" },
+        }
+      }
+    }
+  });
+
+  return JSON.parse(response.text || '{}');
+};
+
+export const batchAnalyzeDocuments = async (
+  files: File[], 
+  onProgress?: (current: number, total: number, fileName: string) => void
+): Promise<Array<{ fileName: string; result: any; error?: string }>> => {
+  const results: Array<{ fileName: string; result: any; error?: string }> = [];
+  
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    onProgress?.(i + 1, files.length, file.name);
+    
+    try {
+      const filePart = await fileToGenerativePart(file);
+      const isPDF = file.name.toLowerCase().endsWith('.pdf');
+      
+      if (isPDF) {
+        const result = await analyzePDFDocument(file);
+        results.push({ fileName: file.name, result });
+      } else {
+        const result = await analyzeDocument("Analyze this uploaded document.", filePart);
+        results.push({ fileName: file.name, result });
+      }
+    } catch (error) {
+      results.push({ 
+        fileName: file.name, 
+        result: null, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+    
+    if (i < files.length - 1) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+  
+  return results;
 };
 
 export const analyzeDocument = async (text: string, filePart?: any) => {

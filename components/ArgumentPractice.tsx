@@ -1,14 +1,12 @@
-
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 import { MOCK_OPPONENT } from '../constants';
-import { CoachingAnalysis, Message, TrialPhase, SimulationMode } from '../types';
-import { Mic, MicOff, Activity, Volume2, AlertTriangle, BarChart2, Lightbulb, AlertCircle, PlayCircle, MessageSquare, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, XCircle, Users, Scale } from 'lucide-react';
+import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession } from '../types';
+import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link } from 'lucide-react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration, Blob } from "@google/genai";
 import { getTrialSimSystemInstruction } from '../services/geminiService';
-import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
-// --- Audio Utils for Live API ---
 function createBlob(data: Float32Array): Blob {
   const l = data.length;
   const int16 = new Int16Array(l);
@@ -40,16 +38,10 @@ function decode(base64: string) {
   return bytes;
 }
 
-async function decodeAudioData(
-  data: Uint8Array,
-  ctx: AudioContext,
-  sampleRate: number,
-  numChannels: number,
-): Promise<AudioBuffer> {
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {
@@ -61,24 +53,20 @@ async function decodeAudioData(
 
 const TrialSim = () => {
   const { activeCase } = useContext(AppContext);
-  
-  // State for setup
   const [phase, setPhase] = useState<TrialPhase | null>(null);
   const [mode, setMode] = useState<SimulationMode | null>(null);
-  const [simState, setSimState] = useState<'setup' | 'active'>('setup');
-
-  // State for live session
+  const [simState, setSimState] = useState<'setup' | 'active' | 'history'>('setup');
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [liveVolume, setLiveVolume] = useState(0);
   const [objectionAlert, setObjectionAlert] = useState<{grounds: string, explanation: string} | null>(null);
-  
-  // State for UI
   const [messages, setMessages] = useState<Message[]>([]);
   const [coachingTip, setCoachingTip] = useState<CoachingAnalysis | null>(null);
+  const [savedSessions, setSavedSessions] = useState<TrialSession[]>([]);
+  const [playingSession, setPlayingSession] = useState<string | null>(null);
+  const [showCoaching, setShowCoaching] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Refs
   const sessionRef = useRef<any>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -87,69 +75,53 @@ const TrialSim = () => {
   const nextStartTimeRef = useRef<number>(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const keepaliveRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef<number>(0);
-  const isLiveRef = useRef<boolean>(false); // Use ref for callback access
-  const maxReconnectAttempts = 3;
-  
-  // Transcription Buffer
+  const isLiveRef = useRef<boolean>(false);
   const currentInputTranscription = useRef('');
   const currentOutputTranscription = useRef('');
+  const sessionStartTime = useRef<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const getLiveSessionErrorMessage = (error: unknown): string => {
-    if (!process.env.API_KEY) {
-      return 'Missing GEMINI_API_KEY. Add it to .env.local and restart the app.';
+  useEffect(() => {
+    if (activeCase) {
+      const saved = localStorage.getItem(`trial_sessions_${activeCase.id}`);
+      if (saved) setSavedSessions(JSON.parse(saved));
     }
+  }, [activeCase]);
 
-    if (error instanceof DOMException) {
-      if (error.name === 'NotAllowedError') {
-        return 'Microphone access was denied. Allow microphone permission in your browser settings and try again.';
-      }
-      if (error.name === 'NotFoundError') {
-        return 'No microphone was found. Connect a microphone and try again.';
-      }
-      if (error.name === 'SecurityError') {
-        return 'Microphone access requires a secure context (localhost or HTTPS).';
-      }
-    }
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-    const message = error instanceof Error ? error.message : String(error ?? '');
-    if (/api key|unauthori[sz]ed|401|403|forbidden|invalid/i.test(message)) {
-      return 'Gemini API authentication failed. Verify GEMINI_API_KEY in .env.local and restart the app.';
+  useEffect(() => {
+    if (objectionAlert) {
+      const timer = setTimeout(() => setObjectionAlert(null), 5000);
+      return () => clearTimeout(timer);
     }
-    if (/network|fetch|timeout|socket|econn/i.test(message)) {
-      return 'Network connection to Gemini failed. Check connectivity and try again.';
-    }
-
-    return 'Failed to connect to the live session. Check microphone permission, API key, and network, then retry.';
-  };
+  }, [objectionAlert]);
 
   const opponentName = activeCase?.opposingCounsel && activeCase.opposingCounsel !== 'Unknown' 
-  ? activeCase.opposingCounsel 
-  : MOCK_OPPONENT.name;
+    ? activeCase.opposingCounsel 
+    : MOCK_OPPONENT.name;
 
-  // --- Session Management Functions (defined before useEffect that uses them) ---
-  
   const stopLiveSession = (preserveForReconnect = false) => {
     if (keepaliveRef.current) {
       clearInterval(keepaliveRef.current);
       keepaliveRef.current = null;
     }
     
-    // Disconnect script processor
     if (scriptProcessorRef.current) {
-      try {
-        scriptProcessorRef.current.disconnect();
-      } catch (e) {
-        // Ignore disconnect errors
-      }
-      if (!preserveForReconnect) {
-        scriptProcessorRef.current = null;
-      }
+      try { scriptProcessorRef.current.disconnect(); } catch (e) {}
+      if (!preserveForReconnect) scriptProcessorRef.current = null;
+    }
+    
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
     }
     
     if (!preserveForReconnect) {
       reconnectAttemptsRef.current = 0;
-      // Only fully clean up when NOT reconnecting
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
       inputContextRef.current?.close();
@@ -167,105 +139,92 @@ const TrialSim = () => {
     nextStartTimeRef.current = 0;
   };
 
-  const handleStopClick = () => {
-    stopLiveSession();
+  const reconnectAttemptsRef = useRef<number>(0);
+  const maxReconnectAttempts = 3;
+
+  const startRecording = (stream: MediaStream) => {
+    recordedChunksRef.current = [];
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        saveSession();
+      };
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+    } catch (e) {
+      console.error('Recording failed', e);
+    }
   };
 
-  const attemptReconnect = async () => {
-    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-      console.log('Max reconnect attempts reached');
-      stopLiveSession();
-      setMessages(prev => [...prev, { 
-        id: Date.now()+'e', 
-        sender: 'system', 
-        text: 'Connection lost. Click Start to reconnect.', 
-        timestamp: Date.now() 
-      }]);
+  const saveSession = () => {
+    if (recordedChunksRef.current.length === 0 || !activeCase) return;
+    
+    const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+    const audioUrl = URL.createObjectURL(blob);
+    
+    const session: TrialSession = {
+      id: `session-${Date.now()}`,
+      caseId: activeCase.id,
+      caseTitle: activeCase.title,
+      phase: phase || 'unknown',
+      mode: mode || 'practice',
+      date: new Date().toISOString(),
+      duration: Math.round((Date.now() - sessionStartTime.current) / 1000),
+      transcript: messages.map(m => `${m.sender}: ${m.text}`).join('\n'),
+      audioUrl,
+      score: coachingTip?.rhetoricalEffectiveness || 50
+    };
+    
+    const updated = [session, ...savedSessions].slice(0, 20);
+    setSavedSessions(updated);
+    localStorage.setItem(`trial_sessions_${activeCase.id}`, JSON.stringify(updated));
+    toast.success('Session saved!');
+  };
+
+  const playSession = (session: TrialSession) => {
+    if (playingSession === session.id) {
+      audioRef.current?.pause();
+      setPlayingSession(null);
       return;
     }
-
-    reconnectAttemptsRef.current++;
-    console.log(`Attempting reconnect ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
-    setMessages(prev => [...prev, { 
-      id: Date.now()+'r', 
-      sender: 'system', 
-      text: `Reconnecting (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`, 
-      timestamp: Date.now() 
-    }]);
     
-    stopLiveSession(true);
-    
-    // Wait a moment before reconnecting
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    try {
-      await startLiveSession();
-    } catch (e) {
-      console.error('Reconnect failed', e);
+    if (audioRef.current) {
+      audioRef.current.pause();
     }
+    
+    audioRef.current = new Audio(session.audioUrl);
+    audioRef.current.onended = () => setPlayingSession(null);
+    audioRef.current.play();
+    setPlayingSession(session.id);
   };
 
-  const startKeepalive = (session: any) => {
-    // Clear any existing keepalive first
-    if (keepaliveRef.current) {
-      clearInterval(keepaliveRef.current);
-      keepaliveRef.current = null;
-    }
-    
-    keepaliveRef.current = setInterval(() => {
-      // Only send if we're still live AND session exists
-      if (isLiveRef.current && session) {
-        try {
-          session.sendRealtimeInput({ activity: { timestamp: Date.now() } });
-        } catch (e) {
-          console.log('Keepalive failed, stopping interval');
-          if (keepaliveRef.current) {
-            clearInterval(keepaliveRef.current);
-            keepaliveRef.current = null;
-          }
-        }
-      } else {
-        // Not live anymore, stop the interval
-        if (keepaliveRef.current) {
-          clearInterval(keepaliveRef.current);
-          keepaliveRef.current = null;
-        }
+  const deleteSession = (id: string) => {
+    if (window.confirm('Delete this session?')) {
+      const updated = savedSessions.filter(s => s.id !== id);
+      setSavedSessions(updated);
+      if (activeCase) {
+        localStorage.setItem(`trial_sessions_${activeCase.id}`, JSON.stringify(updated));
       }
-    }, 20000);
-  };
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      stopLiveSession();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (objectionAlert) {
-      const timer = setTimeout(() => setObjectionAlert(null), 5000);
-      return () => clearTimeout(timer);
+      toast.success('Session deleted');
     }
-  }, [objectionAlert]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // --- Live API Logic ---
+  };
 
   const startLiveSession = async () => {
     if (!activeCase || !phase || !mode) return;
 
     setIsConnecting(true);
+    sessionStartTime.current = Date.now();
+    
     try {
       if (!process.env.API_KEY) {
         setIsConnecting(false);
-        alert('Missing GEMINI_API_KEY. Add it to .env.local and restart the app.');
+        toast.error('Missing API key');
         return;
       }
 
-      // 1. Reuse or create AudioContext
       let inputCtx = inputContextRef.current;
       let outputCtx = outputContextRef.current;
       
@@ -284,52 +243,46 @@ const TrialSim = () => {
       const outputNode = outputCtx.createGain();
       outputNode.connect(outputCtx.destination);
 
-      // 2. Reuse or get Media Stream
       let stream = streamRef.current;
       if (!stream || !stream.active) {
         stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: 16000
-          }
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 }
         });
         streamRef.current = stream;
       }
 
-      // 3. Connect to Gemini
+      startRecording(stream);
+
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const coachingTool: FunctionDeclaration = {
         name: 'sendCoachingTip',
-        description: 'Send text-based coaching, feedback, or a suggested script for the user to read. Use this FREQUENTLY.',
+        description: 'Send coaching feedback.',
         parameters: {
           type: Type.OBJECT,
           properties: {
-            critique: { type: Type.STRING, description: "Critique of what user just said." },
-            suggestion: { type: Type.STRING, description: "Strategic advice." },
-            sampleResponse: { type: Type.STRING, description: "Short rebuttal." },
-            teleprompterScript: { type: Type.STRING, description: "A longer script, bullet points, or question list for the user to read/reference." },
+            critique: { type: Type.STRING },
+            suggestion: { type: Type.STRING },
+            sampleResponse: { type: Type.STRING },
+            teleprompterScript: { type: Type.STRING },
             fallaciesIdentified: { type: Type.ARRAY, items: { type: Type.STRING } },
             rhetoricalEffectiveness: { type: Type.NUMBER },
             rhetoricalFeedback: { type: Type.STRING },
           },
-          required: ['critique', 'suggestion', 'teleprompterScript']
+          required: ['critique', 'suggestion']
         }
       };
 
       const objectionTool: FunctionDeclaration = {
         name: 'raiseObjection',
-        description: 'Trigger a visual OBJECTION alert on screen. Call this whenever you verbally object.',
+        description: 'Trigger objection alert.',
         parameters: {
-            type: Type.OBJECT,
-            properties: {
-                grounds: { type: Type.STRING, description: "The legal grounds (e.g. Hearsay, Leading)." },
-                explanation: { type: Type.STRING, description: "Brief explanation of why it is objectionable." }
-            },
-            required: ['grounds', 'explanation']
+          type: Type.OBJECT,
+          properties: {
+            grounds: { type: Type.STRING },
+            explanation: { type: Type.STRING }
+          },
+          required: ['grounds', 'explanation']
         }
       };
 
@@ -339,419 +292,362 @@ const TrialSim = () => {
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } }, 
-          },
-          systemInstruction: systemInstruction,
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
+          systemInstruction,
           tools: [{ functionDeclarations: [coachingTool, objectionTool] }],
         },
         callbacks: {
           onopen: () => {
-            console.log("Live Connected");
             setIsLive(true);
             isLiveRef.current = true;
             setIsConnecting(false);
-            reconnectAttemptsRef.current = 0;
-
-            // Start keepalive to maintain connection
-            sessionPromise.then(session => {
-              startKeepalive(session);
-            });
-
-            // Audio Processing - Use 4096 buffer for better stability (less dropouts)
-            const source = inputCtx.createMediaStreamSource(stream);
-            const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
-            scriptProcessorRef.current = scriptProcessor; // Store reference
+            
+            const source = inputCtx!.createMediaStreamSource(stream!);
+            const scriptProcessor = inputCtx!.createScriptProcessor(4096, 1, 1);
+            scriptProcessorRef.current = scriptProcessor;
             scriptProcessor.onaudioprocess = (e) => {
-              // Only process if we're still live
               if (!isLiveRef.current) return;
-              
               const inputData = e.inputBuffer.getChannelData(0);
-              // Viz
               let sum = 0;
               for(let i=0; i<inputData.length; i++) sum += inputData[i] * inputData[i];
               setLiveVolume(Math.sqrt(sum / inputData.length) * 100);
-
               const pcmBlob = createBlob(inputData);
               sessionPromise.then(s => {
                 if (isLiveRef.current) {
-                  try {
-                    s.sendRealtimeInput({ media: pcmBlob });
-                  } catch (err) {
-                    // Connection likely closed, ignore
-                  }
+                  try { s.sendRealtimeInput({ media: pcmBlob }); } catch (err) {}
                 }
               });
             };
             source.connect(scriptProcessor);
-            scriptProcessor.connect(inputCtx.destination);
+            scriptProcessor.connect(inputCtx!.destination);
+            
+            toast.success('Session started - Recording');
           },
           onmessage: async (msg: LiveServerMessage) => {
-             // Audio Output
-             const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-             if (audioData) {
-                if (outputCtx.state === 'suspended') await outputCtx.resume();
-                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
-                const audioBuffer = await decodeAudioData(decode(audioData), outputCtx, 24000, 1);
-                const source = outputCtx.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(outputNode);
-                source.addEventListener('ended', () => sourcesRef.current.delete(source));
-                source.start(nextStartTimeRef.current);
-                nextStartTimeRef.current += audioBuffer.duration;
-                sourcesRef.current.add(source);
-             }
+            const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+            if (audioData) {
+              if (outputCtx!.state === 'suspended') await outputCtx!.resume();
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx!.currentTime);
+              const audioBuffer = await decodeAudioData(decode(audioData), outputCtx!, 24000, 1);
+              const source = outputCtx!.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(outputNode);
+              source.addEventListener('ended', () => sourcesRef.current.delete(source));
+              source.start(nextStartTimeRef.current);
+              nextStartTimeRef.current += audioBuffer.duration;
+              sourcesRef.current.add(source);
+            }
 
-             // Transcription
-             if (msg.serverContent?.inputTranscription) currentInputTranscription.current += msg.serverContent.inputTranscription.text;
-             if (msg.serverContent?.outputTranscription) currentOutputTranscription.current += msg.serverContent.outputTranscription.text;
+            if (msg.serverContent?.inputTranscription) currentInputTranscription.current += msg.serverContent.inputTranscription.text;
+            if (msg.serverContent?.outputTranscription) currentOutputTranscription.current += msg.serverContent.outputTranscription.text;
 
-             if (msg.serverContent?.turnComplete) {
-                 if (currentInputTranscription.current.trim()) {
-                     setMessages(prev => [...prev, { id: Date.now()+'u', sender: 'user', text: currentInputTranscription.current, timestamp: Date.now() }]);
-                     currentInputTranscription.current = '';
-                 }
-                 if (currentOutputTranscription.current.trim()) {
-                     setMessages(prev => [...prev, { id: Date.now()+'o', sender: 'opponent', text: currentOutputTranscription.current, timestamp: Date.now() }]);
-                     currentOutputTranscription.current = '';
-                 }
-             }
+            if (msg.serverContent?.turnComplete) {
+              if (currentInputTranscription.current.trim()) {
+                setMessages(prev => [...prev, { id: Date.now()+'u', sender: 'user', text: currentInputTranscription.current, timestamp: Date.now() }]);
+                currentInputTranscription.current = '';
+              }
+              if (currentOutputTranscription.current.trim()) {
+                setMessages(prev => [...prev, { id: Date.now()+'o', sender: 'opponent', text: currentOutputTranscription.current, timestamp: Date.now() }]);
+                currentOutputTranscription.current = '';
+              }
+            }
 
-             // Tool Calls
-             if (msg.toolCall) {
-                 for (const fc of msg.toolCall.functionCalls) {
-                     if (fc.name === 'sendCoachingTip') {
-                         const args = fc.args as any;
-                         setCoachingTip({
-                            critique: args.critique,
-                            suggestion: args.suggestion,
-                            sampleResponse: args.sampleResponse,
-                            teleprompterScript: args.teleprompterScript,
-                            fallaciesIdentified: args.fallaciesIdentified || [],
-                            rhetoricalEffectiveness: args.rhetoricalEffectiveness || 50,
-                            rhetoricalFeedback: args.rhetoricalFeedback || ""
-                         });
-                         sessionPromise.then(s => s.sendToolResponse({
-                             functionResponses: { id: fc.id, name: fc.name, response: { result: "displayed" } }
-                         }));
-                     }
-                     else if (fc.name === 'raiseObjection') {
-                        const args = fc.args as any;
-                        setObjectionAlert({
-                            grounds: args.grounds,
-                            explanation: args.explanation
-                        });
-                        sessionPromise.then(s => s.sendToolResponse({
-                            functionResponses: { id: fc.id, name: fc.name, response: { result: "alert_shown" } }
-                        }));
-                     }
-                 }
-             }
+            if (msg.toolCall) {
+              for (const fc of msg.toolCall.functionCalls) {
+                if (fc.name === 'sendCoachingTip') {
+                  const args = fc.args as any;
+                  setCoachingTip({
+                    critique: args.critique,
+                    suggestion: args.suggestion,
+                    sampleResponse: args.sampleResponse,
+                    teleprompterScript: args.teleprompterScript,
+                    fallaciesIdentified: args.fallaciesIdentified || [],
+                    rhetoricalEffectiveness: args.rhetoricalEffectiveness || 50,
+                    rhetoricalFeedback: args.rhetoricalFeedback || ""
+                  });
+                  sessionPromise.then(s => s.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "displayed" } } }));
+                }
+                else if (fc.name === 'raiseObjection') {
+                  const args = fc.args as any;
+                  setObjectionAlert({ grounds: args.grounds, explanation: args.explanation });
+                  sessionPromise.then(s => s.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "alert_shown" } } }));
+                }
+              }
+            }
           },
-           onclose: () => {
-             console.log('Live session closed');
-             stopLiveSession();
-           },
-           onerror: (e) => {
-             console.error('Live session error:', e);
-             stopLiveSession();
-           }
+          onclose: () => stopLiveSession(),
+          onerror: () => stopLiveSession()
         }
       });
       sessionRef.current = sessionPromise;
 
     } catch (e) {
-      console.error('Failed to start live session', e);
+      console.error('Failed to start', e);
       setIsConnecting(false);
-      alert(getLiveSessionErrorMessage(e));
+      toast.error('Failed to start session');
     }
   };
 
-  // --- Render Logic ---
-  
   const PHASES = [
-    { id: 'pre-trial-motions', label: 'Pre-Trial Motions', icon: FileText, desc: 'Argue admissibility & procedure' },
-    { id: 'voir-dire', label: 'Voir Dire', icon: Users, desc: 'Jury Selection & Questioning' },
-    { id: 'opening-statement', label: 'Opening Statement', icon: BookOpen, desc: 'Establish your narrative' },
-    { id: 'direct-examination', label: 'Direct Examination', icon: User, desc: 'Question your witness' },
-    { id: 'cross-examination', label: 'Cross Examination', icon: Sword, desc: 'Question hostile witness' },
-    { id: 'defendant-testimony', label: 'Defendant Testimony', icon: Mic, desc: 'Practice on the stand' },
-    { id: 'closing-argument', label: 'Closing Argument', icon: Scale, desc: 'Final persuasion' },
-    { id: 'sentencing', label: 'Sentencing', icon: Gavel, desc: 'Argue for leniency or severity' },
+    { id: 'pre-trial-motions', label: 'Pre-Trial', icon: FileText },
+    { id: 'voir-dire', label: 'Voir Dire', icon: Users },
+    { id: 'opening-statement', label: 'Opening', icon: BookOpen },
+    { id: 'direct-examination', label: 'Direct', icon: User },
+    { id: 'cross-examination', label: 'Cross', icon: Sword },
+    { id: 'defendant-testimony', label: 'Defendant', icon: Mic },
+    { id: 'closing-argument', label: 'Closing', icon: Scale },
+    { id: 'sentencing', label: 'Sentencing', icon: Gavel },
   ];
 
-  const renderSetup = () => (
-    <div className="max-w-5xl mx-auto space-y-8 p-4">
-       <div className="text-center mb-12">
-          <h1 className="text-4xl font-serif font-bold text-white mb-4">Trial Simulator</h1>
-          <p className="text-slate-400 max-w-2xl mx-auto">
-             Immersive, real-time trial preparation. Select a phase and mode to begin your session. 
-             Voice recognition is active for realistic practice.
-          </p>
-       </div>
+  if (!activeCase) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[80vh] text-slate-500 p-4">
+        <AlertCircle size={48} className="mb-4 opacity-50" />
+        <p className="text-lg font-semibold">No Active Case</p>
+        <Link to="/app/cases" className="mt-4 bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg">Select Case</Link>
+      </div>
+    );
+  }
 
-       {/* 1. Select Phase */}
-       <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-gold-500 flex items-center gap-2">
-             <BookOpen size={24} /> Step 1: Select Trial Phase
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-             {PHASES.map((item) => {
-               const Icon = item.icon;
-               return (
-                <button 
-                  key={item.id}
-                  onClick={() => setPhase(item.id as TrialPhase)}
-                  className={`p-6 rounded-xl border text-left transition-all flex flex-col gap-3 ${
-                     phase === item.id 
-                     ? 'bg-gold-600 text-slate-900 border-gold-500 shadow-lg scale-105' 
-                     : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+  // Setup Screen
+  if (simState === 'setup') {
+    return (
+      <div className="min-h-screen pb-20">
+        <div className="sticky top-0 bg-slate-900 z-10 border-b border-slate-800 p-4 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-white">Trial Simulator</h1>
+          <button onClick={() => setSimState('history')} className="flex items-center gap-2 text-gold-500">
+            <Clock size={18} /> History ({savedSessions.length})
+          </button>
+        </div>
+
+        <div className="p-4 space-y-6">
+          <div>
+            <h2 className="text-gold-500 font-semibold mb-3">Select Phase</h2>
+            <div className="grid grid-cols-4 gap-2">
+              {PHASES.map((p) => {
+                const Icon = p.icon;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setPhase(p.id as TrialPhase)}
+                    className={`flex flex-col items-center p-3 rounded-lg transition-all ${
+                      phase === p.id ? 'bg-gold-500 text-slate-900' : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <Icon size={20} />
+                    <span className="text-xs mt-1">{p.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-gold-500 font-semibold mb-3">Select Mode</h2>
+            <div className="space-y-2">
+              {[
+                { id: 'learn', label: 'Learn', desc: 'AI guides you with scripts', icon: GraduationCap, color: 'blue' },
+                { id: 'practice', label: 'Practice', desc: 'Balanced feedback', icon: Mic, color: 'green' },
+                { id: 'trial', label: 'Simulate', desc: 'Aggressive objections', icon: Sword, color: 'red' },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setMode(m.id as SimulationMode)}
+                  className={`w-full p-4 rounded-lg text-left flex items-center gap-4 transition-all ${
+                    mode === m.id ? `bg-${m.color}-600 text-white` : 'bg-slate-800 text-slate-300'
                   }`}
                 >
-                   <div className={`p-3 rounded-full w-fit ${phase === item.id ? 'bg-slate-900/20 text-slate-900' : 'bg-slate-700 text-gold-500'}`}>
-                      <Icon size={24} />
-                   </div>
-                   <div>
-                      <h3 className="font-bold text-lg leading-tight mb-1">{item.label}</h3>
-                      <p className={`text-xs ${phase === item.id ? 'text-slate-800' : 'text-slate-400'}`}>{item.desc}</p>
-                   </div>
+                  <m.icon size={24} />
+                  <div>
+                    <p className="font-semibold">{m.label}</p>
+                    <p className="text-xs opacity-80">{m.desc}</p>
+                  </div>
                 </button>
-               );
-             })}
+              ))}
+            </div>
           </div>
-       </div>
 
-       {/* 2. Select Mode */}
-       <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-gold-500 flex items-center gap-2">
-             <Activity size={24} /> Step 2: Select Intensity
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-             <button 
-               onClick={() => setMode('learn')}
-               className={`p-6 rounded-xl border text-left transition-all ${
-                  mode === 'learn' 
-                  ? 'bg-blue-600 text-white border-blue-500' 
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-               }`}
-             >
-                <div className="flex items-center gap-2 mb-2"><GraduationCap /> <span className="font-bold">Learn</span></div>
-                <p className="text-xs opacity-80">AI provides full scripts, halts for coaching, and is forgiving.</p>
-             </button>
-
-             <button 
-               onClick={() => setMode('practice')}
-               className={`p-6 rounded-xl border text-left transition-all ${
-                  mode === 'practice' 
-                  ? 'bg-green-600 text-white border-green-500' 
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-               }`}
-             >
-                 <div className="flex items-center gap-2 mb-2"><Mic /> <span className="font-bold">Practice</span></div>
-                 <p className="text-xs opacity-80">Balanced. Real-time feedback tips, occasional objections.</p>
-             </button>
-
-             <button 
-               onClick={() => setMode('trial')}
-               className={`p-6 rounded-xl border text-left transition-all ${
-                  mode === 'trial' 
-                  ? 'bg-red-600 text-white border-red-500' 
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-               }`}
-             >
-                 <div className="flex items-center gap-2 mb-2"><Sword /> <span className="font-bold">Simulate</span></div>
-                 <p className="text-xs opacity-80">Real-time. Aggressive objections. No hand-holding. Hard mode.</p>
-             </button>
-          </div>
-       </div>
-
-       {/* Start Button */}
-       <div className="flex justify-center pt-8">
-          <button 
+          <button
             disabled={!phase || !mode}
-            onClick={() => setSimState('active')}
-            className="bg-gradient-to-r from-gold-600 to-gold-500 text-slate-900 font-bold text-xl px-12 py-4 rounded-full disabled:opacity-30 disabled:cursor-not-allowed hover:scale-105 transition-transform shadow-xl"
+            onClick={() => { setMessages([]); setCoachingTip(null); setSimState('active'); }}
+            className="w-full bg-gold-500 disabled:bg-slate-700 text-slate-900 font-bold py-4 rounded-xl text-lg"
           >
-             Enter Courtroom
+            Start Session
           </button>
-       </div>
-    </div>
-  );
+        </div>
+      </div>
+    );
+  }
 
-  const renderActiveSim = () => (
-    <div className="h-[calc(100vh-8rem)] flex gap-6 relative">
-       
-       {/* Objection Overlay */}
-       {objectionAlert && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
-             <div className="bg-red-600/90 backdrop-blur-md p-10 rounded-2xl border-4 border-white shadow-2xl animate-bounce-in text-center max-w-2xl">
-                <div className="text-6xl font-black text-white tracking-tighter mb-2 font-serif">OBJECTION!</div>
-                <div className="text-2xl font-bold text-red-100 uppercase mb-4">{objectionAlert.grounds}</div>
-                <div className="text-lg text-white bg-black/20 p-4 rounded-lg">{objectionAlert.explanation}</div>
-             </div>
-          </div>
-       )}
+  // History Screen
+  if (simState === 'history') {
+    return (
+      <div className="min-h-screen pb-20">
+        <div className="sticky top-0 bg-slate-900 z-10 border-b border-slate-800 p-4 flex items-center gap-4">
+          <button onClick={() => setSimState('setup')} className="text-slate-400">
+            <ArrowLeft size={24} />
+          </button>
+          <h1 className="text-xl font-bold text-white">Session History</h1>
+        </div>
 
-       {/* Left: Simulation Context & Visuals */}
-       <div className="flex-1 flex flex-col bg-slate-900 border border-slate-700 rounded-xl overflow-hidden relative shadow-2xl">
-          
-          {/* Header */}
-          <div className="h-16 bg-slate-800 border-b border-slate-700 flex items-center px-6 justify-between">
-             <div className="flex items-center gap-4">
-                <button onClick={() => { stopLiveSession(); setSimState('setup'); }} className="text-slate-400 hover:text-white">
-                   <ArrowLeft size={24} />
-                </button>
-                <div>
-                   <h2 className="text-white font-bold text-lg capitalize">{phase?.replace('-', ' ')}</h2>
-                   <p className="text-xs text-slate-400 uppercase tracking-wider">Mode: {mode}</p>
+        <div className="p-4">
+          {savedSessions.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              <Clock size={48} className="mx-auto mb-4 opacity-50" />
+              <p>No recorded sessions yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {savedSessions.map((session) => (
+                <div key={session.id} className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold text-white capitalize">{session.phase.replace('-', ' ')}</p>
+                      <p className="text-xs text-slate-400">
+                        {new Date(session.date).toLocaleDateString()} • {Math.floor(session.duration / 60)}m {session.duration % 60}s
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">{session.mode} mode • Score: {session.score}%</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => playSession(session)} className="p-2 bg-gold-500 text-slate-900 rounded-lg">
+                        {playingSession === session.id ? <Pause size={18} /> : <Play size={18} />}
+                      </button>
+                      <button onClick={() => deleteSession(session.id)} className="p-2 bg-slate-700 text-slate-400 rounded-lg">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                  {session.transcript && (
+                    <div className="mt-3 pt-3 border-t border-slate-700">
+                      <p className="text-xs text-slate-400 line-clamp-3">{session.transcript}</p>
+                    </div>
+                  )}
                 </div>
-             </div>
-             <div className="flex items-center gap-3">
-                {isLive && (
-                   <div className="flex items-center gap-2 px-3 py-1 bg-red-900/50 border border-red-500/50 rounded-full animate-pulse">
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                      <span className="text-xs text-red-200 font-bold">ON AIR</span>
-                   </div>
-                )}
-             </div>
-          </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
-          {/* Main Visual Area */}
-          <div className="flex-1 bg-gradient-to-b from-slate-900 to-slate-850 flex flex-col items-center justify-center relative p-8">
-             
-             {/* Opponent Avatar */}
-             <div className={`w-48 h-48 rounded-full flex items-center justify-center mb-8 relative transition-all duration-300 ${isLive && liveVolume > 5 ? 'scale-105 border-4 border-red-500' : 'border-4 border-slate-700'}`}>
-                <img 
-                  src={phase === 'defendant-testimony' ? 'https://picsum.photos/id/1005/200/200' : 'https://picsum.photos/id/1025/200/200'} 
-                  alt="Opponent" 
-                  className="w-full h-full rounded-full object-cover opacity-80"
+  // Active Session Screen
+  return (
+    <div className="min-h-screen flex flex-col">
+      {/* Objection Overlay */}
+      {objectionAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="bg-red-600 p-6 rounded-2xl text-center max-w-sm w-full animate-pulse">
+            <div className="text-4xl font-black text-white mb-2">OBJECTION!</div>
+            <div className="text-xl text-red-100 font-bold">{objectionAlert.grounds}</div>
+            <div className="text-sm text-white/80 mt-2">{objectionAlert.explanation}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="bg-slate-800 border-b border-slate-700 p-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => { stopLiveSession(); setSimState('setup'); }} className="text-slate-400">
+            <ArrowLeft size={24} />
+          </button>
+          <div>
+            <p className="font-bold text-white text-sm capitalize">{phase?.replace('-', ' ')}</p>
+            <p className="text-xs text-slate-400">{mode} mode</p>
+          </div>
+        </div>
+        {isLive && (
+          <div className="flex items-center gap-2 px-3 py-1 bg-red-900/50 rounded-full">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            <span className="text-xs text-red-300 font-bold">REC</span>
+          </div>
+        )}
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Visual Center */}
+        <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-900">
+          <div className={`w-32 h-32 rounded-full border-4 transition-all ${isLive && liveVolume > 5 ? 'border-red-500 scale-105' : 'border-slate-700'}`}>
+            <img 
+              src={phase === 'defendant-testimony' ? 'https://picsum.photos/id/1005/200/200' : 'https://picsum.photos/id/1025/200/200'} 
+              alt="Opponent" 
+              className="w-full h-full rounded-full object-cover opacity-80"
+            />
+          </div>
+          <p className="mt-4 text-white font-semibold text-center">
+            {phase === 'defendant-testimony' ? 'Prosecutor' : 'Opposing Counsel'}
+          </p>
+          <p className="text-slate-400 text-sm">{isConnecting ? 'Connecting...' : isLive ? 'Listening...' : 'Ready'}</p>
+
+          {/* Volume Meter */}
+          {isLive && (
+            <div className="w-full max-w-xs mt-4">
+              <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gold-500 transition-all"
+                  style={{ width: `${Math.min(100, liveVolume * 2)}%` }}
                 />
-                {/* Audio Viz Ring */}
-                {isLive && (
-                   <div className="absolute inset-0 rounded-full border-2 border-red-500 animate-ping opacity-20"></div>
-                )}
-             </div>
+              </div>
+            </div>
+          )}
+        </div>
 
-             {/* Status / Turn Indicator */}
-             <div className="text-center space-y-2">
-                <h3 className="text-2xl font-serif font-bold text-white">
-                   {phase === 'defendant-testimony' ? 'Prosecutor ' + opponentName : 'Opposing Counsel ' + opponentName}
-                </h3>
-                <p className="text-slate-400 italic">
-                   {isConnecting ? "Connecting to courtroom..." : isLive ? "Listening..." : "Session Paused"}
-                </p>
-             </div>
-
-             {/* Live Transcript Overlay (Recent) */}
-             <div className="absolute bottom-8 left-8 right-8 h-32 overflow-hidden pointer-events-none">
-                <div className="flex flex-col justify-end h-full gap-2 mask-gradient-to-t">
-                   {messages.slice(-2).map(m => (
-                      <div key={m.id} className={`p-3 rounded-lg backdrop-blur-md border max-w-[80%] ${m.sender === 'user' ? 'ml-auto bg-blue-900/40 border-blue-500/30 text-right' : 'mr-auto bg-red-900/40 border-red-500/30'}`}>
-                         <span className="text-xs opacity-50 block mb-1 uppercase">{m.sender === 'user' ? 'You' : 'Opponent'}</span>
-                         <span className="text-white text-sm font-medium">{m.text}</span>
-                      </div>
-                   ))}
-                </div>
-             </div>
+        {/* Recent Messages */}
+        <div className="h-24 px-4 overflow-hidden">
+          <div className="flex flex-col gap-1">
+            {messages.slice(-2).map(m => (
+              <div key={m.id} className={`text-xs p-2 rounded-lg max-w-[80%] ${m.sender === 'user' ? 'self-end bg-blue-900/50 text-blue-200' : 'self-start bg-slate-800 text-slate-300'}`}>
+                <span className="opacity-50 mr-1">{m.sender === 'user' ? 'You:' : 'Opp:'}</span>
+                {m.text.slice(0, 80)}...
+              </div>
+            ))}
           </div>
+        </div>
 
-          {/* Controls */}
-          <div className="h-24 bg-slate-800 border-t border-slate-700 flex items-center justify-center gap-8">
-             {!isLive ? (
-                <button 
-                  onClick={startLiveSession}
-                  disabled={isConnecting}
-                  className="flex flex-col items-center gap-1 group"
-                >
-                   <div className="w-14 h-14 rounded-full bg-gold-600 hover:bg-gold-500 flex items-center justify-center text-slate-900 transition-transform group-hover:scale-110 shadow-lg">
-                      {isConnecting ? <Activity className="animate-spin" /> : <Mic size={28} />}
-                   </div>
-                   <span className="text-xs text-gold-500 font-bold uppercase">{isConnecting ? 'Connecting' : 'Start'}</span>
-                </button>
-              ) : (
-                 <button 
-                   onClick={handleStopClick}
-                   className="flex flex-col items-center gap-1 group"
-                 >
-                   <div className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white transition-transform group-hover:scale-110 shadow-lg animate-pulse">
-                      <MicOff size={28} />
-                   </div>
-                   <span className="text-xs text-red-500 font-bold uppercase">Stop</span>
-                </button>
-             )}
+        {/* Coaching Toggle */}
+        {coachingTip && (
+          <button 
+            onClick={() => setShowCoaching(!showCoaching)} 
+            className="mx-4 mb-2 p-3 bg-blue-900/30 border border-blue-700 rounded-lg flex items-center justify-between"
+          >
+            <span className="text-blue-400 text-sm font-medium">View Coaching Tip</span>
+            <ChevronDown size={18} className={`text-blue-400 transition-transform ${showCoaching ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+
+        {showCoaching && coachingTip && (
+          <div className="mx-4 mb-2 p-4 bg-slate-800 rounded-lg space-y-2">
+            <p className="text-sm text-white"><strong>Critique:</strong> {coachingTip.critique}</p>
+            <p className="text-sm text-gold-400"><strong>Tip:</strong> {coachingTip.suggestion}</p>
+            {coachingTip.teleprompterScript && (
+              <p className="text-xs text-slate-400 mt-2 p-2 bg-slate-900 rounded">{coachingTip.teleprompterScript}</p>
+            )}
           </div>
-       </div>
+        )}
+      </div>
 
-       {/* Right: Coaching & Teleprompter */}
-       <div className="w-96 flex flex-col gap-4">
-          {/* Teleprompter / Script */}
-          <div className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-6 overflow-y-auto">
-             <h3 className="text-gold-500 font-bold uppercase text-sm flex items-center gap-2 mb-4 border-b border-slate-800 pb-2">
-                <FileText size={16} /> 
-                {mode === 'learn' ? 'AI Script Generator' : 'Reference Notes'}
-             </h3>
-             
-             {coachingTip?.teleprompterScript ? (
-                <div className="prose prose-invert prose-sm">
-                   <div className="whitespace-pre-wrap text-slate-300 font-medium leading-relaxed">
-                      {coachingTip.teleprompterScript}
-                   </div>
-                </div>
-             ) : (
-                <div className="text-slate-500 text-sm italic text-center mt-10">
-                   Waiting for AI to generate script based on context...
-                   <br/>
-                   Start speaking to trigger suggestions.
-                </div>
-             )}
-          </div>
-
-          {/* Coaching Feedback */}
-          <div className="h-1/2 bg-slate-800 border border-slate-700 rounded-xl p-6 overflow-y-auto">
-             <h3 className="text-blue-400 font-bold uppercase text-sm flex items-center gap-2 mb-4 border-b border-slate-700 pb-2">
-                <Lightbulb size={16} /> Real-time Coaching
-             </h3>
-
-             {coachingTip ? (
-                <div className="space-y-4 animate-fadeIn">
-                   <div>
-                      <label className="text-xs text-slate-500 uppercase font-bold">Critique</label>
-                      <p className="text-sm text-white">{coachingTip.critique}</p>
-                   </div>
-                   <div>
-                      <label className="text-xs text-slate-500 uppercase font-bold">Next Step</label>
-                      <p className="text-sm text-gold-400 font-medium">{coachingTip.suggestion}</p>
-                   </div>
-                   {coachingTip.fallaciesIdentified?.length > 0 && (
-                      <div className="bg-red-900/30 p-3 rounded border border-red-500/30">
-                         <span className="text-red-400 text-xs font-bold flex items-center gap-1 mb-1"><AlertTriangle size={12}/> Fallacy Detected</span>
-                         <ul className="list-disc list-inside text-xs text-red-200">
-                            {coachingTip.fallaciesIdentified.map((f, i) => <li key={i}>{f}</li>)}
-                         </ul>
-                      </div>
-                   )}
-                </div>
-             ) : (
-                <div className="text-slate-500 text-sm text-center mt-4">
-                   Live feedback will appear here.
-                </div>
-             )}
-          </div>
-       </div>
+      {/* Control Bar */}
+      <div className="sticky bottom-0 bg-slate-800 border-t border-slate-700 p-4">
+        <div className="flex items-center justify-center gap-6">
+          {!isLive ? (
+            <button onClick={startLiveSession} disabled={isConnecting} className="flex flex-col items-center">
+              <div className="w-20 h-20 rounded-full bg-gold-500 flex items-center justify-center text-slate-900 shadow-lg">
+                {isConnecting ? <Activity className="animate-spin" size={32} /> : <Mic size={32} />}
+              </div>
+              <span className="text-xs text-gold-500 mt-2 font-bold">{isConnecting ? 'Connecting' : 'Start'}</span>
+            </button>
+          ) : (
+            <button onClick={() => stopLiveSession()} className="flex flex-col items-center">
+              <div className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center text-white shadow-lg animate-pulse">
+                <MicOff size={32} />
+              </div>
+              <span className="text-xs text-red-500 mt-2 font-bold">Stop & Save</span>
+            </button>
+          )}
+        </div>
+      </div>
     </div>
-  );
-
-  return activeCase ? (simState === 'setup' ? renderSetup() : renderActiveSim()) : (
-     <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-slate-500">
-        <AlertCircle size={48} className="mb-4 opacity-50" />
-        <p className="text-lg font-semibold">No Active Case Selected</p>
-        <p className="text-sm mt-2 max-w-md text-center leading-relaxed mb-6">
-           Please select a case in "Case Files". You can create a new real-life case or load a mock scenario from our library.
-        </p>
-        <Link to="/app/cases" className="bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors">
-           Go to Case Files
-        </Link>
-     </div>
   );
 };
 

@@ -3,7 +3,7 @@ import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import { Case, CaseStatus, CaseTask, DocumentType, EvidenceItem, PriorityLevel, TaskStatus } from '../types';
 import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag, ListChecks, File, Loader2 } from 'lucide-react';
-import { analyzeDocument, fileToGenerativePart } from '../services/geminiService';
+import { analyzeDocument, fileToGenerativePart, analyzePDFDocument, batchAnalyzeDocuments } from '../services/geminiService';
 import { MOCK_CASE_TEMPLATES } from '../constants';
 import { handleError, handleSuccess, getErrorMessage } from '../utils/errorHandler';
 import { validateFile } from '../utils/fileValidation';
@@ -81,9 +81,18 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
       const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       
       if (isPDF) {
-        handleSuccess('Processing PDF with OCR...');
-        const filePart = await fileToGenerativePart(file);
-        result = await analyzeDocument("Extract and analyze all text from this PDF document. Identify key legal entities, risks, dates, and provide a comprehensive summary.", filePart);
+        handleSuccess('Processing PDF with OCR... This may take a moment for large documents.');
+        result = await analyzePDFDocument(file);
+        result = {
+          summary: result.summary,
+          entities: result.entities,
+          risks: result.risks,
+          documentType: 'PDF Document',
+          keyDates: result.keyDates,
+          monetaryAmounts: result.monetaryAmounts,
+          extractedText: result.text,
+          pageCount: result.pageCount
+        };
       } else {
         const imagePart = await fileToGenerativePart(file);
         result = await analyzeDocument("Analyze this image document. Extract all text, identify key information, and provide a comprehensive analysis.", imagePart);
@@ -138,8 +147,7 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
       try {
         let result;
         if (isPDF) {
-          const filePart = await fileToGenerativePart(file);
-          result = await analyzeDocument("Extract and analyze all text from this PDF document.", filePart);
+          result = await analyzePDFDocument(file);
         } else {
           const imagePart = await fileToGenerativePart(file);
           result = await analyzeDocument("Analyze this image document.", imagePart);
@@ -148,6 +156,28 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
         const evidence: EvidenceItem = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           caseId: activeCase.id,
+          title: file.name,
+          type: DocumentType.EVIDENCE,
+          source: 'file',
+          summary: result.summary || result.text?.slice(0, 500) || 'No summary available',
+          keyEntities: result.entities || [],
+          risks: result.risks || [],
+          addedAt: new Date().toISOString(),
+          fileName: file.name,
+          notes: isPDF ? `PDF - ${result.pageCount || '?'} pages. Key dates: ${(result.keyDates || []).join(', ')}` : undefined,
+        };
+
+        await addEvidence(activeCase.id, evidence);
+        handleSuccess(`Analyzed and saved: ${file.name}`);
+      } catch (err) {
+        handleError(err, `Failed to process ${file.name}`, 'CaseManager');
+      }
+    }
+
+    setBatchUploadProgress(null);
+    setAnalyzing(false);
+    e.target.value = '';
+  };
           title: file.name,
           type: DocumentType.EVIDENCE,
           source: 'file',
