@@ -1,96 +1,145 @@
-import { GoogleGenAI, Type } from "@google/genai";
+/**
+ * OCR Service using Tesseract.js and PDF.js
+ * Client-side OCR with no rate limits or file size restrictions
+ */
+
+import Tesseract from 'tesseract.js';
+import * as pdfjsLib from 'pdfjs-dist';
 import { OCRResult, OCRBoundingBox } from "../types";
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+// Set up PDF.js worker - use CDN for browser
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+// Track Tesseract worker for reuse
+let tesseractWorker: Tesseract.Worker | null = null;
 
 /**
- * Convert file to base64 for Gemini API
+ * Get or create a Tesseract worker
  */
-const fileToBase64 = async (file: File): Promise<{ data: string; mimeType: string }> => {
+const getTesseractWorker = async (): Promise<Tesseract.Worker> => {
+  if (!tesseractWorker) {
+    tesseractWorker = await Tesseract.createWorker('eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
+        }
+      }
+    });
+  }
+  return tesseractWorker;
+};
+
+/**
+ * Convert a file to an ArrayBuffer
+ */
+const fileToArrayBuffer = (file: File): Promise<ArrayBuffer> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64data = reader.result as string;
-      const base64Content = base64data.split(',')[1];
-      resolve({
-        data: base64Content,
-        mimeType: file.type || 'application/octet-stream'
-      });
-    };
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
     reader.onerror = reject;
-    reader.readAsDataURL(file);
+    reader.readAsArrayBuffer(file);
   });
 };
 
 /**
- * Perform OCR on an image or PDF using Gemini Vision
+ * Convert a canvas to a Blob
  */
-export const performOCR = async (file: File): Promise<OCRResult> => {
+const canvasToBlob = (canvas: HTMLCanvasElement): Promise<Blob> => {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob!), 'image/png');
+  });
+};
+
+/**
+ * Render a PDF page to a canvas
+ */
+const renderPageToCanvas = async (
+  page: pdfjsLib.PDFPageProxy,
+  scale: number = 2.0
+): Promise<HTMLCanvasElement> => {
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  
+  const context = canvas.getContext('2d')!;
+  await page.render({
+    canvasContext: context,
+    viewport
+  }).promise;
+  
+  return canvas;
+};
+
+/**
+ * Perform OCR on an image using Tesseract.js
+ */
+const ocrImage = async (
+  image: Blob | HTMLCanvasElement | string,
+  onProgress?: (progress: number) => void
+): Promise<{ text: string; confidence: number }> => {
+  const worker = await getTesseractWorker();
+  
+  const result = await worker.recognize(
+    image,
+    {},
+    {
+      text: true,
+      blocks: true,
+      hocr: false,
+      tsv: false
+    }
+  );
+  
+  const confidence = result.data.confidence || 0;
+  const text = result.data.text || '';
+  
+  return { text, confidence };
+};
+
+/**
+ * Extract text from a PDF using PDF.js (for text-based PDFs)
+ */
+const extractPdfText = async (pdf: pdfjsLib.PDFDocument): Promise<string[]> => {
+  const pages: string[] = [];
+  
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item: any) => item.str)
+      .join(' ');
+    pages.push(pageText);
+  }
+  
+  return pages;
+};
+
+/**
+ * Perform OCR on a single image file
+ */
+export const performOCR = async (
+  file: File,
+  onProgress?: (progress: number, status: string) => void
+): Promise<OCRResult> => {
   const startTime = Date.now();
   
   try {
-    const { data, mimeType } = await fileToBase64(file);
+    onProgress?.(0, 'Initializing OCR engine...');
     
-    const prompt = `You are an expert OCR system specializing in legal document analysis.
-    
-    Extract ALL text from this document with high accuracy.
-    
-    For legal documents, pay special attention to:
-    - Case numbers and citations
-    - Dates and timestamps
-    - Names (parties, attorneys, judges, witnesses)
-    - Legal citations (e.g., "U.S. v. Smith, 123 F.3d 456 (5th Cir. 2023)")
-    - Exhibit numbers and labels
-    - Signatures and notarization stamps
-    - Handwritten annotations (transcribe as [HANDWRITTEN: text])
-    
-    Return the extracted text in a clean, readable format.
-    Preserve document structure (headings, paragraphs, lists).
-    If text is illegible, mark as [ILLEGIBLE].
-    If this appears to be a multi-page document, indicate page breaks with [PAGE BREAK].
-    
-    Return JSON with:
-    - "text": the full extracted text
-    - "confidence": overall confidence score 0-100
-    - "detectedLanguage": the primary language detected
-    - "wordCount": approximate word count`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          parts: [
-            { inlineData: { data, mimeType } },
-            { text: prompt }
-          ]
-        }
-      ],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            text: { type: Type.STRING },
-            confidence: { type: Type.NUMBER },
-            detectedLanguage: { type: Type.STRING },
-            wordCount: { type: Type.NUMBER }
-          },
-          required: ["text", "confidence", "wordCount"]
-        }
-      }
+    const { text, confidence } = await ocrImage(file, (p) => {
+      onProgress?.(p * 100, 'Recognizing text...');
     });
-
-    const result = JSON.parse(response.text || '{}');
+    
+    const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
     
     return {
-      text: result.text || '',
-      confidence: result.confidence || 75,
-      detectedLanguage: result.detectedLanguage || 'en',
-      wordCount: result.wordCount || 0,
+      text,
+      confidence: Math.round(confidence),
+      wordCount,
+      detectedLanguage: 'en',
       processingTime: Date.now() - startTime
     };
-
   } catch (error) {
     console.error('OCR Error:', error);
     throw new Error(`OCR failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -98,30 +147,107 @@ export const performOCR = async (file: File): Promise<OCRResult> => {
 };
 
 /**
- * Perform OCR on multiple pages of a PDF
- * Note: For production, use pdf.js to split PDF into pages first
+ * Perform OCR on a PDF document
+ * Uses PDF.js to extract text layer first, then OCR for scanned pages
  */
-export const performMultiPageOCR = async (file: File): Promise<OCRResult> => {
+export const performPdfOCR = async (
+  file: File,
+  onProgress?: (progress: number, status: string) => void
+): Promise<OCRResult> => {
   const startTime = Date.now();
   
   try {
-    // For now, treat the entire PDF as one document
-    // In production, you would use pdf.js to split into individual pages
-    const result = await performOCR(file);
+    onProgress?.(0, 'Loading PDF...');
+    
+    const arrayBuffer = await fileToArrayBuffer(file);
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const totalPages = pdf.numPages;
+    
+    onProgress?.(5, `Processing ${totalPages} pages...`);
+    
+    // Try to extract text layer first
+    const textPages = await extractPdfText(pdf);
+    
+    // Check if PDF has meaningful text content (not just scanned images)
+    const totalTextLength = textPages.reduce((sum, p) => sum + p.length, 0);
+    const needsOCR = totalTextLength < totalPages * 100; // Less than ~100 chars per page suggests scanned PDF
+    
+    let allPages: string[] = [];
+    let totalConfidence = 0;
+    
+    if (!needsOCR) {
+      // PDF has text layer - use extracted text
+      onProgress?.(50, 'Text layer extracted successfully');
+      allPages = textPages;
+      totalConfidence = 95; // High confidence for native PDF text
+    } else {
+      // PDF is scanned - perform OCR on each page
+      onProgress?.(10, 'Detected scanned PDF - performing OCR...');
+      
+      for (let i = 1; i <= totalPages; i++) {
+        const progress = 10 + (i / totalPages) * 80;
+        onProgress?.(Math.round(progress), `Processing page ${i} of ${totalPages}...`);
+        
+        const page = await pdf.getPage(i);
+        const canvas = await renderPageToCanvas(page, 2.0); // 2x scale for better OCR
+        const blob = await canvasToBlob(canvas);
+        
+        const { text, confidence } = await ocrImage(blob);
+        allPages.push(text);
+        totalConfidence += confidence;
+      }
+      
+      totalConfidence = totalConfidence / totalPages;
+    }
+    
+    onProgress?.(95, 'Finalizing...');
+    
+    const fullText = allPages.join('\n\n--- PAGE BREAK ---\n\n');
+    const wordCount = fullText.trim().split(/\s+/).filter(Boolean).length;
     
     return {
-      ...result,
-      pages: [result.text], // Single page for now
+      text: fullText,
+      confidence: Math.round(totalConfidence),
+      pages: allPages,
+      wordCount,
+      detectedLanguage: 'en',
       processingTime: Date.now() - startTime
     };
   } catch (error) {
-    console.error('Multi-page OCR Error:', error);
-    throw error;
+    console.error('PDF OCR Error:', error);
+    throw new Error(`PDF OCR failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 
 /**
- * Extract specific fields from a legal document
+ * Perform OCR on multiple pages of a PDF (alias for performPdfOCR)
+ */
+export const performMultiPageOCR = async (
+  file: File,
+  onProgress?: (progress: number, status: string) => void
+): Promise<OCRResult> => {
+  return performPdfOCR(file, onProgress);
+};
+
+/**
+ * Perform OCR on any supported document type
+ */
+export const performDocumentOCR = async (
+  file: File,
+  onProgress?: (progress: number, status: string) => void
+): Promise<OCRResult> => {
+  const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  
+  if (isPDF) {
+    return performPdfOCR(file, onProgress);
+  } else {
+    return performOCR(file, onProgress);
+  }
+};
+
+/**
+ * Extract specific fields from a legal document (returns raw OCR text)
+ * Note: Field parsing should be done by Gemini with the extracted text
  */
 export const extractLegalDocumentFields = async (file: File): Promise<{
   caseNumber?: string;
@@ -132,54 +258,15 @@ export const extractLegalDocumentFields = async (file: File): Promise<{
   judge?: string;
   date?: string;
   documentType?: string;
+  rawText?: string;
 }> => {
   try {
-    const { data, mimeType } = await fileToBase64(file);
+    const result = await performDocumentOCR(file);
     
-    const prompt = `Extract key legal metadata from this document.
-    
-    Identify:
-    - Case number (e.g., "No. 3:23-cv-00123")
-    - Case name (e.g., "Smith v. Jones")
-    - Court name
-    - Party names (plaintiffs and defendants)
-    - Attorney names
-    - Judge name
-    - Document date
-    - Document type (motion, brief, contract, etc.)
-    
-    Return as JSON with these fields. Use null for fields not found.`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          parts: [
-            { inlineData: { data, mimeType } },
-            { text: prompt }
-          ]
-        }
-      ],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            caseNumber: { type: Type.STRING, nullable: true },
-            caseName: { type: Type.STRING, nullable: true },
-            court: { type: Type.STRING, nullable: true },
-            parties: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-            attorneys: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-            judge: { type: Type.STRING, nullable: true },
-            date: { type: Type.STRING, nullable: true },
-            documentType: { type: Type.STRING, nullable: true }
-          }
-        }
-      }
-    });
-
-    return JSON.parse(response.text || '{}');
-
+    // Return raw text - parsing will be done by Gemini
+    return {
+      rawText: result.text
+    };
   } catch (error) {
     console.error('Field extraction error:', error);
     return {};
@@ -204,30 +291,4 @@ export const isValidOCRFile = (file: File): { valid: boolean; error?: string } =
   
   const validExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif', 'bmp', 'webp', 'gif'];
   
-  const extension = file.name.split('.').pop()?.toLowerCase();
-  
-  if (!validTypes.includes(file.type) && (!extension || !validExtensions.includes(extension))) {
-    return { 
-      valid: false, 
-      error: 'Invalid file type. Supported formats: PDF, PNG, JPG, TIFF, BMP, WebP, GIF' 
-    };
-  }
-  
-  // Max 50MB for documents
-  const maxSize = 50 * 1024 * 1024;
-  if (file.size > maxSize) {
-    return { 
-      valid: false, 
-      error: `File size exceeds 50MB limit. Current size: ${(file.size / (1024 * 1024)).toFixed(1)}MB` 
-    };
-  }
-  
-  return { valid: true };
-};
-
-export default {
-  performOCR,
-  performMultiPageOCR,
-  extractLegalDocumentFields,
-  isValidOCRFile
-};
+  const extension = file.n
