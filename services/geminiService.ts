@@ -411,3 +411,41 @@ Case Context: ${caseContext}
 
 CRITICAL: Use 'sendCoachingTip' for feedback and 'raiseObjection' to flash objections on screen.`;
 };
+
+export const generateTranscriptSummary = async (transcript: string): Promise<string> => {
+  return queueRequest(async () => {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Summarize the following transcript concisely. Focus on key points, decisions made, and any action items. Keep the summary brief but comprehensive.
+
+Transcript:
+${transcript.substring(0, 30000)}
+
+Provide a clear, well-structured summary in 2-4 paragraphs.`,
+      config: {
+        temperature: 0.3,
+      }
+    });
+
+    return response.text || 'Unable to generate summary.';
+  });
+};
+
+export const translateTranscript = async (transcript: string, targetLanguage: string): Promise<string> => {
+  return queueRequest(async () => {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Translate the following transcript to ${targetLanguage}. Preserve the speaker labels and formatting. Maintain the same level of formality and tone.
+
+Transcript:
+${transcript.substring(0, 30000)}
+
+Provide the translation with the same structure as the original.`,
+      config: {
+        temperature: 0.3,
+      }
+    });
+
+    return response.text || 'Unable to translate transcript.';
+  });
+};
