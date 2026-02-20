@@ -485,7 +485,8 @@ const TrialSim = () => {
         }
       };
 
-      const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary, simulatorSettings, evidenceData);
+      // Simple system instruction for testing
+      const systemInstruction = `You are a courtroom opponent. Respond to the attorney speaking to you. Keep responses brief.`;
 
       // For now, always use AUDIO only - the native audio model works best this way
       // ElevenLabs can use the output transcription
@@ -502,7 +503,6 @@ const TrialSim = () => {
             languageCode: 'en-US',
           },
           systemInstruction,
-          tools: [{ functionDeclarations: [coachingTool, objectionTool] }],
         },
         callbacks: {
           onopen: () => {
