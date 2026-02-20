@@ -421,17 +421,24 @@ const TrialSim = () => {
       // Initialize ElevenLabs if enabled
       if (shouldUseElevenLabs) {
         const voiceId = ELEVENLABS_VOICES[voiceConfig.voiceName as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
-        console.log('[TrialSim] Initializing ElevenLabs with voice:', voiceId);
+        console.log('[TrialSim] Initializing ElevenLabs with voice:', voiceId, 'voiceName:', voiceConfig.voiceName);
         
-        elevenLabsRef.current = new ElevenLabsStreamer({
-          voiceId,
-          stability: 0.5,
-          similarityBoost: 0.75,
-        });
-        
-        await elevenLabsRef.current.initAudio(24000);
-        await elevenLabsRef.current.connect();
-        console.log('[TrialSim] ElevenLabs connected');
+        try {
+          elevenLabsRef.current = new ElevenLabsStreamer({
+            voiceId,
+            stability: 0.5,
+            similarityBoost: 0.75,
+          });
+          
+          console.log('[TrialSim] ElevenLabs streamer created, initializing audio...');
+          await elevenLabsRef.current.initAudio(24000);
+          console.log('[TrialSim] Audio context initialized, connecting WebSocket...');
+          await elevenLabsRef.current.connect();
+          console.log('[TrialSim] ElevenLabs connected successfully');
+        } catch (elevenLabsError) {
+          console.error('[TrialSim] ElevenLabs initialization failed:', elevenLabsError);
+          toast.error(`Voice synthesis failed: ${elevenLabsError instanceof Error ? elevenLabsError.message : 'Unknown error'}`);
+        }
       }
 
       // Initialize Web Speech API for speech recognition
@@ -495,20 +502,25 @@ const TrialSim = () => {
             
             let fullResponse = '';
             
+            console.log('[TrialSim] Streaming OpenAI response...');
             // Stream response from OpenAI
             for await (const chunk of streamOpenAIResponse(systemPrompt, finalTranscript, [])) {
               fullResponse += chunk;
               
               // Send to ElevenLabs as we receive it
               if (shouldUseElevenLabs && elevenLabsRef.current) {
+                console.log('[TrialSim] Sending chunk to ElevenLabs:', chunk.substring(0, 30) + '...');
                 elevenLabsRef.current.sendText(chunk);
+              } else {
+                console.warn('[TrialSim] ElevenLabs not available for TTS. shouldUseElevenLabs:', shouldUseElevenLabs, 'ref:', !!elevenLabsRef.current);
               }
             }
 
-            console.log('[TrialSim] AI response:', fullResponse);
+            console.log('[TrialSim] AI response complete:', fullResponse.substring(0, 100) + '...');
 
             // Flush ElevenLabs and add message to chat
             if (shouldUseElevenLabs && elevenLabsRef.current) {
+              console.log('[TrialSim] Flushing ElevenLabs stream...');
               elevenLabsRef.current.flush();
             }
 
