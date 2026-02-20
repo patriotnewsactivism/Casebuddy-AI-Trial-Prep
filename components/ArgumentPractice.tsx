@@ -2,19 +2,18 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 import { MOCK_OPPONENT } from '../constants';
 import { AVAILABLE_VOICES, VOICE_PROFILES, VOICE_DESCRIPTIONS, DEFAULT_VOICE_BY_PHASE } from '../constants/voiceConstants';
-import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession, VoiceConfig, SimulatorSettings } from '../types';
-import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link, Settings, Volume2, ChevronUp } from 'lucide-react';
+import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession, VoiceConfig, SimulatorSettings, TrialSessionMetrics } from '../types';
+import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link, Settings, Volume2, ChevronUp, FolderOpen, X } from 'lucide-react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { getTrialSimSystemInstruction } from '../services/geminiService';
-  import { toast } from 'react-toastify';
-  
-  interface EvidenceDataForSim {
-    summary: string;
-    entities: string[];
-    keyDates: string[];
-  }
+import { toast } from 'react-toastify';
 
-// Type for Google GenAI SDK media blob
+interface EvidenceDataForSim {
+  summary: string;
+  entities: string[];
+  keyDates: string[];
+}
+
 interface GenAIBlob {
   data: string;
   mimeType: string;
@@ -93,6 +92,11 @@ const TrialSim = () => {
     audioQuality: 'high',
   });
   const [evidenceData, setEvidenceData] = useState<EvidenceDataForSim[]>([]);
+  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
+  const [objectionCount, setObjectionCount] = useState(0);
+  const [sessionScore, setSessionScore] = useState(50);
+  const [avgRhetoricalScore, setAvgRhetoricalScore] = useState(50);
+  const [rhetoricalScores, setRhetoricalScores] = useState<number[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<any>(null);
@@ -110,6 +114,15 @@ const TrialSim = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const maxReconnectAttempts = 3;
+  const metricsRef = useRef<TrialSessionMetrics>({
+    objectionsReceived: 0,
+    fallaciesCommitted: 0,
+    avgRhetoricalScore: 50,
+    wordCount: 0,
+    fillerWordsCount: 0,
+  });
 
   useEffect(() => {
     if (activeCase) {
@@ -131,78 +144,35 @@ const TrialSim = () => {
 
   useEffect(() => {
     if (objectionAlert) {
-      const timer = setTimeout(() => setObjectionAlert(null), 5000);
-      return () => clearTimeout(timer);
+      setObjectionCount(prev => {
+        const newCount = prev + 1;
+        metricsRef.current.objectionsReceived = newCount;
+        return newCount;
+      });
     }
   }, [objectionAlert]);
 
   useEffect(() => {
-    if (phase && DEFAULT_VOICE_BY_PHASE[phase]) {
-      setVoiceConfig(prev => ({ ...prev, voiceName: DEFAULT_VOICE_BY_PHASE[phase]! }));
-      setSimulatorSettings(prev => ({
-        ...prev,
-        voice: { ...prev.voice, voiceName: DEFAULT_VOICE_BY_PHASE[phase]! }
-      }));
+    if (coachingTip) {
+      const score = coachingTip.rhetoricalEffectiveness || 50;
+      setRhetoricalScores(prev => {
+        const updated = [...prev, score];
+        const avg = Math.round(updated.reduce((a, b) => a + b, 0) / updated.length);
+        setAvgRhetoricalScore(avg);
+        metricsRef.current.avgRhetoricalScore = avg;
+        return updated;
+      });
+      setSessionScore(score);
+      
+      if (coachingTip.fallaciesIdentified && coachingTip.fallaciesIdentified.length > 0) {
+        metricsRef.current.fallaciesCommitted += coachingTip.fallaciesIdentified.length;
+      }
     }
-  }, [phase]);
+  }, [coachingTip]);
 
   const opponentName = activeCase?.opposingCounsel && activeCase.opposingCounsel !== 'Unknown' 
     ? activeCase.opposingCounsel 
     : MOCK_OPPONENT.name;
-
-  const stopLiveSession = (preserveForReconnect = false) => {
-    if (keepaliveRef.current) {
-      clearInterval(keepaliveRef.current);
-      keepaliveRef.current = null;
-    }
-    
-    if (scriptProcessorRef.current) {
-      try { scriptProcessorRef.current.disconnect(); } catch (e) {}
-      if (!preserveForReconnect) scriptProcessorRef.current = null;
-    }
-    
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    
-    if (!preserveForReconnect) {
-      reconnectAttemptsRef.current = 0;
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-      inputContextRef.current?.close();
-      inputContextRef.current = null;
-      outputContextRef.current?.close();
-      outputContextRef.current = null;
-    }
-    
-    setIsLive(false);
-    isLiveRef.current = false;
-    setIsConnecting(false);
-    setLiveVolume(0);
-    sourcesRef.current.forEach(s => s.stop());
-    sourcesRef.current.clear();
-    nextStartTimeRef.current = 0;
-  };
-
-  const reconnectAttemptsRef = useRef<number>(0);
-  const maxReconnectAttempts = 3;
-
-  const startRecording = (stream: MediaStream) => {
-    recordedChunksRef.current = [];
-    try {
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        saveSession();
-      };
-      recorder.start(1000);
-      mediaRecorderRef.current = recorder;
-    } catch (e) {
-      console.error('Recording failed', e);
-    }
-  };
 
   const saveSession = () => {
     if (recordedChunksRef.current.length === 0 || !activeCase) return;
@@ -225,13 +195,73 @@ const TrialSim = () => {
         timestamp: m.timestamp
       })),
       audioUrl,
-      score: coachingTip?.rhetoricalEffectiveness || 50
+      score: avgRhetoricalScore,
+      metrics: { ...metricsRef.current }
     };
     
     const updated = [session, ...savedSessions].slice(0, 20);
     setSavedSessions(updated);
     localStorage.setItem(`trial_sessions_${activeCase.id}`, JSON.stringify(updated));
     toast.success('Session saved!');
+  };
+
+  const stopLiveSession = (preserveForReconnect = false) => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    if (!preserveForReconnect) {
+      saveSession();
+    }
+    
+    if (keepaliveRef.current) {
+      clearInterval(keepaliveRef.current);
+      keepaliveRef.current = null;
+    }
+    
+    if (scriptProcessorRef.current) {
+      try { scriptProcessorRef.current.disconnect(); } catch (e) {}
+      if (!preserveForReconnect) scriptProcessorRef.current = null;
+    }
+    
+    if (!preserveForReconnect) {
+      reconnectAttemptsRef.current = 0;
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      inputContextRef.current?.close();
+      inputContextRef.current = null;
+      outputContextRef.current?.close();
+      outputContextRef.current = null;
+    }
+    
+    setIsLive(false);
+    isLiveRef.current = false;
+    setIsConnecting(false);
+    setLiveVolume(0);
+    sourcesRef.current.forEach(s => s.stop());
+    sourcesRef.current.clear();
+    nextStartTimeRef.current = 0;
+  };
+
+  const startRecording = (stream: MediaStream) => {
+    recordedChunksRef.current = [];
+    metricsRef.current = {
+      objectionsReceived: objectionCount,
+      fallaciesCommitted: 0,
+      avgRhetoricalScore: 50,
+      wordCount: 0,
+      fillerWordsCount: 0,
+    };
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+    } catch (e) {
+      console.error('Recording failed', e);
+    }
   };
 
   const playSession = (session: TrialSession) => {
@@ -245,10 +275,12 @@ const TrialSim = () => {
       audioRef.current.pause();
     }
     
-    audioRef.current = new Audio(session.audioUrl);
-    audioRef.current.onended = () => setPlayingSession(null);
-    audioRef.current.play();
-    setPlayingSession(session.id);
+    if (session.audioUrl) {
+      audioRef.current = new Audio(session.audioUrl);
+      audioRef.current.onended = () => setPlayingSession(null);
+      audioRef.current.play();
+      setPlayingSession(session.id);
+    }
   };
 
   const deleteSession = (id: string) => {
@@ -262,11 +294,91 @@ const TrialSim = () => {
     }
   };
 
+  const downloadAudio = (session: TrialSession) => {
+    if (!session.audioUrl) {
+      toast.error('No audio available');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = session.audioUrl;
+    a.download = `trial-session-${session.phase}-${new Date(session.date).toISOString().slice(0, 10)}.webm`;
+    a.click();
+  };
+
+  const exportTranscript = (session: TrialSession) => {
+    let content = `TRIAL SIMULATION TRANSCRIPT\n`;
+    content += `========================\n\n`;
+    content += `Case: ${session.caseTitle}\n`;
+    content += `Phase: ${session.phase}\n`;
+    content += `Mode: ${session.mode}\n`;
+    content += `Date: ${new Date(session.date).toLocaleString()}\n`;
+    content += `Duration: ${Math.floor(session.duration / 60)}m ${session.duration % 60}s\n`;
+    content += `Score: ${session.score}%\n`;
+    if (session.metrics) {
+      content += `\nSession Metrics:\n`;
+      content += `- Objections Received: ${session.metrics.objectionsReceived || 0}\n`;
+      content += `- Fallacies Committed: ${session.metrics.fallaciesCommitted || 0}\n`;
+      content += `- Avg Rhetorical Score: ${session.metrics.avgRhetoricalScore || 50}%\n`;
+    }
+    content += `\n========================\n`;
+    content += `TRANSCRIPT\n`;
+    content += `========================\n\n`;
+    
+    if (session.transcript && session.transcript.length > 0) {
+      session.transcript.forEach(msg => {
+        const sender = msg.sender === 'user' ? 'YOU' : msg.sender === 'opponent' ? 'OPPONENT' : msg.sender.toUpperCase();
+        content += `[${sender}]: ${msg.text}\n\n`;
+      });
+    }
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcript-${session.phase}-${new Date(session.date).toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Transcript exported');
+  };
+
+  const sendQuickResponse = async (response: string) => {
+    if (!sessionRef.current || !isLive) return;
+    
+    setObjectionAlert(null);
+    
+    setMessages(prev => [...prev, { 
+      id: Date.now() + '-qr', 
+      sender: 'user', 
+      text: `[Response to objection]: ${response}`, 
+      timestamp: Date.now() 
+    }]);
+    
+    try {
+      const session = await sessionRef.current;
+      session.sendRealtimeInput({
+        text: response
+      });
+    } catch (e) {
+      console.error('Failed to send response', e);
+    }
+  };
+
   const startLiveSession = async () => {
     if (!activeCase || !phase || !mode) return;
 
     setIsConnecting(true);
     sessionStartTime.current = Date.now();
+    setObjectionCount(0);
+    setRhetoricalScores([]);
+    setAvgRhetoricalScore(50);
+    setSessionScore(50);
+    metricsRef.current = {
+      objectionsReceived: 0,
+      fallaciesCommitted: 0,
+      avgRhetoricalScore: 50,
+      wordCount: 0,
+      fillerWordsCount: 0,
+    };
     
     try {
       if (!process.env.API_KEY) {
@@ -466,7 +578,6 @@ const TrialSim = () => {
     );
   }
 
-  // Setup Screen
   if (simState === 'setup') {
     return (
       <div className="min-h-screen pb-20">
@@ -662,7 +773,7 @@ const TrialSim = () => {
 
           <button
             disabled={!phase || !mode}
-            onClick={() => { setMessages([]); setCoachingTip(null); setSimState('active'); }}
+            onClick={() => { setMessages([]); setCoachingTip(null); setObjectionCount(0); setRhetoricalScores([]); setSimState('active'); }}
             className="w-full bg-gold-500 disabled:bg-slate-700 text-slate-900 font-bold py-4 rounded-xl text-lg"
           >
             Start Session
@@ -672,7 +783,6 @@ const TrialSim = () => {
     );
   }
 
-  // History Screen
   if (simState === 'history') {
     return (
       <div className="min-h-screen pb-20">
@@ -700,12 +810,23 @@ const TrialSim = () => {
                         {new Date(session.date).toLocaleDateString()} • {Math.floor(session.duration / 60)}m {session.duration % 60}s
                       </p>
                       <p className="text-xs text-slate-500 mt-1">{session.mode} mode • Score: {session.score}%</p>
+                      {session.metrics && (
+                        <p className="text-xs text-slate-500">
+                          Objections: {session.metrics.objectionsReceived || 0} • Avg Rhetorical: {session.metrics.avgRhetoricalScore || 50}%
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => playSession(session)} className="p-2 bg-gold-500 text-slate-900 rounded-lg">
+                      <button onClick={() => playSession(session)} className="p-2 bg-gold-500 text-slate-900 rounded-lg" title="Play Audio">
                         {playingSession === session.id ? <Pause size={18} /> : <Play size={18} />}
                       </button>
-                      <button onClick={() => deleteSession(session.id)} className="p-2 bg-slate-700 text-slate-400 rounded-lg">
+                      <button onClick={() => downloadAudio(session)} className="p-2 bg-slate-700 text-gold-400 rounded-lg" title="Download Audio">
+                        <Download size={18} />
+                      </button>
+                      <button onClick={() => exportTranscript(session)} className="p-2 bg-slate-700 text-blue-400 rounded-lg" title="Export Transcript">
+                        <FileText size={18} />
+                      </button>
+                      <button onClick={() => deleteSession(session.id)} className="p-2 bg-slate-700 text-red-400 rounded-lg" title="Delete">
                         <Trash2 size={18} />
                       </button>
                     </div>
@@ -726,21 +847,45 @@ const TrialSim = () => {
     );
   }
 
-  // Active Session Screen
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Objection Overlay */}
+    <div className="min-h-screen flex flex-col pb-20 md:pb-0">
       {objectionAlert && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="bg-red-600 p-6 rounded-2xl text-center max-w-sm w-full animate-pulse">
+          <div className="bg-red-600 p-6 rounded-2xl text-center max-w-sm w-full">
             <div className="text-4xl font-black text-white mb-2">OBJECTION!</div>
             <div className="text-xl text-red-100 font-bold">{objectionAlert.grounds}</div>
-            <div className="text-sm text-white/80 mt-2">{objectionAlert.explanation}</div>
+            <div className="text-sm text-white/80 mt-2 mb-4">{objectionAlert.explanation}</div>
+            
+            <div className="space-y-2">
+              <button 
+                onClick={() => sendQuickResponse("Your Honor, I withdraw the question.")}
+                className="w-full py-3 bg-white/20 hover:bg-white/30 text-white rounded-lg font-semibold transition-all"
+              >
+                Withdraw the question
+              </button>
+              <button 
+                onClick={() => sendQuickResponse("Your Honor, let me rephrase the question.")}
+                className="w-full py-3 bg-white/20 hover:bg-white/30 text-white rounded-lg font-semibold transition-all"
+              >
+                Rephrase the question
+              </button>
+              <button 
+                onClick={() => sendQuickResponse("Your Honor, this question goes to the heart of the matter and is directly relevant to the issues in this case.")}
+                className="w-full py-3 bg-white/20 hover:bg-white/30 text-white rounded-lg font-semibold transition-all"
+              >
+                Argue relevance
+              </button>
+              <button 
+                onClick={() => setObjectionAlert(null)}
+                className="w-full py-2 text-white/60 text-sm hover:text-white"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Header */}
       <div className="bg-slate-800 border-b border-slate-700 p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button onClick={() => { stopLiveSession(); setSimState('setup'); }} className="text-slate-400">
@@ -752,6 +897,10 @@ const TrialSim = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-700 rounded-full">
+            <AlertTriangle size={14} className="text-red-400" />
+            <span className="text-xs text-slate-300">{objectionCount} objections</span>
+          </div>
           <div className="flex items-center gap-2 px-3 py-1 bg-slate-700 rounded-full">
             <Volume2 size={14} className="text-gold-500" />
             <span className="text-xs text-slate-300">{voiceConfig.voiceName}</span>
@@ -765,10 +914,25 @@ const TrialSim = () => {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Visual Center */}
         <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-900">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="text-center">
+              <p className="text-xs text-slate-400">Score</p>
+              <p className="text-2xl font-bold text-gold-500">{sessionScore}%</p>
+            </div>
+            <div className="w-px h-8 bg-slate-700" />
+            <div className="text-center">
+              <p className="text-xs text-slate-400">Avg</p>
+              <p className="text-2xl font-bold text-slate-300">{avgRhetoricalScore}%</p>
+            </div>
+            <div className="w-px h-8 bg-slate-700" />
+            <div className="text-center">
+              <p className="text-xs text-slate-400">Objections</p>
+              <p className="text-2xl font-bold text-red-400">{objectionCount}</p>
+            </div>
+          </div>
+
           <div className={`w-32 h-32 rounded-full border-4 transition-all ${isLive && liveVolume > 5 ? 'border-red-500 scale-105' : 'border-slate-700'}`}>
             <img 
               src={phase === 'defendant-testimony' ? 'https://picsum.photos/id/1005/200/200' : 'https://picsum.photos/id/1025/200/200'} 
@@ -781,7 +945,6 @@ const TrialSim = () => {
           </p>
           <p className="text-slate-400 text-sm">{isConnecting ? 'Connecting...' : isLive ? 'Listening...' : 'Ready'}</p>
 
-          {/* Volume Meter */}
           {isLive && (
             <div className="w-full max-w-xs mt-4">
               <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -792,10 +955,35 @@ const TrialSim = () => {
               </div>
             </div>
           )}
+
+          {activeCase.evidence && activeCase.evidence.length > 0 && (
+            <div className="w-full max-w-sm mt-4">
+              <button 
+                onClick={() => setShowEvidencePanel(!showEvidencePanel)}
+                className="w-full flex items-center justify-between p-2 bg-slate-800 rounded-lg text-slate-300 text-sm"
+              >
+                <span className="flex items-center gap-2">
+                  <FolderOpen size={16} className="text-gold-500" />
+                  Evidence Quick-Reference ({activeCase.evidence.length})
+                </span>
+                <ChevronDown size={16} className={`transition-transform ${showEvidencePanel ? 'rotate-180' : ''}`} />
+              </button>
+              
+              <div className={`overflow-hidden transition-all duration-300 ${showEvidencePanel ? 'max-h-48' : 'max-h-0'}`}>
+                <div className="mt-2 p-2 bg-slate-800 rounded-lg space-y-2 max-h-48 overflow-y-auto">
+                  {activeCase.evidence.map((evidence, idx) => (
+                    <div key={idx} className="p-2 bg-slate-700 rounded text-xs">
+                      <p className="font-semibold text-white truncate">{evidence.title}</p>
+                      <p className="text-slate-400 line-clamp-2">{evidence.summary?.slice(0, 100) || 'No summary'}{evidence.summary && evidence.summary.length > 100 ? '...' : ''}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Recent Messages */}
-        <div className="h-20 px-4 overflow-hidden">
+        <div className="h-20 px-4 overflow-hidden hidden md:block">
           <div className="flex flex-col gap-1">
             {messages.slice(-2).map(m => (
               <div key={m.id} className={`text-xs p-2 rounded-lg max-w-[80%] ${m.sender === 'user' ? 'self-end bg-blue-900/50 text-blue-200' : 'self-start bg-slate-800 text-slate-300'}`}>
@@ -805,26 +993,27 @@ const TrialSim = () => {
             ))}
           </div>
         </div>
+      </div>
 
-        {/* TELEPROMPTER PANEL - What to Say */}
-        <div className="mx-4 mb-2">
+      <div className={`fixed md:relative bottom-0 left-0 right-0 z-40 transition-all duration-300 ${showTeleprompter ? 'max-h-[50vh] md:max-h-[40vh]' : 'max-h-14'}`}>
+        <div className="bg-slate-800 border-t-2 border-gold-500">
           <button 
             onClick={() => setShowTeleprompter(!showTeleprompter)}
-            className="w-full p-3 bg-gold-500/20 border-2 border-gold-500 rounded-lg flex items-center justify-between"
+            className="w-full p-3 flex items-center justify-between"
           >
             <div className="flex items-center gap-2">
-              <Lightbulb size={18} className="text-gold-400" />
-              <span className="text-gold-300 text-sm font-bold">WHAT TO SAY</span>
+              <Lightbulb size={20} className="text-gold-400" />
+              <span className="text-gold-300 text-sm md:text-base font-bold">WHAT TO SAY</span>
             </div>
-            <ChevronDown size={18} className={`text-gold-400 transition-transform ${showTeleprompter ? 'rotate-180' : ''}`} />
+            <ChevronDown size={20} className={`text-gold-400 transition-transform ${showTeleprompter ? 'rotate-180' : ''}`} />
           </button>
           
-          {showTeleprompter && (
-            <div className="mt-2 p-4 bg-slate-900 border-2 border-gold-500/50 rounded-lg">
+          <div className={`overflow-hidden transition-all duration-300 ${showTeleprompter ? 'opacity-100' : 'opacity-0 max-h-0'}`}>
+            <div className="p-4 md:p-6 bg-slate-900 border-t border-gold-500/30">
               {coachingTip?.teleprompterScript ? (
                 <div>
                   <p className="text-xs text-gold-400 uppercase font-bold mb-2">Suggested Response:</p>
-                  <p className="text-lg text-white leading-relaxed">{coachingTip.teleprompterScript}</p>
+                  <p className="text-xl md:text-2xl text-white leading-relaxed">{coachingTip.teleprompterScript}</p>
                 </div>
               ) : (
                 <div className="text-center py-4">
@@ -857,12 +1046,11 @@ const TrialSim = () => {
                 </div>
               )}
             </div>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* Control Bar */}
-      <div className="sticky bottom-0 bg-slate-800 border-t border-slate-700 p-4">
+      <div className="sticky bottom-0 bg-slate-800 border-t border-slate-700 p-4 md:hidden">
         <div className="flex items-center justify-center gap-6">
           {!isLive ? (
             <button onClick={startLiveSession} disabled={isConnecting} className="flex flex-col items-center">
