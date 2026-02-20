@@ -487,13 +487,22 @@ const TrialSim = () => {
 
       const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary, simulatorSettings, evidenceData);
 
-      // Use TEXT modality when ElevenLabs is enabled, AUDIO otherwise
-      const responseModalities = shouldUseElevenLabs ? [Modality.TEXT] : [Modality.AUDIO];
+      // Use TEXT and AUDIO modalities if ElevenLabs is enabled (so we get text to speak), 
+      // otherwise just AUDIO for native Gemini voice.
+      const responseModalities = shouldUseElevenLabs ? [Modality.TEXT, Modality.AUDIO] : [Modality.AUDIO];
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: 'gemini-2.0-flash-exp',
         config: {
           responseModalities,
+          speechConfig: { 
+            voiceConfig: { 
+              prebuiltVoiceConfig: { 
+                voiceName: voiceConfig.voiceName 
+              } 
+            },
+            languageCode: voiceConfig.languageCode,
+          },
           systemInstruction,
           tools: [{ functionDeclarations: [coachingTool, objectionTool] }],
         },
@@ -555,69 +564,72 @@ const TrialSim = () => {
             toast.success('Session started - Recording');
           },
           onmessage: async (msg: LiveServerMessage) => {
-            console.log('[TrialSim] Message received:', msg.serverContent ? 'has serverContent' : 'no serverContent');
+            console.log('[TrialSim] Message received:', JSON.stringify(msg).substring(0, 200));
             
-            // Handle TEXT response (when ElevenLabs is enabled)
-            const textPart = msg.serverContent?.modelTurn?.parts?.find((p: any) => p.text);
-            if (textPart && shouldUseElevenLabs && elevenLabsRef.current) {
-              const text = textPart.text;
-              console.log('[TrialSim] Text response:', text.substring(0, 100));
-              
-              // Send text to ElevenLabs for synthesis
-              elevenLabsRef.current.sendText(text);
-              
-              // Update transcript
-              currentOutputTranscription.current += text;
-            }
-            
-            // Handle AUDIO response (when ElevenLabs is disabled)
-            const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (audioData && !shouldUseElevenLabs) {
-              console.log('[TrialSim] Audio data received, length:', audioData.length);
-              try {
-                if (outputCtx!.state === 'suspended') await outputCtx!.resume();
-                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx!.currentTime);
-                const audioBuffer = await decodeAudioData(decode(audioData), outputCtx!, 24000, 1);
-                const source = outputCtx!.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(outputNode);
-                source.addEventListener('ended', () => {
-                  console.log('[TrialSim] Audio playback ended');
-                  sourcesRef.current.delete(source);
-                });
-                source.start(nextStartTimeRef.current);
-                nextStartTimeRef.current += audioBuffer.duration;
-                sourcesRef.current.add(source);
-                console.log('[TrialSim] Audio playback started, duration:', audioBuffer.duration.toFixed(2), 's');
-              } catch (err) {
-                console.error('[TrialSim] Audio playback error:', err);
+            if (msg.serverContent) {
+              // Handle AUDIO response from Gemini
+              const audioData = msg.serverContent.modelTurn?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
+              if (audioData) {
+                console.log('[TrialSim] Audio data received, length:', audioData.length);
+                
+                // Only play Gemini audio if ElevenLabs is NOT enabled
+                if (!shouldUseElevenLabs) {
+                  try {
+                    if (outputCtx!.state === 'suspended') await outputCtx!.resume();
+                    nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx!.currentTime);
+                    const audioBuffer = await decodeAudioData(decode(audioData), outputCtx!, 24000, 1);
+                    const source = outputCtx!.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(outputNode);
+                    source.addEventListener('ended', () => {
+                      sourcesRef.current.delete(source);
+                    });
+                    source.start(nextStartTimeRef.current);
+                    nextStartTimeRef.current += audioBuffer.duration;
+                    sourcesRef.current.add(source);
+                  } catch (err) {
+                    console.error('[TrialSim] Audio playback error:', err);
+                  }
+                } else {
+                  console.log('[TrialSim] Skipping Gemini audio (using ElevenLabs instead)');
+                }
               }
-            }
 
-            if (msg.serverContent?.inputTranscription) {
-              currentInputTranscription.current += msg.serverContent.inputTranscription.text;
-              console.log('[TrialSim] Input transcription:', msg.serverContent.inputTranscription.text);
-            }
-            if (msg.serverContent?.outputTranscription && !shouldUseElevenLabs) {
-              currentOutputTranscription.current += msg.serverContent.outputTranscription.text;
-              console.log('[TrialSim] Output transcription:', msg.serverContent.outputTranscription.text);
-            }
+              // Handle input transcription (what user said)
+              if (msg.serverContent.inputTranscription) {
+                currentInputTranscription.current += msg.serverContent.inputTranscription.text;
+                console.log('[TrialSim] Input transcription:', msg.serverContent.inputTranscription.text);
+              }
+              
+              // Handle output transcription (what Gemini is saying)
+              if (msg.serverContent.outputTranscription) {
+                const transcriptText = msg.serverContent.outputTranscription.text;
+                currentOutputTranscription.current += transcriptText;
+                console.log('[TrialSim] Output transcription:', transcriptText);
+                
+                // Send to ElevenLabs if enabled
+                if (shouldUseElevenLabs && elevenLabsRef.current) {
+                  console.log('[TrialSim] Sending to ElevenLabs:', transcriptText);
+                  elevenLabsRef.current.sendText(transcriptText);
+                }
+              }
 
-            if (msg.serverContent?.turnComplete) {
-              console.log('[TrialSim] Turn complete');
-              
-              // Flush ElevenLabs stream
-              if (shouldUseElevenLabs && elevenLabsRef.current) {
-                elevenLabsRef.current.flush();
-              }
-              
-              if (currentInputTranscription.current.trim()) {
-                setMessages(prev => [...prev, { id: Date.now()+'u', sender: 'user', text: currentInputTranscription.current, timestamp: Date.now() }]);
-                currentInputTranscription.current = '';
-              }
-              if (currentOutputTranscription.current.trim()) {
-                setMessages(prev => [...prev, { id: Date.now()+'o', sender: 'opponent', text: currentOutputTranscription.current, timestamp: Date.now() }]);
-                currentOutputTranscription.current = '';
+              if (msg.serverContent.turnComplete) {
+                console.log('[TrialSim] Turn complete');
+                
+                // Flush ElevenLabs stream
+                if (shouldUseElevenLabs && elevenLabsRef.current) {
+                  elevenLabsRef.current.flush();
+                }
+                
+                if (currentInputTranscription.current.trim()) {
+                  setMessages(prev => [...prev, { id: Date.now()+'u', sender: 'user', text: currentInputTranscription.current, timestamp: Date.now() }]);
+                  currentInputTranscription.current = '';
+                }
+                if (currentOutputTranscription.current.trim()) {
+                  setMessages(prev => [...prev, { id: Date.now()+'o', sender: 'opponent', text: currentOutputTranscription.current, timestamp: Date.now() }]);
+                  currentOutputTranscription.current = '';
+                }
               }
             }
 

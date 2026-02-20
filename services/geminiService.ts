@@ -232,6 +232,7 @@ Return JSON format.`;
       return {
         text: extractedText,
         pageCount,
+        confidence: ocrResult.confidence,
         summary: analysis.summary || 'No summary available',
         entities: analysis.entities || [],
         keyDates: analysis.keyDates || [],

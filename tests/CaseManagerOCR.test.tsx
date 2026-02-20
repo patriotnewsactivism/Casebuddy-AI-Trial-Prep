@@ -3,17 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import CaseManager from '../components/CaseManager';
 import { AppContext } from '../App';
-import * as documentProcessingService from '../services/documentProcessingService';
-import { Case, CaseStatus, EvidenceItem } from '../types';
+import * as geminiService from '../services/geminiService';
+import { Case, CaseStatus } from '../types';
 
 // Mock services
-vi.mock('../services/documentProcessingService', () => ({
-  processDocument: vi.fn(),
-  toEvidenceItem: vi.fn(),
-}));
-
 vi.mock('../services/geminiService', () => ({
   analyzeDocument: vi.fn(),
+  analyzePDFDocument: vi.fn(),
   fileToGenerativePart: vi.fn(),
 }));
 
@@ -59,23 +55,19 @@ describe('CaseManager OCR Flow', () => {
   });
 
   it('handles file upload and triggers OCR processing', async () => {
-    // Mock OCR result
-    const mockProcessedDoc = {
-      id: 'doc-1',
-      fileName: 'test-evidence.png',
-      fileType: 'image/png',
-      extractedText: 'This is extracted text from an image.',
-      confidence: 95,
-      wordCount: 10,
-      processingTime: 100,
-      dates: [],
-      entities: [{ name: 'John Doe', type: 'person' }],
+    // Mock Gemini result
+    const mockAnalysisResult = {
+      summary: 'This is extracted text from an image.',
+      entities: ['John Doe'],
+      risks: [],
+      documentType: 'Image Document',
+      keyDates: [],
       monetaryAmounts: ['$100'],
-      potentialEvents: [],
-      ocrResult: { text: 'This is extracted text from an image.', confidence: 95 }
+      extractedText: 'This is extracted text from an image.',
+      confidence: 95
     };
 
-    (documentProcessingService.processDocument as any).mockResolvedValue(mockProcessedDoc);
+    (geminiService.analyzeDocument as any).mockResolvedValue(mockAnalysisResult);
 
     renderWithContext();
 
@@ -91,12 +83,9 @@ describe('CaseManager OCR Flow', () => {
     // Verify loading state
     expect(screen.getByText(/Processing/i)).toBeInTheDocument();
 
-    // Verify processDocument was called
+    // Verify analyzeDocument was called
     await waitFor(() => {
-      expect(documentProcessingService.processDocument).toHaveBeenCalledWith(
-        expect.any(File),
-        expect.any(Function)
-      );
+      expect(geminiService.analyzeDocument).toHaveBeenCalled();
     });
 
     // Verify results are displayed

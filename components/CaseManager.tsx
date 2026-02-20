@@ -78,27 +78,20 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
     setAnalysisResult(null);
 
     try {
-      handleSuccess('Processing document with OCR...');
+      handleSuccess('Processing document with Gemini AI...');
       
-      const processedDoc = await processDocument(file, (progress, status) => {
-        console.log(`[DocumentProcessing] ${progress}% - ${status}`);
-      });
-      
-      const result = {
-        summary: processedDoc.extractedText.slice(0, 500) + (processedDoc.extractedText.length > 500 ? '...' : ''),
-        entities: processedDoc.entities.map(e => e.name),
-        risks: [],
-        documentType: file.type === 'application/pdf' ? 'PDF Document' : 'Image Document',
-        keyDates: processedDoc.dates.map(d => d.date),
-        monetaryAmounts: processedDoc.monetaryAmounts,
-        extractedText: processedDoc.extractedText,
-        pageCount: processedDoc.ocrResult.pages?.length,
-        confidence: processedDoc.confidence,
-        processedDoc
-      };
+      let result;
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        result = await analyzePDFDocument(file, (progress, status) => {
+          console.log(`[DocumentProcessing] ${progress}% - ${status}`);
+        });
+      } else {
+        const filePart = await fileToGenerativePart(file);
+        result = await analyzeDocument("Analyze this uploaded document.", filePart);
+      }
       
       setAnalysisResult(result);
-      handleSuccess(`Document processed successfully (OCR confidence: ${processedDoc.confidence}%)`);
+      handleSuccess(`Document analyzed successfully (OCR confidence: ${result.confidence || '?'})`);
     } catch (e) {
       handleError(e, 'Failed to process file. Please try again.', 'CaseManager');
     } finally {

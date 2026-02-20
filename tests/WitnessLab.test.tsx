@@ -32,9 +32,12 @@ const mockMediaRecorder = {
   stop: vi.fn(),
   ondataavailable: vi.fn(),
   onstop: vi.fn(),
+  state: 'inactive'
 };
 
-global.MediaRecorder = vi.fn(() => mockMediaRecorder) as any;
+global.MediaRecorder = vi.fn().mockImplementation(function() {
+  return mockMediaRecorder;
+}) as any;
 
 // Mock getUserMedia
 Object.defineProperty(global.navigator, 'mediaDevices', {
