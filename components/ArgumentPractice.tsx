@@ -469,6 +469,7 @@ const TrialSim = () => {
         },
         callbacks: {
           onopen: () => {
+            console.log('[TrialSim] Connection opened successfully');
             setIsLive(true);
             isLiveRef.current = true;
             setIsConnecting(false);
@@ -480,6 +481,7 @@ const TrialSim = () => {
                   try { 
                     // Send a minimal keepalive ping
                     s.sendRealtimeInput({ text: ' ' }); 
+                    console.log('[TrialSim] Keepalive sent');
                   } catch (err) {
                     console.warn('[TrialSim] Keepalive failed:', err);
                   }
@@ -490,43 +492,76 @@ const TrialSim = () => {
             const source = inputCtx!.createMediaStreamSource(stream!);
             const scriptProcessor = inputCtx!.createScriptProcessor(4096, 1, 1);
             scriptProcessorRef.current = scriptProcessor;
+            
+            let audioChunkCount = 0;
             scriptProcessor.onaudioprocess = (e) => {
               if (!isLiveRef.current) return;
               const inputData = e.inputBuffer.getChannelData(0);
               let sum = 0;
               for(let i=0; i<inputData.length; i++) sum += inputData[i] * inputData[i];
-              setLiveVolume(Math.sqrt(sum / inputData.length) * 100);
+              const volume = Math.sqrt(sum / inputData.length) * 100;
+              setLiveVolume(volume);
+              
+              // Log every 50 chunks (~1.3 seconds) to avoid spam
+              audioChunkCount++;
+              if (audioChunkCount % 50 === 0) {
+                console.log(`[TrialSim] Audio chunk #${audioChunkCount}, volume: ${volume.toFixed(2)}`);
+              }
+              
               const pcmBlob = createBlob(inputData);
               sessionPromise.then(s => {
                 if (isLiveRef.current) {
-                  try { s.sendRealtimeInput({ media: pcmBlob }); } catch (err) {}
+                  try { 
+                    s.sendRealtimeInput({ media: pcmBlob }); 
+                  } catch (err) {
+                    console.error('[TrialSim] Failed to send audio:', err);
+                  }
                 }
               });
             };
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputCtx!.destination);
             
+            console.log('[TrialSim] Audio pipeline setup complete');
             toast.success('Session started - Recording');
           },
           onmessage: async (msg: LiveServerMessage) => {
+            console.log('[TrialSim] Message received:', msg.serverContent ? 'has serverContent' : 'no serverContent');
+            
             const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (audioData) {
-              if (outputCtx!.state === 'suspended') await outputCtx!.resume();
-              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx!.currentTime);
-              const audioBuffer = await decodeAudioData(decode(audioData), outputCtx!, 24000, 1);
-              const source = outputCtx!.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(outputNode);
-              source.addEventListener('ended', () => sourcesRef.current.delete(source));
-              source.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += audioBuffer.duration;
-              sourcesRef.current.add(source);
+              console.log('[TrialSim] Audio data received, length:', audioData.length);
+              try {
+                if (outputCtx!.state === 'suspended') await outputCtx!.resume();
+                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx!.currentTime);
+                const audioBuffer = await decodeAudioData(decode(audioData), outputCtx!, 24000, 1);
+                const source = outputCtx!.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(outputNode);
+                source.addEventListener('ended', () => {
+                  console.log('[TrialSim] Audio playback ended');
+                  sourcesRef.current.delete(source);
+                });
+                source.start(nextStartTimeRef.current);
+                nextStartTimeRef.current += audioBuffer.duration;
+                sourcesRef.current.add(source);
+                console.log('[TrialSim] Audio playback started, duration:', audioBuffer.duration.toFixed(2), 's');
+              } catch (err) {
+                console.error('[TrialSim] Audio playback error:', err);
+              }
             }
 
-            if (msg.serverContent?.inputTranscription) currentInputTranscription.current += msg.serverContent.inputTranscription.text;
-            if (msg.serverContent?.outputTranscription) currentOutputTranscription.current += msg.serverContent.outputTranscription.text;
+            if (msg.serverContent?.inputTranscription) {
+              currentInputTranscription.current += msg.serverContent.inputTranscription.text;
+              console.log('[TrialSim] Input transcription:', msg.serverContent.inputTranscription.text);
+            }
+            if (msg.serverContent?.outputTranscription) {
+              currentOutputTranscription.current += msg.serverContent.outputTranscription.text;
+              console.log('[TrialSim] Output transcription:', msg.serverContent.outputTranscription.text);
+            }
 
             if (msg.serverContent?.turnComplete) {
+              console.log('[TrialSim] Turn complete');
               if (currentInputTranscription.current.trim()) {
                 setMessages(prev => [...prev, { id: Date.now()+'u', sender: 'user', text: currentInputTranscription.current, timestamp: Date.now() }]);
                 currentInputTranscription.current = '';
@@ -538,6 +573,7 @@ const TrialSim = () => {
             }
 
             if (msg.toolCall) {
+              console.log('[TrialSim] Tool call received:', msg.toolCall.functionCalls?.map((fc: any) => fc.name));
               for (const fc of msg.toolCall.functionCalls) {
                 if (fc.name === 'sendCoachingTip') {
                   const args = fc.args as any;
