@@ -219,6 +219,12 @@ const TrialSim = () => {
       reconnectAttemptsRef.current = 0; // Reset on intentional stop
     }
     
+    // Cleanup ElevenLabs
+    if (elevenLabsRef.current) {
+      elevenLabsRef.current.disconnect();
+      elevenLabsRef.current = null;
+    }
+    
     if (keepaliveRef.current) {
       clearInterval(keepaliveRef.current);
       keepaliveRef.current = null;
@@ -387,9 +393,13 @@ const TrialSim = () => {
     try {
       if (!process.env.API_KEY) {
         setIsConnecting(false);
-        toast.error('Missing API key');
+        toast.error('Missing Gemini API key');
         return;
       }
+
+      // Check if ElevenLabs should be used
+      const shouldUseElevenLabs = useElevenLabs && isElevenLabsConfigured();
+      console.log('[TrialSim] Using ElevenLabs:', shouldUseElevenLabs);
 
       let inputCtx = inputContextRef.current;
       let outputCtx = outputContextRef.current;
@@ -422,6 +432,22 @@ const TrialSim = () => {
       }
 
       startRecording(stream);
+
+      // Initialize ElevenLabs if enabled
+      if (shouldUseElevenLabs) {
+        const voiceId = ELEVENLABS_VOICES[voiceConfig.voiceName as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
+        console.log('[TrialSim] Initializing ElevenLabs with voice:', voiceId);
+        
+        elevenLabsRef.current = new ElevenLabsStreamer({
+          voiceId,
+          stability: 0.5,
+          similarityBoost: 0.75,
+        });
+        
+        await elevenLabsRef.current.initAudio(24000);
+        await elevenLabsRef.current.connect();
+        console.log('[TrialSim] ElevenLabs connected');
+      }
 
       console.log('[TrialSim] Initializing Gemini Live API...');
       console.log('[TrialSim] API Key present:', !!process.env.API_KEY);
@@ -461,18 +487,13 @@ const TrialSim = () => {
 
       const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary, simulatorSettings, evidenceData);
 
+      // Use TEXT modality when ElevenLabs is enabled, AUDIO otherwise
+      const responseModalities = shouldUseElevenLabs ? [Modality.TEXT] : [Modality.AUDIO];
+
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: 'gemini-2.5-flash-preview-05-20',
         config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { 
-            voiceConfig: { 
-              prebuiltVoiceConfig: { 
-                voiceName: voiceConfig.voiceName 
-              } 
-            },
-            languageCode: voiceConfig.languageCode,
-          },
+          responseModalities,
           systemInstruction,
           tools: [{ functionDeclarations: [coachingTool, objectionTool] }],
         },
@@ -488,7 +509,6 @@ const TrialSim = () => {
               sessionPromise.then(s => {
                 if (isLiveRef.current) {
                   try { 
-                    // Send a minimal keepalive ping
                     s.sendRealtimeInput({ text: ' ' }); 
                     console.log('[TrialSim] Keepalive sent');
                   } catch (err) {
@@ -496,7 +516,7 @@ const TrialSim = () => {
                   }
                 }
               });
-            }, 25000); // Every 25 seconds
+            }, 25000);
             
             const source = inputCtx!.createMediaStreamSource(stream!);
             const scriptProcessor = inputCtx!.createScriptProcessor(4096, 1, 1);
@@ -511,12 +531,12 @@ const TrialSim = () => {
               const volume = Math.sqrt(sum / inputData.length) * 100;
               setLiveVolume(volume);
               
-              // Log every 50 chunks (~1.3 seconds) to avoid spam
               audioChunkCount++;
               if (audioChunkCount % 50 === 0) {
                 console.log(`[TrialSim] Audio chunk #${audioChunkCount}, volume: ${volume.toFixed(2)}`);
               }
               
+              // Send audio to Gemini for speech-to-text
               const pcmBlob = createBlob(inputData);
               sessionPromise.then(s => {
                 if (isLiveRef.current) {
@@ -537,8 +557,22 @@ const TrialSim = () => {
           onmessage: async (msg: LiveServerMessage) => {
             console.log('[TrialSim] Message received:', msg.serverContent ? 'has serverContent' : 'no serverContent');
             
+            // Handle TEXT response (when ElevenLabs is enabled)
+            const textPart = msg.serverContent?.modelTurn?.parts?.find((p: any) => p.text);
+            if (textPart && shouldUseElevenLabs && elevenLabsRef.current) {
+              const text = textPart.text;
+              console.log('[TrialSim] Text response:', text.substring(0, 100));
+              
+              // Send text to ElevenLabs for synthesis
+              elevenLabsRef.current.sendText(text);
+              
+              // Update transcript
+              currentOutputTranscription.current += text;
+            }
+            
+            // Handle AUDIO response (when ElevenLabs is disabled)
             const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (audioData) {
+            if (audioData && !shouldUseElevenLabs) {
               console.log('[TrialSim] Audio data received, length:', audioData.length);
               try {
                 if (outputCtx!.state === 'suspended') await outputCtx!.resume();
@@ -564,13 +598,19 @@ const TrialSim = () => {
               currentInputTranscription.current += msg.serverContent.inputTranscription.text;
               console.log('[TrialSim] Input transcription:', msg.serverContent.inputTranscription.text);
             }
-            if (msg.serverContent?.outputTranscription) {
+            if (msg.serverContent?.outputTranscription && !shouldUseElevenLabs) {
               currentOutputTranscription.current += msg.serverContent.outputTranscription.text;
               console.log('[TrialSim] Output transcription:', msg.serverContent.outputTranscription.text);
             }
 
             if (msg.serverContent?.turnComplete) {
               console.log('[TrialSim] Turn complete');
+              
+              // Flush ElevenLabs stream
+              if (shouldUseElevenLabs && elevenLabsRef.current) {
+                elevenLabsRef.current.flush();
+              }
+              
               if (currentInputTranscription.current.trim()) {
                 setMessages(prev => [...prev, { id: Date.now()+'u', sender: 'user', text: currentInputTranscription.current, timestamp: Date.now() }]);
                 currentInputTranscription.current = '';
@@ -607,6 +647,11 @@ const TrialSim = () => {
           },
           onclose: (e) => {
             console.log('[TrialSim] Connection closed:', e);
+            // Cleanup ElevenLabs
+            if (elevenLabsRef.current) {
+              elevenLabsRef.current.disconnect();
+              elevenLabsRef.current = null;
+            }
             // Attempt reconnection if not intentional
             if (isLiveRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
               reconnectAttemptsRef.current++;
