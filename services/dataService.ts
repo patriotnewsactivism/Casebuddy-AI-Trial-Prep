@@ -2,6 +2,8 @@ import { Case, EvidenceItem } from '../types';
 import { clearCases, loadCases, saveCases } from '../utils/storage';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
+const isNotFoundError = (error: any) => error?.code === 'PGRST116';
+
 const hydrateCase = (c: Case): Case => ({
   ...c,
   evidence: c.evidence || [],
@@ -39,7 +41,9 @@ export const upsertCase = async (caseRecord: Case): Promise<void> => {
     return;
   }
 
-  const { error } = await client.from('cases').upsert(caseRecord);
+  const { error } = await client.from('cases').upsert(caseRecord, { 
+    onConflict: 'id' 
+  });
   if (error) {
     console.error('[Supabase] upsertCase failed', error);
     throw error;
@@ -70,7 +74,19 @@ export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Pr
   }
 
   const { data, error } = await client.from('cases').select('evidence').eq('id', caseId).single();
+  
   if (error) {
+    if (isNotFoundError(error)) {
+      const { error: insertError } = await client.from('cases').insert({
+        id: caseId,
+        evidence: [evidence],
+      });
+      if (insertError) {
+        console.error('[Supabase] appendEvidence insert failed', insertError);
+        throw insertError;
+      }
+      return;
+    }
     console.error('[Supabase] fetch evidence failed', error);
     throw error;
   }

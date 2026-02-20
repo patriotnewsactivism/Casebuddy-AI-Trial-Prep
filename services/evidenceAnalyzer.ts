@@ -33,7 +33,7 @@ export const analyzeEvidenceAdmissibility = async (
     const response = await retryWithBackoff(async () => {
       return withTimeout(
         ai.models.generateContent({
-          model: 'gemini-3-pro-preview',
+          model: 'gemini-2.5-pro',
           contents: `You are an expert evidence law attorney analyzing admissibility.
 
 EVIDENCE TO ANALYZE:
@@ -133,7 +133,7 @@ export const generateFoundationQuestions = async (
   try {
     const response = await withTimeout(
       ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-2.5-pro',
         contents: `You are an expert trial attorney. Generate foundation questions for admitting ${evidenceType} evidence in ${jurisdiction} jurisdiction.
 
 The questions should:
@@ -171,7 +171,7 @@ export const checkAuthenticationRequirements = async (
     
     const response = await withTimeout(
       ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-2.5-pro',
         contents: `Analyze authentication requirements for the following evidence in ${jurisdiction} jurisdiction:
 
 EVIDENCE:
@@ -228,7 +228,7 @@ export const analyzeHearsayIssues = async (
 
     const response = await withTimeout(
       ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-2.5-pro',
         contents: `Analyze hearsay issues for the following evidence in ${jurisdiction} jurisdiction:
 
 EVIDENCE:
@@ -278,7 +278,7 @@ export const analyzeBestEvidenceIssues = async (
   try {
     const response = await withTimeout(
       ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-2.5-pro',
         contents: `Analyze best evidence rule issues for the following evidence:
 
 EVIDENCE:

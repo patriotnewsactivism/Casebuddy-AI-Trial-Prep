@@ -5,7 +5,27 @@ import { toast } from "react-toastify";
 import { performDocumentOCR } from "./ocrService";
 
 const apiKey = process.env.API_KEY || '';
+
+if (!apiKey) {
+  console.error('[Gemini] API key is missing. Set GEMINI_API_KEY in .env.local');
+} else if (!apiKey.startsWith('AIzaSy')) {
+  console.error('[Gemini] API key appears invalid. Get a valid key from https://aistudio.google.com/apikey');
+}
+
 const ai = new GoogleGenAI({ apiKey });
+
+export const isApiKeyValid = (): boolean => {
+  return !!(apiKey && apiKey.startsWith('AIzaSy'));
+};
+
+export const validateApiKey = (): void => {
+  if (!apiKey) {
+    throw new Error('Gemini API key is missing. Please set GEMINI_API_KEY in your .env.local file.');
+  }
+  if (!apiKey.startsWith('AIzaSy')) {
+    throw new Error('Gemini API key appears invalid. Please get a valid key from https://aistudio.google.com/apikey');
+  }
+};
 
 interface ChatSession {
   id: string;

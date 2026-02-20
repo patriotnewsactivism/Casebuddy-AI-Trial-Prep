@@ -193,8 +193,8 @@ Return JSON with:
 - strengths: array of case strengths identified
 `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+const response = await ai.models.generateContent({
+        model: 'gemini-2.5-pro',
         contents: prompt,
         config: {
           thinkingConfig: { thinkingBudget: 2048 },
