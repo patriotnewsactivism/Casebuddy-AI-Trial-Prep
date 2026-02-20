@@ -206,12 +206,15 @@ const TrialSim = () => {
   };
 
   const stopLiveSession = (preserveForReconnect = false) => {
+    console.log('[TrialSim] Stopping session, preserveForReconnect:', preserveForReconnect);
+    
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
     
     if (!preserveForReconnect) {
       saveSession();
+      reconnectAttemptsRef.current = 0; // Reset on intentional stop
     }
     
     if (keepaliveRef.current) {
@@ -225,7 +228,6 @@ const TrialSim = () => {
     }
     
     if (!preserveForReconnect) {
-      reconnectAttemptsRef.current = 0;
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
       inputContextRef.current?.close();
@@ -451,7 +453,7 @@ const TrialSim = () => {
       const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary, simulatorSettings, evidenceData);
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { 
@@ -470,6 +472,20 @@ const TrialSim = () => {
             setIsLive(true);
             isLiveRef.current = true;
             setIsConnecting(false);
+            
+            // Start keepalive to prevent idle disconnection
+            keepaliveRef.current = setInterval(() => {
+              sessionPromise.then(s => {
+                if (isLiveRef.current) {
+                  try { 
+                    // Send a minimal keepalive ping
+                    s.sendRealtimeInput({ text: ' ' }); 
+                  } catch (err) {
+                    console.warn('[TrialSim] Keepalive failed:', err);
+                  }
+                }
+              });
+            }, 25000); // Every 25 seconds
             
             const source = inputCtx!.createMediaStreamSource(stream!);
             const scriptProcessor = inputCtx!.createScriptProcessor(4096, 1, 1);
@@ -544,16 +560,39 @@ const TrialSim = () => {
               }
             }
           },
-          onclose: () => stopLiveSession(),
-          onerror: () => stopLiveSession()
+          onclose: (e) => {
+            console.log('[TrialSim] Connection closed:', e);
+            // Attempt reconnection if not intentional
+            if (isLiveRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
+              reconnectAttemptsRef.current++;
+              console.log(`[TrialSim] Attempting reconnect ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
+              toast.warning(`Connection lost. Reconnecting... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+              setTimeout(() => {
+                if (!isLiveRef.current) {
+                  stopLiveSession(true); // Preserve for reconnect
+                  startLiveSession();
+                }
+              }, 2000);
+            } else {
+              stopLiveSession();
+              if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+                toast.error('Connection lost. Please try again.');
+              }
+            }
+          },
+          onerror: (err) => {
+            console.error('[TrialSim] Connection error:', err);
+            toast.error(`Connection error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            stopLiveSession();
+          }
         }
       });
       sessionRef.current = sessionPromise;
 
     } catch (e) {
-      console.error('Failed to start', e);
+      console.error('[TrialSim] Failed to start session:', e);
       setIsConnecting(false);
-      toast.error('Failed to start session');
+      toast.error(`Failed to start session: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   };
 
