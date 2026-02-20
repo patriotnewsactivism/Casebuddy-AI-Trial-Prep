@@ -25,16 +25,16 @@ CREATE TABLE public.cases (
   title TEXT NOT NULL DEFAULT '',
   client TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'Pre-Trial',
-  opposing_counsel TEXT DEFAULT '',
+  opposingCounsel TEXT DEFAULT '',
   judge TEXT DEFAULT '',
-  next_court_date TEXT DEFAULT '',
+  nextCourtDate TEXT DEFAULT '',
   summary TEXT DEFAULT '',
-  win_probability NUMERIC(5,2) DEFAULT 0.00,
+  winProbability NUMERIC(5,2) DEFAULT 0.00,
   tags JSONB DEFAULT '[]'::jsonb,
   evidence JSONB DEFAULT '[]'::jsonb,
   tasks JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  createdAt TIMESTAMPTZ DEFAULT NOW(),
+  updatedAt TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE public.cases IS 'Main cases table storing case information with nested evidence and tasks';
@@ -136,7 +136,7 @@ CREATE INDEX idx_cases_title_lower ON public.cases (LOWER(title));
 CREATE INDEX idx_cases_client_lower ON public.cases (LOWER(client));
 CREATE INDEX idx_cases_status ON public.cases (status);
 CREATE INDEX idx_cases_created_at ON public.cases (created_at DESC);
-CREATE INDEX idx_cases_next_court_date ON public.cases (next_court_date);
+CREATE INDEX idx_cases_next_court_date ON public.cases (nextCourtDate);
 
 -- Transcriptions table indexes
 CREATE INDEX idx_transcriptions_case_id ON public.transcriptions (case_id);
