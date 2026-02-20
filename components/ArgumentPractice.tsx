@@ -78,6 +78,7 @@ const TrialSim = () => {
   const [savedSessions, setSavedSessions] = useState<TrialSession[]>([]);
   const [playingSession, setPlayingSession] = useState<string | null>(null);
   const [showCoaching, setShowCoaching] = useState(false);
+  const [showTeleprompter, setShowTeleprompter] = useState(true);
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({
     voiceName: 'Schedar',
     personality: 'neutral',
@@ -91,6 +92,7 @@ const TrialSim = () => {
     coachingVerbosity: 'moderate',
     audioQuality: 'high',
   });
+  const [evidenceData, setEvidenceData] = useState<EvidenceDataForSim[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<any>(null);
@@ -113,6 +115,13 @@ const TrialSim = () => {
     if (activeCase) {
       const saved = localStorage.getItem(`trial_sessions_${activeCase.id}`);
       if (saved) setSavedSessions(JSON.parse(saved));
+      
+      const evidence: EvidenceDataForSim[] = (activeCase.evidence || []).map(e => ({
+        summary: e.summary || e.title,
+        entities: e.keyEntities || [],
+        keyDates: []
+      }));
+      setEvidenceData(evidence);
     }
   }, [activeCase]);
 
@@ -327,7 +336,7 @@ const TrialSim = () => {
         }
       };
 
-      const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary, simulatorSettings);
+      const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary, simulatorSettings, evidenceData);
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
