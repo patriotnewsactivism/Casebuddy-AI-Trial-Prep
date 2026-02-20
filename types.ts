@@ -672,3 +672,77 @@ export interface SimulatorSettings {
   coachingVerbosity: 'minimal' | 'moderate' | 'detailed';
   audioQuality: 'standard' | 'high';
 }
+
+// ============================================
+// TRANSCRIPTION TYPES (from case-buddy-transcribe)
+// ============================================
+
+export enum AppMode {
+  UPLOAD = 'UPLOAD',
+  RECORD = 'RECORD',
+}
+
+export enum TranscriptionStatus {
+  IDLE = 'IDLE',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  ERROR = 'ERROR',
+}
+
+export enum TranscriptionProvider {
+  GEMINI = 'GEMINI',
+  OPENAI = 'OPENAI',
+  ASSEMBLYAI = 'ASSEMBLYAI',
+}
+
+export interface TranscriptionSettings {
+  provider: TranscriptionProvider;
+  openaiKey: string;
+  assemblyAiKey: string;
+  googleClientId: string; // For Google Drive Integration
+  googleApiKey: string;   // Required for Picker API
+  legalMode: boolean; // Enables verbatim, timestamps, and speaker ID
+  autoDownloadAudio: boolean; // Auto-save audio on stop
+  autoDriveUpload: boolean; // Auto-upload to Google Drive
+  customVocabulary: string[]; // List of words/phrases to teach the AI
+}
+
+export interface TranscriptSegmentData {
+  start: number; // Start time in seconds
+  end: number;   // End time in seconds
+  speaker: string;
+  text: string;
+}
+
+export interface TranscriptionResultData {
+  text: string; // Fallback plain text
+  segments?: TranscriptSegmentData[]; // Structured data for click-to-play
+  summary?: string;
+  detectedLanguage?: string;
+  providerUsed: TranscriptionProvider;
+}
+
+export interface BatchItem {
+  id: string;
+  file: File;
+  status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'ERROR';
+  stage: string; // e.g. "Extracting Audio", "Uploading"
+  progress: number;
+  result?: TranscriptionResultData;
+  error?: string;
+}
+
+export interface AudioFile {
+  file: File | Blob;
+  name: string;
+  type: string;
+  duration?: number;
+}
+
+export interface VoiceProfileData {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsed: string;
+  usageCount: number;
+}
