@@ -511,20 +511,6 @@ const TrialSim = () => {
             isLiveRef.current = true;
             setIsConnecting(false);
             
-            // Start keepalive to prevent idle disconnection
-            keepaliveRef.current = setInterval(() => {
-              sessionPromise.then(s => {
-                if (isLiveRef.current) {
-                  try { 
-                    s.sendRealtimeInput({ text: ' ' }); 
-                    console.log('[TrialSim] Keepalive sent');
-                  } catch (err) {
-                    console.warn('[TrialSim] Keepalive failed:', err);
-                  }
-                }
-              });
-            }, 25000);
-            
             const source = inputCtx!.createMediaStreamSource(stream!);
             const scriptProcessor = inputCtx!.createScriptProcessor(4096, 1, 1);
             scriptProcessorRef.current = scriptProcessor;
