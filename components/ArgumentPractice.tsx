@@ -79,13 +79,13 @@ const TrialSim = () => {
   const [showCoaching, setShowCoaching] = useState(false);
   const [showTeleprompter, setShowTeleprompter] = useState(true);
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({
-    voiceName: 'Schedar',
+    voiceName: 'josh',
     personality: 'neutral',
     languageCode: 'en-US',
   });
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [simulatorSettings, setSimulatorSettings] = useState<SimulatorSettings>({
-    voice: { voiceName: 'Schedar', personality: 'neutral', languageCode: 'en-US' },
+    voice: { voiceName: 'josh', personality: 'neutral', languageCode: 'en-US' },
     realismLevel: 'professional',
     interruptionFrequency: 'medium',
     coachingVerbosity: 'moderate',
@@ -97,6 +97,7 @@ const TrialSim = () => {
   const [sessionScore, setSessionScore] = useState(50);
   const [avgRhetoricalScore, setAvgRhetoricalScore] = useState(50);
   const [rhetoricalScores, setRhetoricalScores] = useState<number[]>([]);
+  const [useElevenLabs, setUseElevenLabs] = useState(true);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<any>(null);
@@ -116,6 +117,7 @@ const TrialSim = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reconnectAttemptsRef = useRef<number>(0);
   const maxReconnectAttempts = 3;
+  const elevenLabsRef = useRef<ElevenLabsStreamer | null>(null);
   const metricsRef = useRef<TrialSessionMetrics>({
     objectionsReceived: 0,
     fallaciesCommitted: 0,
@@ -734,6 +736,19 @@ const TrialSim = () => {
             
             {showVoiceSettings && (
               <div className="mt-3 p-4 bg-slate-800 rounded-lg space-y-4 border border-slate-700">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-slate-400">Use ElevenLabs Voices</label>
+                  <button
+                    onClick={() => setUseElevenLabs(!useElevenLabs)}
+                    className={`w-12 h-6 rounded-full transition-all ${useElevenLabs ? 'bg-gold-500' : 'bg-slate-600'}`}
+                  >
+                    <div className={`w-5 h-5 rounded-full bg-white transition-transform ${useElevenLabs ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {useElevenLabs ? 'ElevenLabs: Realistic voices (recommended)' : 'Gemini: Built-in voices'}
+                </p>
+
                 <div>
                   <label className="block text-sm text-slate-400 mb-2">Voice Selection</label>
                   <select
@@ -744,49 +759,42 @@ const TrialSim = () => {
                     }}
                     className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white"
                   >
-                    {AVAILABLE_VOICES.map((voice) => (
-                      <option key={voice} value={voice}>
-                        {voice} - {VOICE_DESCRIPTIONS[voice]?.tone || 'Custom voice'}
+                    {Object.entries(ELEVENLABS_VOICES).map(([id, voice]) => (
+                      <option key={id} value={id}>
+                        {voice.name} - {voice.description}
                       </option>
                     ))}
                   </select>
-                  {voiceConfig.voiceName && VOICE_DESCRIPTIONS[voiceConfig.voiceName] && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      Best for: {VOICE_DESCRIPTIONS[voiceConfig.voiceName].bestFor}
-                    </p>
-                  )}
                 </div>
 
                 {phase && (
                   <div>
-                    <label className="block text-sm text-slate-400 mb-2">Personality Presets</label>
+                    <label className="block text-sm text-slate-400 mb-2">Role Presets</label>
                     <div className="grid grid-cols-2 gap-2">
-                      {VOICE_PROFILES.filter(p => p.recommendedFor.includes(phase)).map((profile) => (
+                      {Object.entries(TRIAL_VOICE_PRESETS).map(([id, preset]) => (
                         <button
-                          key={profile.id}
+                          key={id}
                           onClick={() => {
                             setVoiceConfig(prev => ({ 
                               ...prev, 
-                              voiceName: profile.voiceName,
-                              personality: profile.personality 
+                              voiceName: preset.voice
                             }));
                             setSimulatorSettings(prev => ({ 
                               ...prev, 
                               voice: { 
                                 ...prev.voice, 
-                                voiceName: profile.voiceName,
-                                personality: profile.personality 
+                                voiceName: preset.voice
                               } 
                             }));
                           }}
                           className={`p-2 rounded-lg text-left text-xs transition-all ${
-                            voiceConfig.voiceName === profile.voiceName 
+                            voiceConfig.voiceName === preset.voice 
                               ? 'bg-gold-500 text-slate-900' 
                               : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                           }`}
                         >
-                          <p className="font-semibold">{profile.name}</p>
-                          <p className="opacity-70 line-clamp-2">{profile.description}</p>
+                          <p className="font-semibold capitalize">{id.replace('-', ' ')}</p>
+                          <p className="opacity-70 line-clamp-2">{preset.description}</p>
                         </button>
                       ))}
                     </div>
