@@ -4,6 +4,7 @@ import { AppContext } from '../App';
 import { Case, CaseStatus, CaseTask, DocumentType, EvidenceItem, PriorityLevel, TaskStatus } from '../types';
 import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag, ListChecks, File, Loader2 } from 'lucide-react';
 import { analyzeDocument, fileToGenerativePart, analyzePDFDocument, batchAnalyzeDocuments } from '../services/geminiService';
+import { processDocument, toEvidenceItem, saveTimelineEvents, ProcessedDocument } from '../services/documentProcessingService';
 import { MOCK_CASE_TEMPLATES } from '../constants';
 import { handleError, handleSuccess, getErrorMessage } from '../utils/errorHandler';
 import { validateFile } from '../utils/fileValidation';
@@ -77,31 +78,29 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
     setAnalysisResult(null);
 
     try {
-      let result;
-      const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      handleSuccess('Processing document with OCR...');
       
-      if (isPDF) {
-        handleSuccess('Processing PDF with OCR... This may take a moment for large documents.');
-        result = await analyzePDFDocument(file);
-        result = {
-          summary: result.summary,
-          entities: result.entities,
-          risks: result.risks,
-          documentType: 'PDF Document',
-          keyDates: result.keyDates,
-          monetaryAmounts: result.monetaryAmounts,
-          extractedText: result.text,
-          pageCount: result.pageCount
-        };
-      } else {
-        const imagePart = await fileToGenerativePart(file);
-        result = await analyzeDocument("Analyze this image document. Extract all text, identify key information, and provide a comprehensive analysis.", imagePart);
-      }
+      const processedDoc = await processDocument(file, (progress, status) => {
+        console.log(`[DocumentProcessing] ${progress}% - ${status}`);
+      });
+      
+      const result = {
+        summary: processedDoc.extractedText.slice(0, 500) + (processedDoc.extractedText.length > 500 ? '...' : ''),
+        entities: processedDoc.entities.map(e => e.name),
+        risks: [],
+        documentType: file.type === 'application/pdf' ? 'PDF Document' : 'Image Document',
+        keyDates: processedDoc.dates.map(d => d.date),
+        monetaryAmounts: processedDoc.monetaryAmounts,
+        extractedText: processedDoc.extractedText,
+        pageCount: processedDoc.ocrResult.pages?.length,
+        confidence: processedDoc.confidence,
+        processedDoc
+      };
       
       setAnalysisResult(result);
-      handleSuccess('File analyzed successfully');
+      handleSuccess(`Document processed successfully (OCR confidence: ${processedDoc.confidence}%)`);
     } catch (e) {
-      handleError(e, 'Failed to process file. Please check your API key and try again.', 'CaseManager');
+      handleError(e, 'Failed to process file. Please try again.', 'CaseManager');
     } finally {
       setAnalyzing(false);
       e.target.value = '';
