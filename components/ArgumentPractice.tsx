@@ -374,9 +374,16 @@ const TrialSim = () => {
   };
 
   const startLiveSession = async () => {
-    if (!activeCase || !phase || !mode) return;
+    console.log('[TrialSim] startLiveSession called', { activeCase: !!activeCase, phase, mode });
+    
+    if (!activeCase || !phase || !mode) {
+      console.log('[TrialSim] Missing required state, aborting');
+      toast.error('Please select a case, phase, and mode first');
+      return;
+    }
 
     setIsConnecting(true);
+    console.log('[TrialSim] Connecting...');
     sessionStartTime.current = Date.now();
     setObjectionCount(0);
     setRhetoricalScores([]);
@@ -450,9 +457,16 @@ const TrialSim = () => {
       }
 
       console.log('[TrialSim] Initializing Gemini Live API...');
-      console.log('[TrialSim] API Key present:', !!process.env.API_KEY);
+      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+      console.log('[TrialSim] API Key present:', !!apiKey, 'Key starts with:', apiKey?.substring(0, 10));
       
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      if (!apiKey) {
+        toast.error('No Gemini API key configured');
+        setIsConnecting(false);
+        return;
+      }
+      
+      const ai = new GoogleGenAI({ apiKey });
       
       const coachingTool: FunctionDeclaration = {
         name: 'sendCoachingTip',
@@ -642,14 +656,14 @@ const TrialSim = () => {
             }
           },
           onclose: (e) => {
-            console.log('[TrialSim] Connection closed, code:', e, 'reason:', e);
+            console.log('[TrialSim] Connection closed', JSON.stringify({ code: e, reason: e, wasClean: e }));
             // Cleanup ElevenLabs
             if (elevenLabsRef.current) {
               elevenLabsRef.current.disconnect();
               elevenLabsRef.current = null;
             }
             stopLiveSession();
-            toast.error('Connection closed. Please try again.');
+            toast.error(`Connection closed (code: ${e}). Please try again.`);
           },
           onerror: (err) => {
             console.error('[TrialSim] Connection error:', err);
