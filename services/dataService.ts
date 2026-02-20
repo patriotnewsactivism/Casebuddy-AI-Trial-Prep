@@ -4,36 +4,36 @@ import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 const isNotFoundError = (error: any) => error?.code === 'PGRST116';
 
-// Map TypeScript camelCase to database lowercase columns
+// Map TypeScript camelCase to database snake_case columns
 function caseToRow(c: Case): Record<string, any> {
   return {
     id: c.id,
     title: c.title,
     client: c.client,
     status: c.status,
-    opposingcounsel: c.opposingCounsel,
+    opposing_counsel: c.opposingCounsel,
     judge: c.judge,
-    nextcourtdate: c.nextCourtDate,
+    next_court_date: c.nextCourtDate,
     summary: c.summary,
-    winprobability: c.winProbability,
+    win_probability: c.winProbability,
     tags: c.tags,
     evidence: c.evidence,
     tasks: c.tasks,
   };
 }
 
-// Map database lowercase columns to TypeScript camelCase
+// Map database snake_case columns to TypeScript camelCase
 function rowToCase(row: any): Case {
   return {
     id: row.id,
     title: row.title,
     client: row.client,
     status: row.status,
-    opposingCounsel: row.opposingcounsel ?? row.opposingCounsel,
+    opposingCounsel: row.opposing_counsel ?? row.opposingcounsel ?? row.opposingCounsel,
     judge: row.judge,
-    nextCourtDate: row.nextcourtdate ?? row.nextCourtDate,
+    nextCourtDate: row.next_court_date ?? row.nextcourtdate ?? row.nextCourtDate,
     summary: row.summary,
-    winProbability: row.winprobability ?? row.winProbability,
+    winProbability: row.win_probability ?? row.winprobability ?? row.winProbability,
     tags: row.tags || [],
     evidence: row.evidence || [],
     tasks: row.tasks || [],
