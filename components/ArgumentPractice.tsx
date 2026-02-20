@@ -253,6 +253,7 @@ const TrialSim = () => {
   };
 
   const startRecording = (stream: MediaStream) => {
+    console.log('[TrialSim] startRecording called');
     recordedChunksRef.current = [];
     metricsRef.current = {
       objectionsReceived: objectionCount,
@@ -266,10 +267,13 @@ const TrialSim = () => {
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) recordedChunksRef.current.push(e.data);
       };
+      recorder.onstart = () => console.log('[TrialSim] MediaRecorder started');
+      recorder.onerror = (e) => console.error('[TrialSim] MediaRecorder error:', e);
       recorder.start(1000);
       mediaRecorderRef.current = recorder;
+      console.log('[TrialSim] MediaRecorder initialized and recording');
     } catch (e) {
-      console.error('Recording failed', e);
+      console.error('[TrialSim] Recording failed', e);
     }
   };
 
@@ -578,24 +582,27 @@ const TrialSim = () => {
           return;
         }
         if (event.error === 'network') {
-          console.log('[TrialSim] Network error, will retry...');
-          // Don't stop for network errors, let it retry
+          console.log('[TrialSim] Network error - this is usually temporary, recognition will auto-restart via onend');
+          // onend will be called after this, which will restart recognition
           return;
         }
         if (event.error === 'no-speech') {
-          console.log('[TrialSim] No speech detected, restarting...');
-          // Restart recognition
-          try { recognition.start(); } catch (e) { console.error('[TrialSim] Failed to restart recognition:', e); }
+          console.log('[TrialSim] No speech detected - recognition will auto-restart via onend');
+          // onend will be called after this, which will restart recognition
           return;
         }
         if (event.error === 'aborted') {
-          console.log('[TrialSim] Recognition aborted, restarting...');
-          try { recognition.start(); } catch (e) { console.error('[TrialSim] Failed to restart recognition:', e); }
+          console.log('[TrialSim] Recognition aborted - recognition will auto-restart via onend');
+          // onend will be called after this, which will restart recognition
+          return;
+        }
+        if (event.error === 'service-not-allowed') {
+          toast.error('Speech recognition service not allowed. Check browser settings.');
+          stopLiveSession();
           return;
         }
         
-        // For other errors, try to restart
-        try { recognition.start(); } catch (e) {}
+        console.log('[TrialSim] Unknown error, letting onend handle restart');
       };
 
       recognition.onend = () => {
