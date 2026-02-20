@@ -177,9 +177,9 @@ export const verifyTableStructure = async (): Promise<{ valid: boolean; errors: 
   
   const requiredTables = [
     { name: 'cases', columns: ['id', 'title', 'client', 'status', 'evidence', 'tasks'] },
-    { name: 'transcriptions', columns: ['id', 'case_id', 'file_name', 'text', 'timestamp'] },
-    { name: 'trial_sessions', columns: ['id', 'case_id', 'phase', 'mode', 'transcript'] },
-    { name: 'settlement_analyses', columns: ['id', 'case_id', 'settlement_range', 'factors'] },
+    { name: 'transcriptions', columns: ['id', 'caseId', 'fileName', 'text', 'timestamp'] },
+    { name: 'trial_sessions', columns: ['id', 'caseId', 'phase', 'mode', 'transcript'] },
+    { name: 'settlement_analyses', columns: ['id', 'caseId', 'settlementRange', 'factors'] },
   ];
   
   for (const table of requiredTables) {

@@ -52,17 +52,17 @@ DROP TABLE IF EXISTS public.transcriptions CASCADE;
 
 CREATE TABLE public.transcriptions (
   id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL REFERENCES public.cases(id) ON DELETE CASCADE,
-  file_name TEXT NOT NULL,
-  file_url TEXT,
+  caseId TEXT NOT NULL REFERENCES public.cases(id) ON DELETE CASCADE,
+  fileName TEXT NOT NULL,
+  fileUrl TEXT,
   text TEXT NOT NULL DEFAULT '',
   duration INTEGER DEFAULT 0,
   speakers JSONB DEFAULT '[]'::jsonb,
   timestamp BIGINT NOT NULL,
   tags JSONB DEFAULT '[]'::jsonb,
   notes TEXT DEFAULT '',
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  createdAt TIMESTAMPTZ DEFAULT NOW(),
+  updatedAt TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE public.transcriptions IS 'Stores audio/video transcriptions for cases';
@@ -78,19 +78,19 @@ DROP TABLE IF EXISTS public.trial_sessions CASCADE;
 
 CREATE TABLE public.trial_sessions (
   id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL REFERENCES public.cases(id) ON DELETE CASCADE,
-  case_title TEXT NOT NULL DEFAULT '',
+  caseId TEXT NOT NULL REFERENCES public.cases(id) ON DELETE CASCADE,
+  caseTitle TEXT NOT NULL DEFAULT '',
   phase TEXT NOT NULL DEFAULT 'pre-trial-motions',
   mode TEXT NOT NULL DEFAULT 'learn',
   date TEXT NOT NULL DEFAULT '',
   duration INTEGER DEFAULT 0,
   transcript JSONB DEFAULT '[]'::jsonb,
-  audio_url TEXT,
+  audioUrl TEXT,
   score NUMERIC(5,2) DEFAULT 0.00,
   feedback TEXT DEFAULT '',
   metrics JSONB DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  createdAt TIMESTAMPTZ DEFAULT NOW(),
+  updatedAt TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE public.trial_sessions IS 'Stores trial simulation and practice session data';
@@ -107,24 +107,24 @@ DROP TABLE IF EXISTS public.settlement_analyses CASCADE;
 
 CREATE TABLE public.settlement_analyses (
   id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL REFERENCES public.cases(id) ON DELETE CASCADE,
+  caseId TEXT NOT NULL REFERENCES public.cases(id) ON DELETE CASCADE,
   date TEXT NOT NULL DEFAULT '',
-  economic_damages JSONB DEFAULT '{}'::jsonb,
-  non_economic_damages JSONB DEFAULT '{}'::jsonb,
-  punitive_damages JSONB DEFAULT '{}'::jsonb,
-  comparative_negligence NUMERIC(5,2) DEFAULT 0.00,
-  settlement_range JSONB DEFAULT '[0, 0]'::jsonb,
-  recommended_demand NUMERIC(12,2) DEFAULT 0.00,
-  confidence_score NUMERIC(5,2) DEFAULT 0.00,
+  economicDamages JSONB DEFAULT '{}'::jsonb,
+  nonEconomicDamages JSONB DEFAULT '{}'::jsonb,
+  punitiveDamages JSONB DEFAULT '{}'::jsonb,
+  comparativeNegligence NUMERIC(5,2) DEFAULT 0.00,
+  settlementRange JSONB DEFAULT '[0, 0]'::jsonb,
+  recommendedDemand NUMERIC(12,2) DEFAULT 0.00,
+  confidenceScore NUMERIC(5,2) DEFAULT 0.00,
   factors JSONB DEFAULT '[]'::jsonb,
-  jury_verdict_research JSONB DEFAULT '[]'::jsonb,
-  negotiation_strategy TEXT DEFAULT '',
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  juryVerdictResearch JSONB DEFAULT '[]'::jsonb,
+  negotiationStrategy TEXT DEFAULT '',
+  createdAt TIMESTAMPTZ DEFAULT NOW(),
+  updatedAt TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE public.settlement_analyses IS 'Stores settlement analysis calculations and negotiation strategies';
-COMMENT ON COLUMN public.settlement_analyses.settlement_range IS 'JSON array [min, max] settlement values';
+COMMENT ON COLUMN public.settlement_analyses.settlementRange IS 'JSON array [min, max] settlement values';
 
 -- ============================================
 -- SECTION 5: INDEXES FOR PERFORMANCE
@@ -135,20 +135,20 @@ COMMENT ON COLUMN public.settlement_analyses.settlement_range IS 'JSON array [mi
 CREATE INDEX idx_cases_title_lower ON public.cases (LOWER(title));
 CREATE INDEX idx_cases_client_lower ON public.cases (LOWER(client));
 CREATE INDEX idx_cases_status ON public.cases (status);
-CREATE INDEX idx_cases_created_at ON public.cases (created_at DESC);
+CREATE INDEX idx_cases_created_at ON public.cases (createdAt DESC);
 CREATE INDEX idx_cases_next_court_date ON public.cases (nextCourtDate);
 
 -- Transcriptions table indexes
-CREATE INDEX idx_transcriptions_case_id ON public.transcriptions (case_id);
+CREATE INDEX idx_transcriptions_case_id ON public.transcriptions (caseId);
 CREATE INDEX idx_transcriptions_timestamp ON public.transcriptions (timestamp DESC);
 
 -- Trial sessions table indexes
-CREATE INDEX idx_trial_sessions_case_id ON public.trial_sessions (case_id);
+CREATE INDEX idx_trial_sessions_case_id ON public.trial_sessions (caseId);
 CREATE INDEX idx_trial_sessions_date ON public.trial_sessions (date DESC);
 CREATE INDEX idx_trial_sessions_phase ON public.trial_sessions (phase);
 
 -- Settlement analyses table indexes
-CREATE INDEX idx_settlement_analyses_case_id ON public.settlement_analyses (case_id);
+CREATE INDEX idx_settlement_analyses_case_id ON public.settlement_analyses (caseId);
 CREATE INDEX idx_settlement_analyses_date ON public.settlement_analyses (date DESC);
 
 -- JSONB indexes for array containment queries
@@ -227,7 +227,7 @@ CREATE POLICY "anon_delete_settlement_analyses" ON public.settlement_analyses
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = NOW();
+  NEW.updatedAt = NOW();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

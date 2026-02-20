@@ -49,7 +49,7 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon;
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = NOW();
+  NEW.updatedAt = NOW();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
