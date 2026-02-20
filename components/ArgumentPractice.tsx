@@ -381,63 +381,36 @@ const TrialSim = () => {
       return;
     }
 
+    // Check for OpenAI API key
+    if (!isOpenAIConfigured()) {
+      toast.error('OpenAI API key not configured. Add OPENAI_API_KEY to .env.local');
+      return;
+    }
+
+    // Check for ElevenLabs
+    const shouldUseElevenLabs = useElevenLabs && isElevenLabsConfigured();
+    console.log('[TrialSim] Using ElevenLabs for voice:', shouldUseElevenLabs);
+
+    if (!shouldUseElevenLabs) {
+      toast.warning('ElevenLabs not configured. Enable it for voice output, or responses will be text-only.');
+    }
+
     setIsConnecting(true);
-    console.log('[TrialSim] Connecting...');
+    console.log('[TrialSim] Starting session...');
     sessionStartTime.current = Date.now();
     setObjectionCount(0);
     setRhetoricalScores([]);
     setAvgRhetoricalScore(50);
     setSessionScore(50);
-    metricsRef.current = {
-      objectionsReceived: 0,
-      fallaciesCommitted: 0,
-      avgRhetoricalScore: 50,
-      wordCount: 0,
-      fillerWordsCount: 0,
-    };
     
     try {
-      if (!process.env.API_KEY) {
-        setIsConnecting(false);
-        toast.error('Missing Gemini API key');
-        return;
-      }
-
-      // Check if ElevenLabs should be used
-      const shouldUseElevenLabs = useElevenLabs && isElevenLabsConfigured();
-      console.log('[TrialSim] Using ElevenLabs:', shouldUseElevenLabs);
-
-      let inputCtx = inputContextRef.current;
-      let outputCtx = outputContextRef.current;
-      
-      if (!inputCtx || inputCtx.state === 'closed') {
-        inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-        await inputCtx.resume();
-        inputContextRef.current = inputCtx;
-        console.log('[TrialSim] Input audio context created, state:', inputCtx.state);
-      }
-      
-      if (!outputCtx || outputCtx.state === 'closed') {
-        outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        await outputCtx.resume();
-        outputContextRef.current = outputCtx;
-        console.log('[TrialSim] Output audio context created, state:', outputCtx.state);
-      }
-      
-      const outputNode = outputCtx.createGain();
-      outputNode.connect(outputCtx.destination);
-
-      let stream = streamRef.current;
-      if (!stream || !stream.active) {
-        console.log('[TrialSim] Requesting microphone access...');
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 }
-        });
-        streamRef.current = stream;
-        console.log('[TrialSim] Microphone access granted, tracks:', stream.getTracks().map(t => t.label));
-      }
-
-      startRecording(stream);
+      // Request microphone access
+      console.log('[TrialSim] Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      streamRef.current = stream;
+      console.log('[TrialSim] Microphone access granted');
 
       // Initialize ElevenLabs if enabled
       if (shouldUseElevenLabs) {
@@ -455,173 +428,135 @@ const TrialSim = () => {
         console.log('[TrialSim] ElevenLabs connected');
       }
 
-      console.log('[TrialSim] Initializing Gemini Live API...');
-      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-      console.log('[TrialSim] API Key present:', !!apiKey, 'Key starts with:', apiKey?.substring(0, 10));
+      // Initialize Web Speech API for speech recognition
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
-      if (!apiKey) {
-        toast.error('No Gemini API key configured');
+      if (!SpeechRecognition) {
+        toast.error('Speech recognition not supported in this browser. Try Chrome.');
         setIsConnecting(false);
         return;
       }
 
-      // First, test if API key works with a simple REST call
-      try {
-        console.log('[TrialSim] Testing API key with REST...');
-        const testResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: 'Say "API OK"' }] }]
-          })
-        });
-        const testResult = await testResponse.json();
-        console.log('[TrialSim] REST test result:', testResult);
-        
-        if (testResult.error) {
-          toast.error(`API Error: ${testResult.error.message}`);
-          setIsConnecting(false);
-          return;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      let isProcessing = false;
+      let silenceTimer: NodeJS.Timeout | null = null;
+      let currentTranscript = '';
+
+      recognition.onresult = async (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
         }
-      } catch (e) {
-        console.error('[TrialSim] REST test failed:', e);
-      }
-      
-      const ai = new GoogleGenAI({ apiKey });
-      
-      const coachingTool: FunctionDeclaration = {
-        name: 'sendCoachingTip',
-        description: 'Send coaching feedback.',
-        parameters: {
-          type: Type.OBJECT,
-          properties: {
-            critique: { type: Type.STRING },
-            suggestion: { type: Type.STRING },
-            sampleResponse: { type: Type.STRING },
-            teleprompterScript: { type: Type.STRING },
-            fallaciesIdentified: { type: Type.ARRAY, items: { type: Type.STRING } },
-            rhetoricalEffectiveness: { type: Type.NUMBER },
-            rhetoricalFeedback: { type: Type.STRING },
-          },
-          required: ['critique', 'suggestion']
+
+        // Update volume indicator based on speech
+        if (interimTranscript || finalTranscript) {
+          setLiveVolume(50 + Math.random() * 30);
+        }
+
+        // Show interim results
+        if (interimTranscript) {
+          currentTranscript = interimTranscript;
+        }
+
+        // Process final transcript
+        if (finalTranscript && !isProcessing) {
+          console.log('[TrialSim] User said:', finalTranscript);
+          currentTranscript = '';
+          isProcessing = true;
+
+          // Add user message to chat
+          setMessages(prev => [...prev, { 
+            id: Date.now() + 'u', 
+            sender: 'user', 
+            text: finalTranscript, 
+            timestamp: Date.now() 
+          }]);
+
+          // Get AI response
+          try {
+            const systemPrompt = getTrialSimSystemPrompt(phase!, mode!, opponentName, activeCase.summary);
+            
+            let fullResponse = '';
+            
+            // Stream response from OpenAI
+            for await (const chunk of streamOpenAIResponse(systemPrompt, finalTranscript, [])) {
+              fullResponse += chunk;
+              
+              // Send to ElevenLabs as we receive it
+              if (shouldUseElevenLabs && elevenLabsRef.current) {
+                elevenLabsRef.current.sendText(chunk);
+              }
+            }
+
+            console.log('[TrialSim] AI response:', fullResponse);
+
+            // Flush ElevenLabs and add message to chat
+            if (shouldUseElevenLabs && elevenLabsRef.current) {
+              elevenLabsRef.current.flush();
+            }
+
+            setMessages(prev => [...prev, { 
+              id: Date.now() + 'o', 
+              sender: 'opponent', 
+              text: fullResponse, 
+              timestamp: Date.now() 
+            }]);
+
+          } catch (err) {
+            console.error('[TrialSim] Error getting response:', err);
+            toast.error('Error getting response. Check console.');
+          }
+
+          isProcessing = false;
         }
       };
 
-      const objectionTool: FunctionDeclaration = {
-        name: 'raiseObjection',
-        description: 'Trigger objection alert.',
-        parameters: {
-          type: Type.OBJECT,
-          properties: {
-            grounds: { type: Type.STRING },
-            explanation: { type: Type.STRING }
-          },
-          required: ['grounds', 'explanation']
+      recognition.onerror = (event: any) => {
+        console.error('[TrialSim] Speech recognition error:', event.error);
+        if (event.error === 'no-speech') {
+          // Restart recognition
+          try { recognition.start(); } catch (e) {}
         }
       };
 
-      // Simple system instruction for testing
-      const systemInstruction = `You are a helpful assistant. Respond briefly.`;
+      recognition.onend = () => {
+        console.log('[TrialSim] Speech recognition ended');
+        // Restart if still live
+        if (isLiveRef.current) {
+          try { recognition.start(); } catch (e) {}
+        }
+      };
 
-      // Try the standard live model
-      const sessionPromise = ai.live.connect({
-        model: 'gemini-2.0-flash-live-preview-04-09',
-        config: {
-          responseModalities: [Modality.AUDIO],
-        },
-        callbacks: {
-          onopen: () => {
-            console.log('[TrialSim] Connection opened successfully');
-            setIsLive(true);
-            isLiveRef.current = true;
-            setIsConnecting(false);
-            
-            const source = inputCtx!.createMediaStreamSource(stream!);
-            const scriptProcessor = inputCtx!.createScriptProcessor(4096, 1, 1);
-            scriptProcessorRef.current = scriptProcessor;
-            
-            let audioChunkCount = 0;
-            scriptProcessor.onaudioprocess = (e) => {
-              if (!isLiveRef.current) return;
-              const inputData = e.inputBuffer.getChannelData(0);
-              let sum = 0;
-              for(let i=0; i<inputData.length; i++) sum += inputData[i] * inputData[i];
-              const volume = Math.sqrt(sum / inputData.length) * 100;
-              setLiveVolume(volume);
-              
-              audioChunkCount++;
-              if (audioChunkCount % 50 === 0) {
-                console.log(`[TrialSim] Audio chunk #${audioChunkCount}, volume: ${volume.toFixed(2)}`);
-              }
-              
-              // Send audio to Gemini for speech-to-text
-              const pcmBlob = createBlob(inputData);
-              sessionPromise.then(s => {
-                if (isLiveRef.current) {
-                  try { 
-                    s.sendRealtimeInput({ media: pcmBlob }); 
-                  } catch (err) {
-                    console.error('[TrialSim] Failed to send audio:', err);
-                  }
-                }
-              });
-            };
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(inputCtx!.destination);
-            
-            console.log('[TrialSim] Audio pipeline setup complete');
-            toast.success('Session started - Recording');
-          },
-          onmessage: async (msg: LiveServerMessage) => {
-            console.log('[TrialSim] Message received:', JSON.stringify(msg).substring(0, 200));
-            
-            if (msg.serverContent) {
-              // Handle AUDIO response from Gemini
-              const audioData = msg.serverContent.modelTurn?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
-              if (audioData) {
-                console.log('[TrialSim] Audio data received, length:', audioData.length);
-                
-                // Only play Gemini audio if ElevenLabs is NOT enabled
-                if (!shouldUseElevenLabs) {
-                  try {
-                    if (outputCtx!.state === 'suspended') await outputCtx!.resume();
-                    nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx!.currentTime);
-                    const audioBuffer = await decodeAudioData(decode(audioData), outputCtx!, 24000, 1);
-                    const source = outputCtx!.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(outputNode);
-                    source.addEventListener('ended', () => {
-                      sourcesRef.current.delete(source);
-                    });
-                    source.start(nextStartTimeRef.current);
-                    nextStartTimeRef.current += audioBuffer.duration;
-                    sourcesRef.current.add(source);
-                  } catch (err) {
-                    console.error('[TrialSim] Audio playback error:', err);
-                  }
-                } else {
-                  console.log('[TrialSim] Skipping Gemini audio (using ElevenLabs instead)');
-                }
-              }
+      // Store recognition for cleanup
+      (window as any).trialSimRecognition = recognition;
 
-              // Handle input transcription (what user said)
-              if (msg.serverContent.inputTranscription) {
-                currentInputTranscription.current += msg.serverContent.inputTranscription.text;
-                console.log('[TrialSim] Input transcription:', msg.serverContent.inputTranscription.text);
-              }
-              
-              // Handle output transcription (what Gemini is saying)
-              if (msg.serverContent.outputTranscription) {
-                const transcriptText = msg.serverContent.outputTranscription.text;
-                currentOutputTranscription.current += transcriptText;
-                console.log('[TrialSim] Output transcription:', transcriptText);
-                
-                // Send to ElevenLabs if enabled
-                if (shouldUseElevenLabs && elevenLabsRef.current) {
-                  console.log('[TrialSim] Sending to ElevenLabs:', transcriptText);
-                  elevenLabsRef.current.sendText(transcriptText);
-                }
-              }
+      // Start recognition
+      recognition.start();
+      
+      setIsLive(true);
+      isLiveRef.current = true;
+      setIsConnecting(false);
+      
+      startRecording(stream);
+      toast.success('Session started - Speak to begin');
+
+    } catch (e) {
+      console.error('[TrialSim] Failed to start session:', e);
+      setIsConnecting(false);
+      toast.error(`Failed to start: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+  };
 
               if (msg.serverContent.turnComplete) {
                 console.log('[TrialSim] Turn complete');
