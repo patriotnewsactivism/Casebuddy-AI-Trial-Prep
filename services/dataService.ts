@@ -3,22 +3,47 @@ import { clearCases, loadCases, saveCases } from '../utils/storage';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 const isNotFoundError = (error: any) => error?.code === 'PGRST116';
+const isColumnMismatchError = (error: any) => {
+  const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  return message.includes('column') && (message.includes('does not exist') || message.includes('could not find'));
+};
 
-// Map TypeScript camelCase to database snake_case columns
-function caseToRow(c: Case): Record<string, any> {
-  return {
+type CaseColumnStyle = 'snake' | 'camel';
+let detectedCaseColumnStyle: CaseColumnStyle | null = null;
+
+const getFallbackCaseColumnStyle = (style: CaseColumnStyle): CaseColumnStyle => {
+  return style === 'snake' ? 'camel' : 'snake';
+};
+
+// Map TypeScript camelCase to database columns.
+// Some deployments use snake_case columns, others use camelCase.
+function caseToRow(c: Case, style: CaseColumnStyle): Record<string, any> {
+  const base = {
     id: c.id,
     title: c.title,
     client: c.client,
     status: c.status,
-    opposing_counsel: c.opposingCounsel,
     judge: c.judge,
-    next_court_date: c.nextCourtDate,
     summary: c.summary,
+    tags: c.tags || [],
+    evidence: c.evidence || [],
+    tasks: c.tasks || [],
+  };
+
+  if (style === 'camel') {
+    return {
+      ...base,
+      opposingCounsel: c.opposingCounsel,
+      nextCourtDate: c.nextCourtDate,
+      winProbability: c.winProbability,
+    };
+  }
+
+  return {
+    ...base,
+    opposing_counsel: c.opposingCounsel,
+    next_court_date: c.nextCourtDate,
     win_probability: c.winProbability,
-    tags: c.tags,
-    evidence: c.evidence,
-    tasks: c.tasks,
   };
 }
 
@@ -76,14 +101,29 @@ export const upsertCase = async (caseRecord: Case): Promise<void> => {
     return;
   }
 
-  const row = caseToRow(caseRecord);
-  const { error } = await client.from('cases').upsert(row, { 
-    onConflict: 'id' 
-  });
-  if (error) {
-    console.error('[Supabase] upsertCase failed', error);
-    throw error;
+  const stylesToTry: CaseColumnStyle[] = detectedCaseColumnStyle
+    ? [detectedCaseColumnStyle, getFallbackCaseColumnStyle(detectedCaseColumnStyle)]
+    : ['snake', 'camel'];
+
+  let lastError: any = null;
+
+  for (const style of stylesToTry) {
+    const row = caseToRow(caseRecord, style);
+    const { error } = await client.from('cases').upsert(row, { onConflict: 'id' });
+
+    if (!error) {
+      detectedCaseColumnStyle = style;
+      return;
+    }
+
+    lastError = error;
+    if (!isColumnMismatchError(error)) {
+      break;
+    }
   }
+
+  console.error('[Supabase] upsertCase failed', lastError);
+  throw lastError;
 };
 
 export const removeCase = async (caseId: string): Promise<void> => {

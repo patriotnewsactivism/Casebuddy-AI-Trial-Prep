@@ -22,11 +22,91 @@ interface AssemblyAITranscriptResult {
   audio_duration?: number;
 }
 
+type GeminiRawSegment = {
+  start?: number | string;
+  end?: number | string;
+  startTime?: number | string;
+  endTime?: number | string;
+  start_time?: number | string;
+  end_time?: number | string;
+  speaker?: string;
+  speakerLabel?: string;
+  speaker_name?: string;
+  text?: string;
+  transcript?: string;
+  content?: string;
+};
+
+const parseTimeToSeconds = (value: unknown): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, value);
+  if (typeof value !== 'string') return 0;
+
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+
+  if (/^\d+(?::\d{1,2}){1,2}(?:\.\d+)?$/.test(trimmed)) {
+    const parts = trimmed.split(':').map((part) => Number(part));
+    if (parts.some((part) => Number.isNaN(part))) return 0;
+    if (parts.length === 2) return Math.max(0, parts[0] * 60 + parts[1]);
+    return Math.max(0, parts[0] * 3600 + parts[1] * 60 + parts[2]);
+  }
+
+  const numeric = Number(trimmed.replace(/[^\d.+-]/g, ''));
+  return Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
+};
+
+const parseGeminiSegments = (payload: unknown): TranscriptSegmentData[] => {
+  const rawSegments = Array.isArray(payload)
+    ? payload
+    : Array.isArray((payload as { segments?: unknown[] })?.segments)
+      ? (payload as { segments: unknown[] }).segments
+      : Array.isArray((payload as { utterances?: unknown[] })?.utterances)
+        ? (payload as { utterances: unknown[] }).utterances
+        : [];
+
+  return rawSegments
+    .map((rawSegment, index) => {
+      const segment = (rawSegment || {}) as GeminiRawSegment;
+      const start = parseTimeToSeconds(segment.start ?? segment.startTime ?? segment.start_time);
+      const endCandidate = parseTimeToSeconds(segment.end ?? segment.endTime ?? segment.end_time);
+      const text = `${segment.text ?? segment.transcript ?? segment.content ?? ''}`.trim();
+      const speaker = `${segment.speaker ?? segment.speakerLabel ?? segment.speaker_name ?? 'Speaker 1'}`.trim() || 'Speaker 1';
+
+      if (!text) return null;
+
+      return {
+        start,
+        end: endCandidate > start ? endCandidate : start + 0.5,
+        speaker,
+        text,
+      } satisfies TranscriptSegmentData;
+    })
+    .filter((segment): segment is TranscriptSegmentData => segment !== null);
+};
+
+const stripJsonCodeFences = (text: string): string => {
+  return text.replace(/```json/gi, '').replace(/```/g, '').trim();
+};
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+};
+
 /**
  * Polls the Gemini File API until the uploaded file is in the 'ACTIVE' state.
  */
 const waitForFileActive = async (fileUri: string, apiKey: string): Promise<void> => {
-    const fileId = fileUri.split('/').pop();
+    const fileIdMatch = fileUri.match(/\/files\/([^/?]+)/);
+    const fileId = fileIdMatch?.[1];
     if (!fileId) return;
 
     const maxAttempts = 60;
@@ -38,10 +118,11 @@ const waitForFileActive = async (fileUri: string, apiKey: string): Promise<void>
         if (!response.ok) throw new Error("Failed to check file status");
 
         const data = await response.json();
+        const state = data.state?.name || data.state;
 
-        if (data.state === 'ACTIVE') {
+        if (state === 'ACTIVE') {
             return;
-        } else if (data.state === 'FAILED') {
+        } else if (state === 'FAILED') {
             throw new Error("File processing failed on Google servers.");
         }
 
@@ -84,7 +165,6 @@ const uploadFileToGemini = async (
     return await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', uploadUrl);
-        xhr.setRequestHeader('Content-Length', file.size.toString());
         xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
         xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');
 
@@ -156,8 +236,16 @@ const transcribeWithGemini = async (
 
   const parseGeminiResponse = (text: string): TranscriptionResultData => {
       try {
-          const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-          const segments: TranscriptSegmentData[] = JSON.parse(cleanedText);
+          const cleanedText = stripJsonCodeFences(text);
+          const parsedPayload = JSON.parse(cleanedText);
+          const segments = parseGeminiSegments(parsedPayload);
+
+          if (segments.length === 0 && typeof (parsedPayload as { text?: unknown })?.text === 'string') {
+            return {
+              text: (parsedPayload as { text: string }).text,
+              providerUsed: TranscriptionProvider.GEMINI
+            };
+          }
 
           const fullText = segments.map(s => `[${formatTimestamp(s.start)}] [${s.speaker}] ${s.text}`).join('\n');
 
@@ -214,7 +302,7 @@ const transcribeWithGemini = async (
       // Fallback for small files
       if (file.size < 2 * 1024 * 1024) {
           try {
-              const base64Audio = await file.arrayBuffer().then((buf) => btoa(String.fromCharCode(...new Uint8Array(buf))));
+              const base64Audio = await file.arrayBuffer().then((buf) => arrayBufferToBase64(buf));
               const mimeType = file.type || 'audio/webm';
 
               const response: GenerateContentResponse = await ai.models.generateContent({
