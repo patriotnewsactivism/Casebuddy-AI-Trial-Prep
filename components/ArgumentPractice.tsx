@@ -465,6 +465,28 @@ const TrialSim = () => {
         setIsConnecting(false);
         return;
       }
+
+      // First, test if API key works with a simple REST call
+      try {
+        console.log('[TrialSim] Testing API key with REST...');
+        const testResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'Say "API OK"' }] }]
+          })
+        });
+        const testResult = await testResponse.json();
+        console.log('[TrialSim] REST test result:', testResult);
+        
+        if (testResult.error) {
+          toast.error(`API Error: ${testResult.error.message}`);
+          setIsConnecting(false);
+          return;
+        }
+      } catch (e) {
+        console.error('[TrialSim] REST test failed:', e);
+      }
       
       const ai = new GoogleGenAI({ apiKey });
       
