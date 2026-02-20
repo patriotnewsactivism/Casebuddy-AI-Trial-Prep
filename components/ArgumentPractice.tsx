@@ -492,13 +492,13 @@ const TrialSim = () => {
       const responseModalities = shouldUseElevenLabs ? [Modality.TEXT, Modality.AUDIO] : [Modality.AUDIO];
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities,
           speechConfig: { 
             voiceConfig: { 
               prebuiltVoiceConfig: { 
-                voiceName: voiceConfig.voiceName 
+                voiceName: 'Schedar' // Gemini voice (overridden by ElevenLabs if enabled)
               } 
             },
             languageCode: voiceConfig.languageCode,
