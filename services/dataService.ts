@@ -4,6 +4,7 @@ import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 const isNotFoundError = (error: any) => error?.code === 'PGRST116';
 
+// Map TypeScript camelCase to database lowercase columns
 function caseToRow(c: Case): Record<string, any> {
   return {
     id: c.id,
@@ -21,6 +22,7 @@ function caseToRow(c: Case): Record<string, any> {
   };
 }
 
+// Map database lowercase columns to TypeScript camelCase
 function rowToCase(row: any): Case {
   return {
     id: row.id,
@@ -32,9 +34,9 @@ function rowToCase(row: any): Case {
     nextCourtDate: row.nextcourtdate ?? row.nextCourtDate,
     summary: row.summary,
     winProbability: row.winprobability ?? row.winProbability,
-    tags: row.tags,
-    evidence: row.evidence,
-    tasks: row.tasks,
+    tags: row.tags || [],
+    evidence: row.evidence || [],
+    tasks: row.tasks || [],
   };
 }
 
@@ -46,7 +48,6 @@ const hydrateCase = (c: Case): Case => ({
 });
 
 const cacheCases = (cases: Case[]) => {
-  // Always keep a local cache for offline usage
   saveCases(cases.map(hydrateCase));
 };
 
@@ -62,9 +63,9 @@ export const fetchCases = async (): Promise<Case[]> => {
     return loadCases().map(hydrateCase);
   }
 
-  const hydrated = (data || []).map(hydrateCase);
-  cacheCases(hydrated);
-  return hydrated;
+  const cases = (data || []).map(rowToCase);
+  cacheCases(cases);
+  return cases;
 };
 
 export const upsertCase = async (caseRecord: Case): Promise<void> => {
@@ -75,7 +76,8 @@ export const upsertCase = async (caseRecord: Case): Promise<void> => {
     return;
   }
 
-  const { error } = await client.from('cases').upsert(caseRecord, { 
+  const row = caseToRow(caseRecord);
+  const { error } = await client.from('cases').upsert(row, { 
     onConflict: 'id' 
   });
   if (error) {
