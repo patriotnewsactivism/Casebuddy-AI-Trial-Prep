@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 import { MOCK_OPPONENT } from '../constants';
-import { AVAILABLE_VOICES, VOICE_PROFILES, VOICE_DESCRIPTIONS, DEFAULT_VOICE_BY_PHASE } from '../constants/voiceConstants';
 import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession, VoiceConfig, SimulatorSettings, TrialSessionMetrics } from '../types';
 import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link, Settings, Volume2, ChevronUp, FolderOpen, X } from 'lucide-react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { getTrialSimSystemInstruction } from '../services/geminiService';
+import { ElevenLabsStreamer, ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured } from '../services/elevenLabsService';
 import { toast } from 'react-toastify';
 
 interface EvidenceDataForSim {
