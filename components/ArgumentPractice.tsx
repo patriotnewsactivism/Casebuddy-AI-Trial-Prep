@@ -396,12 +396,14 @@ const TrialSim = () => {
         inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
         await inputCtx.resume();
         inputContextRef.current = inputCtx;
+        console.log('[TrialSim] Input audio context created, state:', inputCtx.state);
       }
       
       if (!outputCtx || outputCtx.state === 'closed') {
         outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
         await outputCtx.resume();
         outputContextRef.current = outputCtx;
+        console.log('[TrialSim] Output audio context created, state:', outputCtx.state);
       }
       
       const outputNode = outputCtx.createGain();
@@ -409,14 +411,19 @@ const TrialSim = () => {
 
       let stream = streamRef.current;
       if (!stream || !stream.active) {
+        console.log('[TrialSim] Requesting microphone access...');
         stream = await navigator.mediaDevices.getUserMedia({ 
           audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 }
         });
         streamRef.current = stream;
+        console.log('[TrialSim] Microphone access granted, tracks:', stream.getTracks().map(t => t.label));
       }
 
       startRecording(stream);
 
+      console.log('[TrialSim] Initializing Gemini Live API...');
+      console.log('[TrialSim] API Key present:', !!process.env.API_KEY);
+      
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const coachingTool: FunctionDeclaration = {
