@@ -16,16 +16,16 @@ CREATE TABLE IF NOT EXISTS public.cases (
   title TEXT NOT NULL DEFAULT '',
   client TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'Pre-Trial',
-  opposing_counsel TEXT DEFAULT '',
+  opposingCounsel TEXT DEFAULT '',
   judge TEXT DEFAULT '',
-  next_court_date TEXT DEFAULT '',
+  nextCourtDate TEXT DEFAULT '',
   summary TEXT DEFAULT '',
-  win_probability NUMERIC(5,2) DEFAULT 0.00,
+  winProbability NUMERIC(5,2) DEFAULT 0.00,
   tags JSONB DEFAULT '[]'::jsonb,
   evidence JSONB DEFAULT '[]'::jsonb,
   tasks JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  createdAt TIMESTAMPTZ DEFAULT NOW(),
+  updatedAt TIMESTAMPTZ DEFAULT NOW()
 );
 
 COMMENT ON TABLE public.cases IS 'Main cases table storing case information with nested evidence and tasks';
