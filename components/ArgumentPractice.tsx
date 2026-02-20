@@ -795,7 +795,7 @@ const TrialSim = () => {
         </div>
 
         {/* Recent Messages */}
-        <div className="h-24 px-4 overflow-hidden">
+        <div className="h-20 px-4 overflow-hidden">
           <div className="flex flex-col gap-1">
             {messages.slice(-2).map(m => (
               <div key={m.id} className={`text-xs p-2 rounded-lg max-w-[80%] ${m.sender === 'user' ? 'self-end bg-blue-900/50 text-blue-200' : 'self-start bg-slate-800 text-slate-300'}`}>
@@ -806,26 +806,59 @@ const TrialSim = () => {
           </div>
         </div>
 
-        {/* Coaching Toggle */}
-        {coachingTip && (
+        {/* TELEPROMPTER PANEL - What to Say */}
+        <div className="mx-4 mb-2">
           <button 
-            onClick={() => setShowCoaching(!showCoaching)} 
-            className="mx-4 mb-2 p-3 bg-blue-900/30 border border-blue-700 rounded-lg flex items-center justify-between"
+            onClick={() => setShowTeleprompter(!showTeleprompter)}
+            className="w-full p-3 bg-gold-500/20 border-2 border-gold-500 rounded-lg flex items-center justify-between"
           >
-            <span className="text-blue-400 text-sm font-medium">View Coaching Tip</span>
-            <ChevronDown size={18} className={`text-blue-400 transition-transform ${showCoaching ? 'rotate-180' : ''}`} />
+            <div className="flex items-center gap-2">
+              <Lightbulb size={18} className="text-gold-400" />
+              <span className="text-gold-300 text-sm font-bold">WHAT TO SAY</span>
+            </div>
+            <ChevronDown size={18} className={`text-gold-400 transition-transform ${showTeleprompter ? 'rotate-180' : ''}`} />
           </button>
-        )}
-
-        {showCoaching && coachingTip && (
-          <div className="mx-4 mb-2 p-4 bg-slate-800 rounded-lg space-y-2">
-            <p className="text-sm text-white"><strong>Critique:</strong> {coachingTip.critique}</p>
-            <p className="text-sm text-gold-400"><strong>Tip:</strong> {coachingTip.suggestion}</p>
-            {coachingTip.teleprompterScript && (
-              <p className="text-xs text-slate-400 mt-2 p-2 bg-slate-900 rounded">{coachingTip.teleprompterScript}</p>
-            )}
-          </div>
-        )}
+          
+          {showTeleprompter && (
+            <div className="mt-2 p-4 bg-slate-900 border-2 border-gold-500/50 rounded-lg">
+              {coachingTip?.teleprompterScript ? (
+                <div>
+                  <p className="text-xs text-gold-400 uppercase font-bold mb-2">Suggested Response:</p>
+                  <p className="text-lg text-white leading-relaxed">{coachingTip.teleprompterScript}</p>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-slate-400 text-sm">Start speaking to receive guidance...</p>
+                  <p className="text-slate-500 text-xs mt-1">The AI will suggest what to say based on the conversation</p>
+                </div>
+              )}
+              
+              {coachingTip && (
+                <div className="mt-4 pt-4 border-t border-slate-700">
+                  <button 
+                    onClick={() => setShowCoaching(!showCoaching)}
+                    className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                  >
+                    <BookOpen size={14} />
+                    {showCoaching ? 'Hide' : 'Show'} detailed coaching feedback
+                    <ChevronDown size={14} className={`transition-transform ${showCoaching ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {showCoaching && (
+                    <div className="mt-3 space-y-2 text-sm">
+                      <p className="text-slate-300"><strong className="text-slate-400">Critique:</strong> {coachingTip.critique}</p>
+                      <p className="text-gold-300"><strong className="text-gold-400">Tip:</strong> {coachingTip.suggestion}</p>
+                      {coachingTip.fallaciesIdentified && coachingTip.fallaciesIdentified.length > 0 && (
+                        <p className="text-red-300"><strong className="text-red-400">Fallacies:</strong> {coachingTip.fallaciesIdentified.join(', ')}</p>
+                      )}
+                      <p className="text-slate-400"><strong>Effectiveness:</strong> {coachingTip.rhetoricalEffectiveness}%</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Control Bar */}
