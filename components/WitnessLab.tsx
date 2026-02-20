@@ -134,22 +134,34 @@ const WitnessLab = () => {
       else if (selectedWitness.personality === 'Nervous') voicePreset = 'witness-nervous';
       
       const voiceConfig = getTrialVoicePreset(voicePreset);
-      // We need to map the voice name (e.g., 'sam') to an ID. 
-      // Since we can't easily import the internal ID map here without exposing it, 
-      // we will rely on a small helper or just use the default.
-      // But wait, synthesizeSpeech expects a voiceId (UUID).
-      // Let's import ELEVENLABS_VOICES to map it correctly.
       
-      // For now, we will try to use a default or just not pass it if we can't map it.
-      // Actually, let's just hardcode a valid ID for testing if needed, or update the service to accept names.
-      // The service expects an ID.
-      // Let's use a known ID if we can't find one.
+      // DIAGNOSTIC: Check if ElevenLabs is configured
+      const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
+      console.log('[WitnessLab TTS] ElevenLabs API Key present:', !!elevenLabsKey, 'Length:', elevenLabsKey?.length || 0);
+      console.log('[WitnessLab TTS] Text to synthesize:', text.substring(0, 100) + '...');
       
+      if (!elevenLabsKey || elevenLabsKey.length < 10) {
+        console.warn('[WitnessLab TTS] ElevenLabs API key is missing or invalid - TTS disabled');
+        handleError(new Error('ElevenLabs API key not configured'), 'Text-to-speech unavailable. Add ELEVENLABS_API_KEY to .env.local', 'WitnessLab');
+        return;
+      }
+      
+      console.log('[WitnessLab TTS] Calling synthesizeSpeech...');
       const audioBuffer = await synthesizeSpeech(text);
+      console.log('[WitnessLab TTS] Audio buffer received, size:', audioBuffer.byteLength, 'bytes');
+      
+      if (!audioBuffer || audioBuffer.byteLength === 0) {
+        console.error('[WitnessLab TTS] Empty audio buffer received');
+        handleError(new Error('Empty audio response'), 'TTS returned no audio', 'WitnessLab');
+        return;
+      }
+      
+      console.log('[WitnessLab TTS] Playing audio buffer...');
       await playAudioBuffer(audioBuffer);
+      console.log('[WitnessLab TTS] Playback complete');
     } catch (error) {
-      console.error('TTS Error:', error);
-      // Don't show user error for TTS failure as it's an enhancement
+      console.error('[WitnessLab TTS] Error:', error);
+      handleError(error, 'Text-to-speech failed. Check console for details.', 'WitnessLab');
     } finally {
       setIsPlayingAudio(false);
     }

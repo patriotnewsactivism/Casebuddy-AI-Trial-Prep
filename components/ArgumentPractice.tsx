@@ -388,11 +388,17 @@ const TrialSim = () => {
     }
 
     // Check for ElevenLabs
+    const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
+    console.log('[TrialSim] ElevenLabs API Key present:', !!elevenLabsKey, 'Length:', elevenLabsKey?.length || 0);
+    
     const shouldUseElevenLabs = useElevenLabs && isElevenLabsConfigured();
-    console.log('[TrialSim] Using ElevenLabs for voice:', shouldUseElevenLabs);
+    console.log('[TrialSim] Using ElevenLabs for voice:', shouldUseElevenLabs, '(useElevenLabs:', useElevenLabs, ')');
 
-    if (!shouldUseElevenLabs) {
-      toast.warning('ElevenLabs not configured. Enable it for voice output, or responses will be text-only.');
+    if (!elevenLabsKey || elevenLabsKey.length < 10) {
+      toast.error('ElevenLabs API key not configured. Add ELEVENLABS_API_KEY to .env.local for voice output.');
+      console.error('[TrialSim] ELEVENLABS_API_KEY is missing or invalid');
+    } else if (!shouldUseElevenLabs) {
+      toast.warning('ElevenLabs disabled in settings. Enable it for voice output.');
     }
 
     setIsConnecting(true);

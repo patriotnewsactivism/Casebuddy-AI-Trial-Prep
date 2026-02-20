@@ -341,10 +341,18 @@ export async function synthesizeSpeech(
 ): Promise<ArrayBuffer> {
   const apiKey = options?.apiKey || process.env.ELEVENLABS_API_KEY;
   
+  console.log('[ElevenLabs] synthesizeSpeech called');
+  console.log('[ElevenLabs] API Key present:', !!apiKey, 'Length:', apiKey?.length || 0);
+  console.log('[ElevenLabs] Voice ID:', voiceId);
+  console.log('[ElevenLabs] Text length:', text.length);
+  
   if (!apiKey) {
+    console.error('[ElevenLabs] API key is missing');
     throw new Error('ElevenLabs API key is required');
   }
 
+  console.log('[ElevenLabs] Sending request to ElevenLabs API...');
+  
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
@@ -364,12 +372,18 @@ export async function synthesizeSpeech(
     }),
   });
 
+  console.log('[ElevenLabs] Response status:', response.status, response.statusText);
+
   if (!response.ok) {
     const error = await response.text();
+    console.error('[ElevenLabs] API error:', response.status, error);
     throw new Error(`ElevenLabs API error: ${response.status} - ${error}`);
   }
 
-  return response.arrayBuffer();
+  const arrayBuffer = await response.arrayBuffer();
+  console.log('[ElevenLabs] Audio data received, size:', arrayBuffer.byteLength, 'bytes');
+  
+  return arrayBuffer;
 }
 
 /**
@@ -379,20 +393,34 @@ export async function playAudioBuffer(
   audioData: ArrayBuffer,
   audioContext?: AudioContext
 ): Promise<void> {
+  console.log('[ElevenLabs] playAudioBuffer called, data size:', audioData.byteLength);
+  
   const ctx = audioContext || new AudioContext();
+  console.log('[ElevenLabs] AudioContext state:', ctx.state);
   
   if (ctx.state === 'suspended') {
+    console.log('[ElevenLabs] AudioContext suspended, attempting to resume...');
     await ctx.resume();
+    console.log('[ElevenLabs] AudioContext resumed, new state:', ctx.state);
   }
   
+  console.log('[ElevenLabs] Decoding audio data...');
   const audioBuffer = await ctx.decodeAudioData(audioData);
+  console.log('[ElevenLabs] Audio decoded, duration:', audioBuffer.duration, 'seconds');
+  
   const source = ctx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(ctx.destination);
   
+  console.log('[ElevenLabs] Starting playback...');
+  
   return new Promise((resolve) => {
-    source.onended = () => resolve();
+    source.onended = () => {
+      console.log('[ElevenLabs] Playback ended');
+      resolve();
+    };
     source.start();
+    console.log('[ElevenLabs] Playback started');
   });
 }
 
