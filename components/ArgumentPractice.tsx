@@ -656,33 +656,18 @@ const TrialSim = () => {
             }
           },
           onclose: (e) => {
-            console.log('[TrialSim] Connection closed:', e);
+            console.log('[TrialSim] Connection closed, code:', e, 'reason:', e);
             // Cleanup ElevenLabs
             if (elevenLabsRef.current) {
               elevenLabsRef.current.disconnect();
               elevenLabsRef.current = null;
             }
-            // Attempt reconnection if not intentional
-            if (isLiveRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
-              reconnectAttemptsRef.current++;
-              console.log(`[TrialSim] Attempting reconnect ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
-              toast.warning(`Connection lost. Reconnecting... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
-              setTimeout(() => {
-                if (!isLiveRef.current) {
-                  stopLiveSession(true); // Preserve for reconnect
-                  startLiveSession();
-                }
-              }, 2000);
-            } else {
-              stopLiveSession();
-              if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-                toast.error('Connection lost. Please try again.');
-              }
-            }
+            stopLiveSession();
+            toast.error('Connection closed. Please try again.');
           },
           onerror: (err) => {
             console.error('[TrialSim] Connection error:', err);
-            toast.error(`Connection error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            toast.error(`Connection error: ${err}`);
             stopLiveSession();
           }
         }
