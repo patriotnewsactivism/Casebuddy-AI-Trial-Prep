@@ -500,23 +500,13 @@ const TrialSim = () => {
       };
 
       // Simple system instruction for testing
-      const systemInstruction = `You are a courtroom opponent. Respond to the attorney speaking to you. Keep responses brief.`;
+      const systemInstruction = `You are a helpful assistant. Respond briefly.`;
 
-      // For now, always use AUDIO only - the native audio model works best this way
-      // ElevenLabs can use the output transcription
+      // Try the standard live model
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: 'gemini-2.0-flash-live-preview-04-09',
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: { 
-            voiceConfig: { 
-              prebuiltVoiceConfig: { 
-                voiceName: 'Schedar'
-              } 
-            },
-            languageCode: 'en-US',
-          },
-          systemInstruction,
         },
         callbacks: {
           onopen: () => {
@@ -655,15 +645,17 @@ const TrialSim = () => {
               }
             }
           },
-          onclose: (e) => {
-            console.log('[TrialSim] Connection closed', JSON.stringify({ code: e, reason: e, wasClean: e }));
+          onclose: (e: any) => {
+            console.log('[TrialSim] Connection closed - full event:', e);
+            console.log('[TrialSim] Event type:', typeof e);
+            console.log('[TrialSim] Event keys:', Object.keys(e || {}));
             // Cleanup ElevenLabs
             if (elevenLabsRef.current) {
               elevenLabsRef.current.disconnect();
               elevenLabsRef.current = null;
             }
             stopLiveSession();
-            toast.error(`Connection closed (code: ${e}). Please try again.`);
+            toast.error('Connection closed. Check console for details.');
           },
           onerror: (err) => {
             console.error('[TrialSim] Connection error:', err);
