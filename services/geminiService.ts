@@ -392,9 +392,10 @@ export const getTrialSimSystemInstruction = (
   mode: SimulationMode,
   opponentName: string,
   caseContext: string,
-  settings?: SimulatorSettings
+  settings?: SimulatorSettings,
+  evidenceData?: { summary: string; entities: string[]; keyDates: string[] }[]
 ) => {
-  const baseRole = `You are an advanced legal AI simulator. The user is a practicing attorney. You must simulate the courtroom environment realistically.`;
+  const baseRole = `You are a realistic courtroom simulator. The user is a practicing attorney who will SPEAK to you. You ONLY speak as the opposing party - NEVER speak on behalf of the user attorney.`;
   
   const realismLevel = settings?.realismLevel || 'professional';
   const interruptionFreq = settings?.interruptionFrequency || 'medium';
@@ -402,34 +403,51 @@ export const getTrialSimSystemInstruction = (
   
   let objectionPolicy = "";
   if (mode === 'trial') {
-    objectionPolicy = `MODE: TRIAL (HARD). Be aggressive. Interrupt immediately on mistakes. No hints. Object to everything objectionable.`;
+    objectionPolicy = `MODE: TRIAL (HARD). Be aggressive. Object ONLY when there are legitimate legal grounds (hearsay, relevance, leading on direct, etc.). Make realistic objections that opposing counsel would actually raise.`;
   } else if (mode === 'practice') {
-    objectionPolicy = `MODE: PRACTICE (MEDIUM). Object on clear errors. Offer brief guidance after objections.`;
+    objectionPolicy = `MODE: PRACTICE (MEDIUM). Object on clear procedural errors. Provide coaching tips after exchanges.`;
   } else {
-    objectionPolicy = `MODE: LEARN (EASY). Rarely object. Focus on guiding the user.`;
+    objectionPolicy = `MODE: LEARN (EASY). Focus on guiding the user. Rarely object - only on major issues. Provide helpful teleprompter scripts.`;
   }
 
   objectionPolicy += `\n\nREALISM: ${realismLevel.toUpperCase()}. ${realismLevel === 'intense' ? 'High-stakes, high-pressure environment.' : realismLevel === 'casual' ? 'Relaxed, educational environment.' : 'Professional courtroom atmosphere.'}`;
-  objectionPolicy += `\nINTERRUPTION FREQUENCY: ${interruptionFreq.toUpperCase()}. ${interruptionFreq === 'high' ? 'Frequent interruptions and objections.' : interruptionFreq === 'low' ? 'Minimal interruptions.' : 'Balanced interruption pattern.'}`;
-  objectionPolicy += `\nCOACHING DETAIL: ${coachingVerbosity.toUpperCase()}. ${coachingVerbosity === 'detailed' ? 'Provide extensive, thorough coaching feedback.' : coachingVerbosity === 'minimal' ? 'Brief, concise feedback only.' : 'Balanced coaching feedback.'}`;
+  objectionPolicy += `\nINTERRUPTION FREQUENCY: ${interruptionFreq.toUpperCase()}.`;
+  objectionPolicy += `\nCOACHING DETAIL: ${coachingVerbosity.toUpperCase()}.`;
 
   const phaseInstructions: Record<TrialPhase, string> = {
-    'pre-trial-motions': `PHASE: PRE-TRIAL MOTIONS. Role: JUDGE and OPPOSING COUNSEL (${opponentName}).`,
-    'voir-dire': `PHASE: VOIR DIRE. Role: JURORS and OPPOSING COUNSEL (${opponentName}).`,
-    'opening-statement': `PHASE: OPENING STATEMENT. Role: JUDGE and OPPOSING COUNSEL (${opponentName}). Object to argumentative statements.`,
-    'direct-examination': `PHASE: DIRECT EXAMINATION. Role: WITNESS (Cooperative). Object to leading questions.`,
-    'cross-examination': `PHASE: CROSS EXAMINATION. Role: HOSTILE WITNESS. Be evasive.`,
-    'closing-argument': `PHASE: CLOSING ARGUMENT. Role: JUDGE and OPPOSING COUNSEL (${opponentName}).`,
-    'defendant-testimony': `PHASE: DEFENDANT TESTIMONY. Role: PROSECUTOR (${opponentName}). Cross-examine aggressively.`,
-    'sentencing': `PHASE: SENTENCING. Role: JUDGE. Listen and deliver sentence.`
+    'pre-trial-motions': `PHASE: PRE-TRIAL MOTIONS. You are OPPOSING COUNSEL (${opponentName}). Argue against the user's motions. Be strategic and cite procedural rules.`,
+    'voir-dire': `PHASE: VOIR DIRE. You are OPPOSING COUNSEL (${opponentName}). Conduct voir dire and challenge the user's juror selections. Also roleplay individual jurors when asked.`,
+    'opening-statement': `PHASE: OPENING STATEMENT. You are OPPOSING COUNSEL (${opponentName}). Listen to their opening, then deliver yours. Object ONLY to argumentative statements that prejudge facts.`,
+    'direct-examination': `PHASE: DIRECT EXAMINATION. You are the WITNESS being questioned. Answer naturally based on your role and the case facts. Do NOT object - let the user's direct examination proceed. If they ask leading questions, note it for coaching feedback.`,
+    'cross-examination': `PHASE: CROSS EXAMINATION. You are a HOSTILE WITNESS being cross-examined by the user. Be evasive, defensive, and difficult. Challenge unfair questions. Stick to facts from the evidence.`,
+    'closing-argument': `PHASE: CLOSING ARGUMENT. You are OPPOSING COUNSEL (${opponentName}). Listen to their closing, then deliver yours. Object only to serious misrepresentations of law.`,
+    'defendant-testimony': `PHASE: DEFENDANT TESTIMONY. You are PROSECUTOR (${opponentName}). Cross-examine the defendant aggressively. Challenge inconsistencies.`,
+    'sentencing': `PHASE: SENTENCING. You are the JUDGE. Listen to arguments and deliver an appropriate sentence based on guidelines and case facts.`
   };
 
-  return `${baseRole}
-${phaseInstructions[phase] || ''}
-${objectionPolicy}
-Case Context: ${caseContext}
+  let evidenceContext = "";
+  if (evidenceData && evidenceData.length > 0) {
+    evidenceContext = `\n\nAVAILABLE EVIDENCE FOR THIS CASE:\n${evidenceData.map((e, i) => 
+      `Document ${i + 1}: ${e.summary}\nKey Entities: ${e.entities?.slice(0, 5).join(', ') || 'N/A'}\nKey Dates: ${e.keyDates?.slice(0, 3).join(', ') || 'N/A'}`
+    ).join('\n\n')}`;
+  }
 
-CRITICAL: Use 'sendCoachingTip' for feedback and 'raiseObjection' to flash objections on screen.`;
+  return `${baseRole}
+
+${phaseInstructions[phase] || ''}
+
+${objectionPolicy}
+
+Case Context: ${caseContext}
+${evidenceContext}
+
+CRITICAL RULES:
+1. You represent the OPPOSING side ONLY. Never speak the user's lines.
+2. Use 'raiseObjection' ONLY when there are legitimate legal grounds (hearsay, relevance, speculation, leading on direct, lack of foundation, etc.)
+3. Use 'sendCoachingTip' AFTER the user speaks to provide feedback AND a suggested response they should say next
+4. Always include 'teleprompterScript' in coaching tips - this is what the user should say next
+5. Stay in character and reference the actual evidence and facts from this case
+6. Be realistic - objections should be strategic, not constant`;
 };
 
 export const generateTranscriptSummary = async (transcript: string): Promise<string> => {
