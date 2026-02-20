@@ -1197,7 +1197,7 @@ const TrialSim = () => {
         </div>
       </div>
 
-      <div className="sticky bottom-0 bg-slate-800 border-t border-slate-700 p-4 md:hidden">
+      <div className="sticky bottom-0 bg-slate-800 border-t border-slate-700 p-4">
         <div className="flex items-center justify-center gap-6">
           {!isLive ? (
             <button onClick={startLiveSession} disabled={isConnecting} className="flex flex-col items-center">
