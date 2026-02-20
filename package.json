@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "setup:supabase": "npx tsx scripts/setup-supabase.ts"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
