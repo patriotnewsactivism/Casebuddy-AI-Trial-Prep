@@ -487,21 +487,19 @@ const TrialSim = () => {
 
       const systemInstruction = getTrialSimSystemInstruction(phase, mode, opponentName, activeCase.summary, simulatorSettings, evidenceData);
 
-      // Use TEXT and AUDIO modalities if ElevenLabs is enabled (so we get text to speak), 
-      // otherwise just AUDIO for native Gemini voice.
-      const responseModalities = shouldUseElevenLabs ? [Modality.TEXT, Modality.AUDIO] : [Modality.AUDIO];
-
+      // For now, always use AUDIO only - the native audio model works best this way
+      // ElevenLabs can use the output transcription
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
-          responseModalities,
+          responseModalities: [Modality.AUDIO],
           speechConfig: { 
             voiceConfig: { 
               prebuiltVoiceConfig: { 
-                voiceName: 'Schedar' // Gemini voice (overridden by ElevenLabs if enabled)
+                voiceName: 'Schedar'
               } 
             },
-            languageCode: voiceConfig.languageCode,
+            languageCode: 'en-US',
           },
           systemInstruction,
           tools: [{ functionDeclarations: [coachingTool, objectionTool] }],
