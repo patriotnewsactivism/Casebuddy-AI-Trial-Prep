@@ -6,7 +6,13 @@ import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession, Vo
 import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link, Settings, Volume2, ChevronUp } from 'lucide-react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { getTrialSimSystemInstruction } from '../services/geminiService';
-import { toast } from 'react-toastify';
+  import { toast } from 'react-toastify';
+  
+  interface EvidenceDataForSim {
+    summary: string;
+    entities: string[];
+    keyDates: string[];
+  }
 
 // Type for Google GenAI SDK media blob
 interface GenAIBlob {
