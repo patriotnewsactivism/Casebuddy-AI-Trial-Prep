@@ -410,26 +410,8 @@ const TrialSim = () => {
     setSessionScore(50);
     
     try {
-      // Request microphone access
-      console.log('[TrialSim] Requesting microphone access...');
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-        });
-        streamRef.current = stream;
-        console.log('[TrialSim] Microphone access granted, tracks:', stream.getAudioTracks().length);
-        stream.getAudioTracks().forEach((track, i) => {
-          console.log(`[TrialSim] Audio track ${i}:`, track.label, 'enabled:', track.enabled, 'muted:', track.muted);
-        });
-      } catch (micError) {
-        console.error('[TrialSim] Microphone access denied:', micError);
-        toast.error('Microphone access denied. Please allow microphone access and try again.');
-        setIsConnecting(false);
-        return;
-      }
-
-      // Initialize ElevenLabs if enabled
+      // Initialize ElevenLabs FIRST (before grabbing microphone)
+      // This prevents conflicts between AudioContext and microphone access
       if (shouldUseElevenLabs) {
         const voiceId = ELEVENLABS_VOICES[voiceConfig.voiceName as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
         console.log('[TrialSim] Initializing ElevenLabs with voice:', voiceId, 'voiceName:', voiceConfig.voiceName);
@@ -451,6 +433,25 @@ const TrialSim = () => {
           toast.error(`Voice synthesis failed: ${elevenLabsError instanceof Error ? elevenLabsError.message : 'Unknown error'}`);
           // Continue without voice - don't block the whole session
         }
+      }
+
+      // Request microphone access AFTER ElevenLabs is set up
+      console.log('[TrialSim] Requesting microphone access...');
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+        streamRef.current = stream;
+        console.log('[TrialSim] Microphone access granted, tracks:', stream.getAudioTracks().length);
+        stream.getAudioTracks().forEach((track, i) => {
+          console.log(`[TrialSim] Audio track ${i}:`, track.label, 'enabled:', track.enabled, 'muted:', track.muted);
+        });
+      } catch (micError) {
+        console.error('[TrialSim] Microphone access denied:', micError);
+        toast.error('Microphone access denied. Please allow microphone access and try again.');
+        setIsConnecting(false);
+        return;
       }
 
       // Initialize Web Speech API for speech recognition
