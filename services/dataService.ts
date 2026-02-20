@@ -4,6 +4,40 @@ import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 const isNotFoundError = (error: any) => error?.code === 'PGRST116';
 
+function caseToRow(c: Case): Record<string, any> {
+  return {
+    id: c.id,
+    title: c.title,
+    client: c.client,
+    status: c.status,
+    opposingcounsel: c.opposingCounsel,
+    judge: c.judge,
+    nextcourtdate: c.nextCourtDate,
+    summary: c.summary,
+    winprobability: c.winProbability,
+    tags: c.tags,
+    evidence: c.evidence,
+    tasks: c.tasks,
+  };
+}
+
+function rowToCase(row: any): Case {
+  return {
+    id: row.id,
+    title: row.title,
+    client: row.client,
+    status: row.status,
+    opposingCounsel: row.opposingcounsel ?? row.opposingCounsel,
+    judge: row.judge,
+    nextCourtDate: row.nextcourtdate ?? row.nextCourtDate,
+    summary: row.summary,
+    winProbability: row.winprobability ?? row.winProbability,
+    tags: row.tags,
+    evidence: row.evidence,
+    tasks: row.tasks,
+  };
+}
+
 const hydrateCase = (c: Case): Case => ({
   ...c,
   evidence: c.evidence || [],
