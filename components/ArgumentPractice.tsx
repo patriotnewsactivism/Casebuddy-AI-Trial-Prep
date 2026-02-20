@@ -412,11 +412,22 @@ const TrialSim = () => {
     try {
       // Request microphone access
       console.log('[TrialSim] Requesting microphone access...');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      });
-      streamRef.current = stream;
-      console.log('[TrialSim] Microphone access granted');
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+        streamRef.current = stream;
+        console.log('[TrialSim] Microphone access granted, tracks:', stream.getAudioTracks().length);
+        stream.getAudioTracks().forEach((track, i) => {
+          console.log(`[TrialSim] Audio track ${i}:`, track.label, 'enabled:', track.enabled, 'muted:', track.muted);
+        });
+      } catch (micError) {
+        console.error('[TrialSim] Microphone access denied:', micError);
+        toast.error('Microphone access denied. Please allow microphone access and try again.');
+        setIsConnecting(false);
+        return;
+      }
 
       // Initialize ElevenLabs if enabled
       if (shouldUseElevenLabs) {
@@ -438,11 +449,15 @@ const TrialSim = () => {
         } catch (elevenLabsError) {
           console.error('[TrialSim] ElevenLabs initialization failed:', elevenLabsError);
           toast.error(`Voice synthesis failed: ${elevenLabsError instanceof Error ? elevenLabsError.message : 'Unknown error'}`);
+          // Continue without voice - don't block the whole session
         }
       }
 
       // Initialize Web Speech API for speech recognition
+      console.log('[TrialSim] Initializing Web Speech API...');
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      console.log('[TrialSim] SpeechRecognition available:', !!SpeechRecognition);
       
       if (!SpeechRecognition) {
         toast.error('Speech recognition not supported in this browser. Try Chrome.');
@@ -454,12 +469,18 @@ const TrialSim = () => {
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
+      console.log('[TrialSim] SpeechRecognition instance created');
 
       let isProcessing = false;
       let silenceTimer: NodeJS.Timeout | null = null;
       let currentTranscript = '';
 
+      recognition.onstart = () => {
+        console.log('[TrialSim] Speech recognition STARTED - microphone active');
+      };
+
       recognition.onresult = async (event: any) => {
+        console.log('[TrialSim] Speech recognition result received');
         let interimTranscript = '';
         let finalTranscript = '';
 
@@ -479,6 +500,7 @@ const TrialSim = () => {
 
         // Show interim results
         if (interimTranscript) {
+          console.log('[TrialSim] Interim transcript:', interimTranscript);
           currentTranscript = interimTranscript;
         }
 
@@ -541,18 +563,51 @@ const TrialSim = () => {
       };
 
       recognition.onerror = (event: any) => {
-        console.error('[TrialSim] Speech recognition error:', event.error);
-        if (event.error === 'no-speech') {
-          // Restart recognition
-          try { recognition.start(); } catch (e) {}
+        console.error('[TrialSim] Speech recognition error:', event.error, 'message:', event.message);
+        
+        // Handle specific errors
+        if (event.error === 'not-allowed') {
+          toast.error('Microphone access denied. Please allow microphone access in your browser settings.');
+          stopLiveSession();
+          return;
         }
+        if (event.error === 'audio-capture') {
+          toast.error('No microphone found. Please connect a microphone.');
+          stopLiveSession();
+          return;
+        }
+        if (event.error === 'network') {
+          console.log('[TrialSim] Network error, will retry...');
+          // Don't stop for network errors, let it retry
+          return;
+        }
+        if (event.error === 'no-speech') {
+          console.log('[TrialSim] No speech detected, restarting...');
+          // Restart recognition
+          try { recognition.start(); } catch (e) { console.error('[TrialSim] Failed to restart recognition:', e); }
+          return;
+        }
+        if (event.error === 'aborted') {
+          console.log('[TrialSim] Recognition aborted, restarting...');
+          try { recognition.start(); } catch (e) { console.error('[TrialSim] Failed to restart recognition:', e); }
+          return;
+        }
+        
+        // For other errors, try to restart
+        try { recognition.start(); } catch (e) {}
       };
 
       recognition.onend = () => {
-        console.log('[TrialSim] Speech recognition ended');
+        console.log('[TrialSim] Speech recognition ended, isLiveRef:', isLiveRef.current);
         // Restart if still live
         if (isLiveRef.current) {
-          try { recognition.start(); } catch (e) {}
+          console.log('[TrialSim] Attempting to restart recognition...');
+          try { 
+            recognition.start(); 
+            console.log('[TrialSim] Recognition restart initiated');
+          } catch (e) { 
+            console.error('[TrialSim] Failed to restart recognition:', e); 
+          }
         }
       };
 
@@ -560,13 +615,23 @@ const TrialSim = () => {
       (window as any).trialSimRecognition = recognition;
 
       // Start recognition
-      recognition.start();
+      console.log('[TrialSim] Calling recognition.start()...');
+      try {
+        recognition.start();
+        console.log('[TrialSim] recognition.start() called successfully');
+      } catch (startError) {
+        console.error('[TrialSim] Failed to start recognition:', startError);
+        toast.error('Failed to start speech recognition. Please refresh and try again.');
+        setIsConnecting(false);
+        return;
+      }
       
       setIsLive(true);
       isLiveRef.current = true;
       setIsConnecting(false);
       
       startRecording(stream);
+      console.log('[TrialSim] Session fully initialized, ready for speech');
       toast.success('Session started - Speak to begin');
 
     } catch (e) {

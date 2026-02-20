@@ -110,14 +110,25 @@ export class ElevenLabsStreamer {
    * Initialize the audio context
    */
   async initAudio(sampleRate: number = 24000): Promise<AudioContext> {
+    console.log('[ElevenLabs] initAudio called, sampleRate:', sampleRate);
+    
     if (!this.audioContext || this.audioContext.state === 'closed') {
       this.audioContext = new AudioContext({ sampleRate });
+      console.log('[ElevenLabs] Created new AudioContext, state:', this.audioContext.state);
+      
       this.gainNode = this.audioContext.createGain();
       this.gainNode.connect(this.audioContext.destination);
+      console.log('[ElevenLabs] GainNode created and connected to destination');
+      console.log('[ElevenLabs] GainNode volume:', this.gainNode.gain.value);
     }
+    
     if (this.audioContext.state === 'suspended') {
+      console.log('[ElevenLabs] AudioContext suspended, attempting resume...');
       await this.audioContext.resume();
+      console.log('[ElevenLabs] AudioContext after resume:', this.audioContext.state);
     }
+    
+    console.log('[ElevenLabs] AudioContext ready, state:', this.audioContext.state);
     return this.audioContext;
   }
 
@@ -164,17 +175,27 @@ export class ElevenLabsStreamer {
           if (data.audio) {
             // Decode base64 audio chunk
             const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+            console.log('[ElevenLabs] Received audio chunk, size:', audioBytes.byteLength, 'bytes, queue length:', this.audioQueue.length);
             this.audioQueue.push(audioBytes);
             this.onAudioChunk?.(audioBytes);
             
             // Auto-play if not already playing
             if (!this.isPlaying && this.audioContext) {
+              console.log('[ElevenLabs] Starting playback (not currently playing)');
               this.playNextChunk();
+            } else if (!this.audioContext) {
+              console.error('[ElevenLabs] ERROR: No audioContext available for playback!');
+            } else {
+              console.log('[ElevenLabs] Already playing, chunk queued');
             }
           }
           
           if (data.isFinal) {
-            console.log('[ElevenLabs] Stream complete');
+            console.log('[ElevenLabs] Stream complete, remaining queue:', this.audioQueue.length);
+          }
+          
+          if (data.error) {
+            console.error('[ElevenLabs] Server error:', data.error);
           }
         } catch (err) {
           console.error('[ElevenLabs] Error processing message:', err);
@@ -243,30 +264,55 @@ export class ElevenLabsStreamer {
    * Play the next audio chunk in the queue
    */
   private async playNextChunk(): Promise<void> {
-    if (!this.audioContext || this.audioQueue.length === 0) {
+    console.log('[ElevenLabs] playNextChunk called, audioContext:', !!this.audioContext, 'queue length:', this.audioQueue.length, 'isPlaying:', this.isPlaying);
+    
+    if (!this.audioContext) {
+      console.error('[ElevenLabs] playNextChunk: No audioContext!');
+      this.isPlaying = false;
+      return;
+    }
+    
+    if (this.audioQueue.length === 0) {
+      console.log('[ElevenLabs] playNextChunk: Queue empty, stopping');
       this.isPlaying = false;
       return;
     }
 
     this.isPlaying = true;
     const chunk = this.audioQueue.shift()!;
+    console.log('[ElevenLabs] playNextChunk: Processing chunk, size:', chunk.byteLength, 'bytes');
 
     try {
+      // Check AudioContext state
+      console.log('[ElevenLabs] AudioContext state before decode:', this.audioContext.state);
+      
+      if (this.audioContext.state === 'suspended') {
+        console.log('[ElevenLabs] AudioContext suspended, resuming...');
+        await this.audioContext.resume();
+      }
+      
       // Decode MP3 chunk to AudioBuffer
+      console.log('[ElevenLabs] Decoding audio data...');
       const audioBuffer = await this.audioContext.decodeAudioData(chunk.buffer.slice(0));
+      console.log('[ElevenLabs] Decoded audio, duration:', audioBuffer.duration, 'seconds, sampleRate:', audioBuffer.sampleRate);
       
       const source = this.audioContext.createBufferSource();
       source.buffer = audioBuffer;
+      
+      console.log('[ElevenLabs] Connecting source to gainNode, gain:', this.gainNode?.gain.value);
       source.connect(this.gainNode!);
       
       source.onended = () => {
+        console.log('[ElevenLabs] Chunk playback ended');
         this.sourceNode = null;
         // Play next chunk
         this.playNextChunk();
       };
       
       this.sourceNode = source;
+      console.log('[ElevenLabs] Starting source playback...');
       source.start();
+      console.log('[ElevenLabs] source.start() called successfully');
     } catch (err) {
       console.error('[ElevenLabs] Error playing audio chunk:', err);
       // Try next chunk on error
