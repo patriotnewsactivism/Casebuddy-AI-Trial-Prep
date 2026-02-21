@@ -3,10 +3,9 @@ import { MOCK_WITNESSES } from '../constants';
 import { AppContext } from '../App';
 import { generateWitnessResponse, clearChatSession } from '../services/geminiService';
 import { transcribeAudio } from '../services/transcriptionService';
-import { synthesizeSpeech, playAudioBuffer, getTrialVoicePreset, TrialVoicePreset, testAudioPlayback, ensureAudioUnlocked, isAudioUnlocked } from '../services/elevenLabsService';
+import { synthesizeSpeech, getTrialVoicePreset, testAudioPlayback, ensureAudioUnlocked, ELEVENLABS_VOICES } from '../services/elevenLabsService';
 import { browserTTS, speakWithFallback, isBrowserTTSAvailable } from '../services/browserTTSService';
-import { Message, Witness, TranscriptionProvider, LiveTranscript, CaptionSettings } from '../types';
-import { Send, Mic, User, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download, Settings2 } from 'lucide-react';
+import { Send, Mic, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download } from 'lucide-react';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import CaptionOverlay from './CaptionOverlay';
 
@@ -23,6 +22,7 @@ const WitnessLab = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [liveMicTranscript, setLiveMicTranscript] = useState('');
   
   const [captionText, setCaptionText] = useState<string>('');
   const [captionVisible, setCaptionVisible] = useState(false);
@@ -37,6 +37,11 @@ const WitnessLab = () => {
   const audioChunksRef = useRef<Blob[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const currentAudioSourceRef = useRef<'elevenlabs' | 'browser' | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const isRecordingRef = useRef(false);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const finalSpeechTranscriptRef = useRef('');
+  const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const getSessionId = (witnessId: string) => `witness-${witnessId}-${activeCase?.id || 'default'}`;
 
@@ -85,8 +90,30 @@ const WitnessLab = () => {
     }
   }, [isPlayingAudio]);
 
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.stop?.();
+      } catch {
+        // no-op
+      }
+      recordingStreamRef.current?.getTracks().forEach(track => track.stop());
+      if (playbackAudioRef.current) {
+        playbackAudioRef.current.pause();
+        playbackAudioRef.current.src = '';
+        playbackAudioRef.current = null;
+      }
+      browserTTS.stop();
+    };
+  }, []);
+
   const stopAllAudio = useCallback(() => {
     browserTTS.stop();
+    if (playbackAudioRef.current) {
+      playbackAudioRef.current.pause();
+      playbackAudioRef.current.src = '';
+      playbackAudioRef.current = null;
+    }
     currentAudioSourceRef.current = null;
     setIsPlayingAudio(false);
     setCaptionVisible(false);
@@ -94,11 +121,18 @@ const WitnessLab = () => {
   }, []);
 
   const startRecording = async () => {
+    if (isRecordingRef.current || isTyping || isProcessingAudio) {
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+      finalSpeechTranscriptRef.current = '';
+      setLiveMicTranscript('');
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -108,15 +142,79 @@ const WitnessLab = () => {
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        await handleAudioUpload(audioBlob);
+        const optimisticTranscript = finalSpeechTranscriptRef.current.trim();
+        await handleAudioUpload(audioBlob, optimisticTranscript);
+        finalSpeechTranscriptRef.current = '';
+        setLiveMicTranscript('');
         stream.getTracks().forEach(track => track.stop());
+        recordingStreamRef.current = null;
       };
+
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+        recognition.maxAlternatives = 1;
+
+        recognition.onresult = (event: any) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const segment = event.results[i][0]?.transcript ?? '';
+            if (event.results[i].isFinal) {
+              finalTranscript += `${segment} `;
+            } else {
+              interimTranscript += segment;
+            }
+          }
+
+          if (finalTranscript.trim()) {
+            finalSpeechTranscriptRef.current = `${finalSpeechTranscriptRef.current} ${finalTranscript}`.trim();
+          }
+
+          const liveTranscript = `${finalSpeechTranscriptRef.current} ${interimTranscript}`.trim();
+          setLiveMicTranscript(liveTranscript);
+          setCaptionText(liveTranscript || 'Listening...');
+          setCaptionSpeaker('user');
+          setCaptionVisible(true);
+        };
+
+        recognition.onerror = (event: any) => {
+          console.warn('[WitnessLab] Speech recognition error:', event?.error || event);
+        };
+
+        recognition.onend = () => {
+          if (isRecordingRef.current) {
+            try {
+              recognition.start();
+            } catch {
+              // no-op
+            }
+          }
+        };
+
+        recognitionRef.current = recognition;
+      } else {
+        recognitionRef.current = null;
+      }
 
       mediaRecorder.start();
       setIsRecording(true);
+      isRecordingRef.current = true;
       setCaptionText('Listening...');
       setCaptionSpeaker('user');
       setCaptionVisible(true);
+
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch {
+          // no-op
+        }
+      }
     } catch (error) {
       handleError(error, 'Could not access microphone', 'WitnessLab');
       setCaptionVisible(false);
@@ -124,16 +222,40 @@ const WitnessLab = () => {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (mediaRecorderRef.current && isRecordingRef.current) {
+      isRecordingRef.current = false;
+
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.onend = null;
+          recognitionRef.current.stop();
+        } catch {
+          // no-op
+        }
+        recognitionRef.current = null;
+      }
+
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       setCaptionText('Processing...');
     }
   };
 
-  const handleAudioUpload = async (audioBlob: Blob) => {
+  const handleAudioUpload = async (audioBlob: Blob, preferredTranscript?: string) => {
     setIsProcessingAudio(true);
     try {
+      if (preferredTranscript && preferredTranscript.trim().length > 0) {
+        const quickTranscript = preferredTranscript.trim();
+        setCaptionText(quickTranscript);
+        setCaptionSpeaker('user');
+        setInput(quickTranscript);
+        setTimeout(() => {
+          setCaptionVisible(false);
+        }, 1200);
+        await handleSendMessage(undefined, quickTranscript);
+        return;
+      }
+
       const result = await transcribeAudio(
         audioBlob, 
         '', 
@@ -204,34 +326,56 @@ const WitnessLab = () => {
       
       if (elevenLabsKey && elevenLabsKey.length > 10) {
         try {
-          console.log('[WitnessLab TTS] Attempting ElevenLabs streaming...');
-          
-          // Use streaming for better experience and longer texts
-          const streamer = new ElevenLabsStreamer({
+          console.log('[WitnessLab TTS] Attempting ElevenLabs direct synthesis...');
+          const voiceId = ELEVENLABS_VOICES[voiceConfig.voice as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
+          const audioData = await synthesizeSpeech(text, voiceId, {
             apiKey: elevenLabsKey,
-            voiceId: ELEVENLABS_VOICES[voiceConfig.voice as keyof typeof ELEVENLABS_VOICES]?.id || voiceConfig.voice,
             stability: 0.5,
             similarityBoost: 0.75,
           });
-          
-          await streamer.initAudio();
-          await streamer.connect();
-          
-          // Set up streamer-specific end handler
-          const originalDisconnect = streamer.disconnect.bind(streamer);
-          streamer.disconnect = () => {
-            setIsPlayingAudio(false);
-            setCaptionVisible(false);
-            originalDisconnect();
-          };
 
-          await streamer.sendText(text, true);
-          
           currentAudioSourceRef.current = 'elevenlabs';
-          console.log('[WitnessLab TTS] ElevenLabs streaming started');
+          const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audioElement = new Audio(audioUrl);
+          playbackAudioRef.current = audioElement;
+
+          await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            const cleanup = () => {
+              if (settled) return;
+              settled = true;
+              URL.revokeObjectURL(audioUrl);
+            };
+
+            audioElement.onended = () => {
+              cleanup();
+              resolve();
+            };
+            audioElement.onpause = () => {
+              if (audioElement.ended) return;
+              cleanup();
+              resolve();
+            };
+            audioElement.onerror = () => {
+              cleanup();
+              reject(new Error('ElevenLabs audio playback failed'));
+            };
+
+            audioElement.play().catch((playError) => {
+              cleanup();
+              reject(playError);
+            });
+          });
+
+          playbackAudioRef.current = null;
+          setIsPlayingAudio(false);
+          setCaptionVisible(false);
+          setCaptionText('');
+          console.log('[WitnessLab TTS] ElevenLabs playback completed');
           return;
         } catch (elevenLabsError) {
-          console.warn('[WitnessLab TTS] ElevenLabs streaming failed, falling back to browser TTS:', elevenLabsError);
+          console.warn('[WitnessLab TTS] ElevenLabs synthesis failed, falling back to browser TTS:', elevenLabsError);
         }
       }
       
@@ -241,15 +385,18 @@ const WitnessLab = () => {
         await speakWithFallback(text, {
           rate: 0.95,
           pitch: 1.0,
+          volume: 1,
           onEnd: () => {
             console.log('[WitnessLab TTS] Browser TTS playback complete');
             setIsPlayingAudio(false);
             setCaptionVisible(false);
+            setCaptionText('');
           },
           onError: (error) => {
             console.error('[WitnessLab TTS] Browser TTS error:', error);
             setIsPlayingAudio(false);
             setCaptionVisible(false);
+            setCaptionText('');
           }
         });
       } else {
@@ -516,6 +663,17 @@ ${'='.repeat(50)}
               <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-br-none px-5 py-3 flex items-center gap-2 text-gold-500 text-sm">
                 <Loader2 size={16} className="animate-spin" />
                 Transcribing audio...
+              </div>
+            </div>
+          )}
+
+          {(isRecording || liveMicTranscript) && (
+            <div className="flex justify-end">
+              <div className="max-w-[75%] bg-blue-950/40 border border-blue-700/50 rounded-2xl rounded-br-none px-5 py-3">
+                <p className="text-[10px] uppercase tracking-wide text-blue-300 mb-1">Live Transcript</p>
+                <p className="text-sm text-blue-100 leading-relaxed">
+                  {liveMicTranscript || 'Listening...'}
+                </p>
               </div>
             </div>
           )}
