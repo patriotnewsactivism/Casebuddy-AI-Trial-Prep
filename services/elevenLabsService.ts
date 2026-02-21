@@ -393,6 +393,9 @@ export class ElevenLabsStreamer {
    * Set volume (0-1)
    */
   setVolume(volume: number): void {
+    if (this.audioElement) {
+      this.audioElement.volume = Math.max(0, Math.min(1, volume));
+    }
     if (this.gainNode) {
       this.gainNode.gain.value = Math.max(0, Math.min(1, volume));
     }
@@ -406,6 +409,15 @@ export class ElevenLabsStreamer {
     this.audioQueue = [];
     this.textBuffer = '';
     
+    // Stop HTML5 Audio
+    if (this.audioElement) {
+      try {
+        this.audioElement.pause();
+        this.audioElement.src = '';
+      } catch (e) {}
+    }
+    
+    // Stop AudioContext
     if (this.sourceNode) {
       try {
         this.sourceNode.stop();
