@@ -5,6 +5,7 @@ import { generateWitnessResponse, clearChatSession } from '../services/geminiSer
 import { transcribeAudio } from '../services/transcriptionService';
 import { synthesizeSpeech, getTrialVoicePreset, testAudioPlayback, ensureAudioUnlocked, ELEVENLABS_VOICES } from '../services/elevenLabsService';
 import { browserTTS, speakWithFallback, isBrowserTTSAvailable } from '../services/browserTTSService';
+import { Message, Witness, TranscriptionProvider } from '../types';
 import { Send, Mic, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download } from 'lucide-react';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import CaptionOverlay from './CaptionOverlay';
