@@ -746,3 +746,49 @@ export interface VoiceProfileData {
   lastUsed: string;
   usageCount: number;
 }
+
+// ============================================
+// CAPTION AND ENHANCED AUDIO TYPES
+// ============================================
+
+export interface CaptionSettings {
+  enabled: boolean;
+  fontSize: 'small' | 'medium' | 'large';
+  position: 'bottom' | 'top' | 'center';
+  showSpeaker: boolean;
+  backgroundColor: string;
+  textColor: string;
+  fontFamily: string;
+}
+
+export interface AudioState {
+  isUnlocked: boolean;
+  isPlaying: boolean;
+  currentSource: 'elevenlabs' | 'browser' | null;
+  volume: number;
+  lastError?: string;
+}
+
+export interface VoiceSettings {
+  provider: 'elevenlabs' | 'browser';
+  voiceId?: string;
+  rate: number;
+  pitch: number;
+  volume: number;
+}
+
+export interface LiveTranscript {
+  id: string;
+  text: string;
+  isFinal: boolean;
+  speaker: 'user' | 'ai' | 'witness' | 'system';
+  timestamp: number;
+  confidence?: number;
+}
+
+export interface CaptionWord {
+  word: string;
+  start?: number;
+  end?: number;
+  isHighlighted?: boolean;
+}

@@ -7,36 +7,164 @@
 // Global audio unlock for browser autoplay policy
 let audioUnlocked = false;
 let unlockAudioContext: AudioContext | null = null;
+let globalAudioContext: AudioContext | null = null;
+let currentVolume = 1.0;
 
-export const unlockAudio = async (): Promise<void> => {
-  if (audioUnlocked) return;
+interface AudioState {
+  unlocked: boolean;
+  contextState: AudioContextState | null;
+  lastUnlockAttempt: number | null;
+  unlockError: string | null;
+  lastPlaybackAttempt: number | null;
+  playbackError: string | null;
+}
+
+const audioState: AudioState = {
+  unlocked: false,
+  contextState: null,
+  lastUnlockAttempt: null,
+  unlockError: null,
+  lastPlaybackAttempt: null,
+  playbackError: null,
+};
+
+export const getAudioState = (): AudioState => ({ ...audioState });
+
+export const isAudioUnlocked = (): boolean => audioUnlocked;
+
+export const forceUnlockAudio = async (): Promise<boolean> => {
+  console.log('[Audio] forceUnlockAudio called - forcing fresh unlock');
+  audioUnlocked = false;
+  unlockAudioContext = null;
+  audioState.lastUnlockAttempt = Date.now();
+  audioState.unlockError = null;
   
   try {
-    unlockAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    unlockAudioContext = new AudioContextClass();
+    
+    audioState.contextState = unlockAudioContext.state;
+    console.log('[Audio] Created fresh AudioContext, state:', unlockAudioContext.state);
+    
+    if (unlockAudioContext.state === 'suspended') {
+      console.log('[Audio] AudioContext suspended, resuming...');
+      await unlockAudioContext.resume();
+      audioState.contextState = unlockAudioContext.state;
+      console.log('[Audio] AudioContext resumed, new state:', unlockAudioContext.state);
+    }
+    
+    const buffer = unlockAudioContext.createBuffer(1, 1, 22050);
     const source = unlockAudioContext.createBufferSource();
-    source.buffer = unlockAudioContext.createBuffer(1, 1, 22050);
-    source.connect(unlockAudioContext.destination);
+    source.buffer = buffer;
+    const gainNode = unlockAudioContext.createGain();
+    gainNode.gain.value = 0.01;
+    source.connect(gainNode);
+    gainNode.connect(unlockAudioContext.destination);
+    
     source.start();
+    
     audioUnlocked = true;
-    console.log('[Audio] Audio unlocked by user interaction');
+    audioState.unlocked = true;
+    console.log('[Audio] Force unlock successful');
+    
+    globalAudioContext = unlockAudioContext;
+    
+    return true;
   } catch (e) {
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    audioState.unlockError = errorMsg;
+    console.error('[Audio] Force unlock failed:', e);
+    return false;
+  }
+};
+
+export const unlockAudio = async (): Promise<void> => {
+  if (audioUnlocked && unlockAudioContext && unlockAudioContext.state === 'running') {
+    console.log('[Audio] Already unlocked and running');
+    return;
+  }
+  
+  audioState.lastUnlockAttempt = Date.now();
+  audioState.unlockError = null;
+  
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    
+    if (!unlockAudioContext || unlockAudioContext.state === 'closed') {
+      unlockAudioContext = new AudioContextClass();
+      console.log('[Audio] Created new AudioContext for unlock');
+    }
+    
+    audioState.contextState = unlockAudioContext.state;
+    
+    if (unlockAudioContext.state === 'suspended') {
+      console.log('[Audio] AudioContext suspended, resuming...');
+      await unlockAudioContext.resume();
+      audioState.contextState = unlockAudioContext.state;
+      console.log('[Audio] Resumed, state:', unlockAudioContext.state);
+    }
+    
+    const buffer = unlockAudioContext.createBuffer(1, 1, 22050);
+    const source = unlockAudioContext.createBufferSource();
+    source.buffer = buffer;
+    const gainNode = unlockAudioContext.createGain();
+    gainNode.gain.value = 0.01;
+    source.connect(gainNode);
+    gainNode.connect(unlockAudioContext.destination);
+    
+    source.start();
+    
+    audioUnlocked = true;
+    audioState.unlocked = true;
+    globalAudioContext = unlockAudioContext;
+    console.log('[Audio] Audio unlocked successfully');
+  } catch (e) {
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    audioState.unlockError = errorMsg;
     console.warn('[Audio] Failed to unlock audio:', e);
   }
 };
 
-// Auto-unlock on first user interaction
+export const ensureAudioUnlocked = async (): Promise<boolean> => {
+  console.log('[Audio] ensureAudioUnlocked called, current state:', {
+    audioUnlocked,
+    contextState: unlockAudioContext?.state,
+    globalContextState: globalAudioContext?.state
+  });
+  
+  if (audioUnlocked) {
+    if (unlockAudioContext && unlockAudioContext.state === 'running') {
+      console.log('[Audio] Audio already unlocked and running');
+      return true;
+    }
+    if (globalAudioContext && globalAudioContext.state === 'running') {
+      console.log('[Audio] Global audio context running');
+      return true;
+    }
+  }
+  
+  console.log('[Audio] Audio not properly unlocked, attempting unlock...');
+  await unlockAudio();
+  
+  if (!audioUnlocked) {
+    console.log('[Audio] Standard unlock failed, trying force unlock...');
+    await forceUnlockAudio();
+  }
+  
+  return audioUnlocked;
+};
+
 if (typeof window !== 'undefined') {
   const unlockEvents = ['click', 'touchstart', 'keydown', 'mousedown'];
   const unlockHandler = () => {
+    console.log('[Audio] User interaction detected, unlocking audio...');
     unlockAudio();
     unlockEvents.forEach(e => window.removeEventListener(e, unlockHandler));
   };
   unlockEvents.forEach(e => window.addEventListener(e, unlockHandler, { once: true }));
 }
 
-// Available voices - these are free-tier compatible
 export const ELEVENLABS_VOICES = {
-  // Male voices
   'rachel': { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', gender: 'female', description: 'Calming, natural' },
   'domi': { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', gender: 'female', description: 'Strong, confident' },
   'bella': { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', gender: 'female', description: 'Soft, smooth' },
@@ -50,7 +178,6 @@ export const ELEVENLABS_VOICES = {
 
 export type ElevenLabsVoiceId = keyof typeof ELEVENLABS_VOICES;
 
-// Voice presets for different trial roles
 export const TRIAL_VOICE_PRESETS = {
   'prosecutor': { voice: 'adam', description: 'Authoritative, serious prosecutor' },
   'defense': { voice: 'josh', description: 'Confident, persuasive defense attorney' },
@@ -74,26 +201,19 @@ interface ElevenLabsConfig {
   useSpeakerBoost?: boolean;
 }
 
-// Default config for trial simulation
 const DEFAULT_CONFIG: Partial<ElevenLabsConfig> = {
-  modelId: 'eleven_monolingual_v1', // Free tier compatible
+  modelId: 'eleven_monolingual_v1',
   stability: 0.5,
   similarityBoost: 0.75,
   style: 0.3,
   useSpeakerBoost: true,
 };
 
-/**
- * Check if ElevenLabs is configured
- */
 export const isElevenLabsConfigured = (): boolean => {
   const key = process.env.ELEVENLABS_API_KEY;
   return !!(key && key.length > 10);
 };
 
-/**
- * Get available voices
- */
 export const getAvailableVoices = () => {
   return Object.entries(ELEVENLABS_VOICES).map(([id, voice]) => ({
     id,
@@ -101,16 +221,10 @@ export const getAvailableVoices = () => {
   }));
 };
 
-/**
- * Get voice preset for a trial role
- */
 export const getTrialVoicePreset = (preset: TrialVoicePreset) => {
   return TRIAL_VOICE_PRESETS[preset];
 };
 
-/**
- * ElevenLabs WebSocket TTS for streaming audio
- */
 export class ElevenLabsStreamer {
   private ws: WebSocket | null = null;
   private audioContext: AudioContext | null = null;
@@ -123,7 +237,8 @@ export class ElevenLabsStreamer {
   private isConnected = false;
   private textBuffer = '';
   private audioElement: HTMLAudioElement | null = null;
-  private useAudioElement = true; // Use HTML5 Audio by default (more reliable)
+  private useAudioElement = true;
+  private volume: number = 1.0;
 
   constructor(config: Partial<ElevenLabsConfig>) {
     const apiKey = config.apiKey || process.env.ELEVENLABS_API_KEY;
@@ -138,21 +253,20 @@ export class ElevenLabsStreamer {
     };
   }
 
-  /**
-   * Initialize the audio context
-   */
   async initAudio(sampleRate: number = 24000): Promise<AudioContext | null> {
     console.log('[ElevenLabs] initAudio called');
     
-    // First try using HTML5 Audio element (more reliable with external speakers)
+    const unlocked = await ensureAudioUnlocked();
+    console.log('[ElevenLabs] Audio unlock status:', unlocked);
+    
     if (this.useAudioElement) {
       console.log('[ElevenLabs] Using HTML5 Audio element for playback');
       this.audioElement = new Audio();
-      this.audioElement.volume = 1.0;
-      return null; // No AudioContext needed
+      this.audioElement.volume = this.volume;
+      console.log('[ElevenLabs] HTML5 Audio volume set to:', this.volume);
+      return null;
     }
     
-    // Fallback to AudioContext
     try {
       if (!this.audioContext || this.audioContext.state === 'closed') {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -160,11 +274,15 @@ export class ElevenLabsStreamer {
         console.log('[ElevenLabs] Created new AudioContext, state:', this.audioContext.state);
         
         this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = this.volume;
         this.gainNode.connect(this.audioContext.destination);
+        console.log('[ElevenLabs] Gain node volume set to:', this.volume);
       }
       
       if (this.audioContext.state === 'suspended') {
+        console.log('[ElevenLabs] AudioContext suspended, resuming...');
         await this.audioContext.resume();
+        console.log('[ElevenLabs] AudioContext resumed, state:', this.audioContext.state);
       }
       
       return this.audioContext;
@@ -172,19 +290,16 @@ export class ElevenLabsStreamer {
       console.error('[ElevenLabs] AudioContext initialization failed, falling back to HTML5 Audio:', err);
       this.useAudioElement = true;
       this.audioElement = new Audio();
+      this.audioElement.volume = this.volume;
       return null;
     }
   }
 
-  /**
-   * Connect to ElevenLabs WebSocket for streaming TTS
-   */
   async connect(onReady?: () => void): Promise<void> {
     return new Promise((resolve, reject) => {
       const voiceId = this.config.voiceId;
       const modelId = this.config.modelId || 'eleven_monolingual_v1';
       
-      // WebSocket URL for ElevenLabs streaming
       const wsUrl = `wss://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream-input?model_id=${modelId}`;
       
       console.log('[ElevenLabs] Connecting to WebSocket...');
@@ -194,7 +309,6 @@ export class ElevenLabsStreamer {
       this.ws.onopen = () => {
         console.log('[ElevenLabs] WebSocket connected');
         
-        // Send initial configuration
         const bosMessage = {
           text: ' ',
           voice_settings: {
@@ -217,13 +331,11 @@ export class ElevenLabsStreamer {
           const data = JSON.parse(event.data);
           
           if (data.audio) {
-            // Decode base64 audio chunk
             const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
             console.log('[ElevenLabs] Received audio chunk, size:', audioBytes.byteLength, 'bytes, queue length:', this.audioQueue.length);
             this.audioQueue.push(audioBytes);
             this.onAudioChunk?.(audioBytes);
             
-            // Auto-play if not already playing
             if (!this.isPlaying) {
               console.log('[ElevenLabs] Starting playback (not currently playing)');
               this.playNextChunk();
@@ -238,7 +350,6 @@ export class ElevenLabsStreamer {
           
           if (data.error) {
             console.error('[ElevenLabs] Server error:', data.error);
-            // Don't throw for timeout errors - they're recoverable
             if (data.error === 'input_timeout_exceeded' || data.error === 'input_timeout') {
               console.log('[ElevenLabs] Input timeout - this is normal if no text was sent yet');
             }
@@ -261,15 +372,11 @@ export class ElevenLabsStreamer {
       this.ws.onclose = (event) => {
         console.log('[ElevenLabs] WebSocket closed:', event.code, event.reason);
         this.isConnected = false;
-        // Clear the playing state so we can restart
         this.isPlaying = false;
       };
     });
   }
 
-  /**
-   * Reconnect if connection was lost
-   */
   async ensureConnected(): Promise<void> {
     if (this.isConnected && this.ws?.readyState === WebSocket.OPEN) {
       return;
@@ -278,11 +385,7 @@ export class ElevenLabsStreamer {
     await this.connect();
   }
 
-  /**
-   * Send text to be synthesized
-   */
   async sendText(text: string, flush = false): Promise<void> {
-    // Try to reconnect if not connected
     if (!this.ws || !this.isConnected) {
       console.warn('[ElevenLabs] Not connected, buffering text and attempting reconnect');
       this.textBuffer += text;
@@ -294,7 +397,6 @@ export class ElevenLabsStreamer {
       }
     }
 
-    // Send any buffered text first
     if (this.textBuffer) {
       const message = {
         text: this.textBuffer,
@@ -312,29 +414,32 @@ export class ElevenLabsStreamer {
     console.log('[ElevenLabs] Sent text:', text.substring(0, 50) + (text.length > 50 ? '...' : ''));
   }
 
-  /**
-   * Flush any remaining text and close input stream
-   */
   flush(): void {
     if (!this.ws || !this.isConnected) return;
     
-    // Send any buffered text
     if (this.textBuffer) {
       this.ws.send(JSON.stringify({ text: this.textBuffer, flush: false }));
       this.textBuffer = '';
     }
     
-    // Send flush signal
     this.ws.send(JSON.stringify({ text: '', flush: true }));
     console.log('[ElevenLabs] Flushed stream');
   }
 
-  /**
-   * Play the next audio chunk in the queue
-   */
   private async playNextChunk(): Promise<void> {
-    console.log('[ElevenLabs] playNextChunk called, queue length:', this.audioQueue.length, 'isPlaying:', this.isPlaying, 'useAudioElement:', this.useAudioElement);
+    console.log('[ElevenLabs] playNextChunk called, queue length:', this.audioQueue.length, 'isPlaying:', this.isPlaying, 'useAudioElement:', this.useAudioElement, 'volume:', this.volume);
     
+    audioState.lastPlaybackAttempt = Date.now();
+    audioState.playbackError = null;
+    
+    const unlocked = await ensureAudioUnlocked();
+    if (!unlocked) {
+      console.error('[ElevenLabs] Cannot play - audio not unlocked');
+      audioState.playbackError = 'Audio not unlocked - user interaction required';
+      this.isPlaying = false;
+      return;
+    }
+
     if (this.audioQueue.length === 0) {
       console.log('[ElevenLabs] playNextChunk: Queue empty, stopping');
       this.isPlaying = false;
@@ -346,20 +451,18 @@ export class ElevenLabsStreamer {
     console.log('[ElevenLabs] playNextChunk: Processing chunk, size:', chunk.byteLength, 'bytes');
 
     try {
-      // Use HTML5 Audio element (more reliable) - always create fresh element
       if (this.useAudioElement || !this.audioContext) {
         console.log('[ElevenLabs] Playing via HTML5 Audio element...');
         
         const blob = new Blob([chunk], { type: 'audio/mpeg' });
         const url = URL.createObjectURL(blob);
         
-        // Always create a fresh audio element for each chunk
         const audioElement = new Audio();
         audioElement.src = url;
-        audioElement.volume = 1.0;
+        audioElement.volume = this.volume;
         audioElement.preload = 'auto';
         
-        console.log('[ElevenLabs] Created fresh audio element for playback');
+        console.log('[ElevenLabs] Created fresh audio element, volume:', audioElement.volume);
         
         audioElement.onended = () => {
           console.log('[ElevenLabs] HTML5 Audio chunk ended');
@@ -368,28 +471,55 @@ export class ElevenLabsStreamer {
         };
         
         audioElement.onerror = (e) => {
-          console.error('[ElevenLabs] HTML5 Audio error:', e);
+          console.error('[ElevenLabs] HTML5 Audio error:', e, 'errorCode:', audioElement.error?.code, 'errorMessage:', audioElement.error?.message);
+          audioState.playbackError = `HTML5 Audio error: ${audioElement.error?.message || 'unknown'}`;
           URL.revokeObjectURL(url);
           this.playNextChunk();
         };
         
         console.log('[ElevenLabs] Starting audio playback...');
-        await audioElement.play();
-        console.log('[ElevenLabs] HTML5 Audio playback started successfully');
+        
+        try {
+          await audioElement.play();
+          console.log('[ElevenLabs] HTML5 Audio playback started successfully');
+        } catch (playError) {
+          console.error('[ElevenLabs] HTML5 Audio play() failed:', playError);
+          audioState.playbackError = playError instanceof Error ? playError.message : String(playError);
+          
+          if (playError instanceof Error && playError.name === 'NotAllowedError') {
+            console.log('[ElevenLabs] Autoplay blocked, attempting to unlock audio...');
+            await forceUnlockAudio();
+            try {
+              await audioElement.play();
+              console.log('[ElevenLabs] Playback succeeded after force unlock');
+            } catch (retryError) {
+              console.error('[ElevenLabs] Still failed after unlock:', retryError);
+              URL.revokeObjectURL(url);
+              this.playNextChunk();
+              return;
+            }
+          } else {
+            URL.revokeObjectURL(url);
+            this.playNextChunk();
+            return;
+          }
+        }
         return;
       }
       
-      // Fallback to AudioContext if HTML5 Audio is disabled
       console.log('[ElevenLabs] Playing via AudioContext...');
       
       if (this.audioContext.state === 'closed') {
         console.error('[ElevenLabs] AudioContext is closed');
+        audioState.playbackError = 'AudioContext is closed';
         this.isPlaying = false;
         return;
       }
       
       if (this.audioContext.state === 'suspended') {
+        console.log('[ElevenLabs] AudioContext suspended, resuming...');
         await this.audioContext.resume();
+        console.log('[ElevenLabs] AudioContext state after resume:', this.audioContext.state);
       }
       
       const audioBuffer = await this.audioContext.decodeAudioData(chunk.buffer.slice(0));
@@ -397,7 +527,14 @@ export class ElevenLabsStreamer {
       
       const source = this.audioContext.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(this.gainNode!);
+      
+      if (!this.gainNode) {
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = this.volume;
+        this.gainNode.connect(this.audioContext.destination);
+      }
+      
+      source.connect(this.gainNode);
       
       source.onended = () => {
         this.sourceNode = null;
@@ -406,60 +543,60 @@ export class ElevenLabsStreamer {
       
       this.sourceNode = source;
       source.start();
+      console.log('[ElevenLabs] AudioContext playback started');
     } catch (err) {
       console.error('[ElevenLabs] Error playing audio chunk:', err);
-      // Try next chunk on error
+      audioState.playbackError = err instanceof Error ? err.message : String(err);
       this.playNextChunk();
     }
   }
 
-  /**
-   * Set callback for audio chunks
-   */
   onAudio(callback: (chunk: Uint8Array) => void): void {
     this.onAudioChunk = callback;
   }
 
-  /**
-   * Set volume (0-1)
-   */
   setVolume(volume: number): void {
+    this.volume = Math.max(0, Math.min(1, volume));
+    console.log('[ElevenLabs] Volume set to:', this.volume);
+    
     if (this.audioElement) {
-      this.audioElement.volume = Math.max(0, Math.min(1, volume));
+      this.audioElement.volume = this.volume;
     }
-    if (this.gainNode) {
-      this.gainNode.gain.value = Math.max(0, Math.min(1, volume));
+    if (this.gainNode && this.audioContext) {
+      this.gainNode.gain.value = this.volume;
     }
+    
+    currentVolume = this.volume;
   }
 
-  /**
-   * Stop playback and clear queue
-   */
+  getVolume(): number {
+    return this.volume;
+  }
+
   stop(): void {
     this.isPlaying = false;
     this.audioQueue = [];
     this.textBuffer = '';
     
-    // Stop HTML5 Audio
     if (this.audioElement) {
       try {
         this.audioElement.pause();
         this.audioElement.src = '';
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[ElevenLabs] Error stopping audio element:', e);
+      }
     }
     
-    // Stop AudioContext
     if (this.sourceNode) {
       try {
         this.sourceNode.stop();
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[ElevenLabs] Error stopping source node:', e);
+      }
       this.sourceNode = null;
     }
   }
 
-  /**
-   * Disconnect and cleanup
-   */
   disconnect(): void {
     this.stop();
     
@@ -474,17 +611,11 @@ export class ElevenLabsStreamer {
     console.log('[ElevenLabs] Disconnected');
   }
 
-  /**
-   * Check if connected
-   */
   isActive(): boolean {
     return this.isConnected && this.ws?.readyState === WebSocket.OPEN;
   }
 }
 
-/**
- * Simple TTS function (non-streaming) for quick synthesis
- */
 export async function synthesizeSpeech(
   text: string,
   voiceId: string = ELEVENLABS_VOICES['josh'].id,
@@ -537,45 +668,159 @@ export async function synthesizeSpeech(
   return arrayBuffer;
 }
 
-/**
- * Play synthesized audio from ArrayBuffer
- */
 export async function playAudioBuffer(
   audioData: ArrayBuffer,
   audioContext?: AudioContext
 ): Promise<void> {
   console.log('[ElevenLabs] playAudioBuffer called, data size:', audioData.byteLength);
   
-  const ctx = audioContext || new AudioContext();
+  audioState.lastPlaybackAttempt = Date.now();
+  audioState.playbackError = null;
+  
+  const unlocked = await ensureAudioUnlocked();
+  console.log('[ElevenLabs] Audio unlocked before playback:', unlocked);
+  
+  if (!unlocked) {
+    const error = 'Audio not unlocked - user interaction required. Click somewhere on the page first.';
+    audioState.playbackError = error;
+    throw new Error(error);
+  }
+  
+  const ctx = audioContext || globalAudioContext || new AudioContext();
   console.log('[ElevenLabs] AudioContext state:', ctx.state);
   
   if (ctx.state === 'suspended') {
     console.log('[ElevenLabs] AudioContext suspended, attempting to resume...');
-    await ctx.resume();
-    console.log('[ElevenLabs] AudioContext resumed, new state:', ctx.state);
+    try {
+      await ctx.resume();
+      console.log('[ElevenLabs] AudioContext resumed, new state:', ctx.state);
+    } catch (resumeError) {
+      console.error('[ElevenLabs] Failed to resume AudioContext:', resumeError);
+      audioState.playbackError = `Failed to resume AudioContext: ${resumeError}`;
+      throw new Error(`Failed to resume AudioContext: ${resumeError}`);
+    }
+  }
+  
+  if (ctx.state !== 'running') {
+    const error = `AudioContext not running (state: ${ctx.state}). User interaction may be required.`;
+    audioState.playbackError = error;
+    throw new Error(error);
   }
   
   console.log('[ElevenLabs] Decoding audio data...');
-  const audioBuffer = await ctx.decodeAudioData(audioData);
-  console.log('[ElevenLabs] Audio decoded, duration:', audioBuffer.duration, 'seconds');
+  let audioBuffer: AudioBuffer;
+  try {
+    audioBuffer = await ctx.decodeAudioData(audioData);
+    console.log('[ElevenLabs] Audio decoded, duration:', audioBuffer.duration, 'seconds');
+  } catch (decodeError) {
+    console.error('[ElevenLabs] Failed to decode audio:', decodeError);
+    audioState.playbackError = `Failed to decode audio: ${decodeError}`;
+    throw new Error(`Failed to decode audio data: ${decodeError}`);
+  }
   
   const source = ctx.createBufferSource();
   source.buffer = audioBuffer;
-  source.connect(ctx.destination);
   
-  console.log('[ElevenLabs] Starting playback...');
+  const gainNode = ctx.createGain();
+  gainNode.gain.value = currentVolume;
+  source.connect(gainNode);
+  gainNode.connect(ctx.destination);
   
-  return new Promise((resolve) => {
+  console.log('[ElevenLabs] Starting playback with volume:', currentVolume);
+  
+  return new Promise((resolve, reject) => {
     source.onended = () => {
       console.log('[ElevenLabs] Playback ended');
       resolve();
     };
-    source.start();
-    console.log('[ElevenLabs] Playback started');
+    
+    source.onerror = (e) => {
+      console.error('[ElevenLabs] Source error:', e);
+      audioState.playbackError = `Audio source error: ${e}`;
+      reject(new Error(`Audio source error: ${e}`));
+    };
+    
+    try {
+      source.start();
+      console.log('[ElevenLabs] Playback started');
+    } catch (startError) {
+      console.error('[ElevenLabs] Failed to start playback:', startError);
+      audioState.playbackError = `Failed to start: ${startError}`;
+      reject(startError);
+    }
   });
 }
 
-// Export singleton instance management
+export async function testAudioPlayback(): Promise<{ success: boolean; message: string; details?: any }> {
+  console.log('[Audio] testAudioPlayback called');
+  
+  try {
+    const unlocked = await ensureAudioUnlocked();
+    if (!unlocked) {
+      return {
+        success: false,
+        message: 'Failed to unlock audio. Please click somewhere on the page and try again.',
+        details: getAudioState()
+      };
+    }
+    
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const testContext = new AudioContextClass();
+    
+    console.log('[Audio] Test AudioContext state:', testContext.state);
+    
+    if (testContext.state === 'suspended') {
+      await testContext.resume();
+    }
+    
+    const sampleRate = testContext.sampleRate;
+    const duration = 0.5;
+    const numSamples = sampleRate * duration;
+    
+    const buffer = testContext.createBuffer(1, numSamples, sampleRate);
+    const channelData = buffer.getChannelData(0);
+    
+    for (let i = 0; i < numSamples; i++) {
+      const t = i / sampleRate;
+      const frequency = 440;
+      channelData[i] = Math.sin(2 * Math.PI * frequency * t) * 0.5 * Math.exp(-t * 4);
+    }
+    
+    const source = testContext.createBufferSource();
+    source.buffer = buffer;
+    
+    const gainNode = testContext.createGain();
+    gainNode.gain.value = currentVolume;
+    source.connect(gainNode);
+    gainNode.connect(testContext.destination);
+    
+    await new Promise<void>((resolve, reject) => {
+      source.onended = () => resolve();
+      source.onerror = (e) => reject(e);
+      source.start();
+    });
+    
+    console.log('[Audio] Test playback completed successfully');
+    
+    return {
+      success: true,
+      message: 'Audio test successful - you should have heard a 440Hz tone for 0.5 seconds.',
+      details: {
+        audioUnlocked: audioUnlocked,
+        contextState: testContext.state,
+        volume: currentVolume
+      }
+    };
+  } catch (error) {
+    console.error('[Audio] Test playback failed:', error);
+    return {
+      success: false,
+      message: `Audio test failed: ${error instanceof Error ? error.message : String(error)}`,
+      details: getAudioState()
+    };
+  }
+}
+
 let activeStreamer: ElevenLabsStreamer | null = null;
 
 export const getActiveStreamer = (): ElevenLabsStreamer | null => activeStreamer;

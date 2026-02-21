@@ -1,10 +1,93 @@
-
 import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../App';
-import { Settings as SettingsIcon, Key, Database, Download, Upload, AlertCircle, Check, User, Moon, Sun, Palette, Shield, Info, Trash2, CheckCircle, Cloud, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, Key, Database, Download, Upload, AlertCircle, Check, User, Moon, Sun, Palette, Shield, Info, Trash2, CheckCircle, Cloud, Loader2, ClosedCaption, Volume2, Play } from 'lucide-react';
 import { exportAllData, importAllData, clearAllData, getStorageInfo, savePreferences, loadPreferences } from '../utils/storage';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { supabaseReady } from '../services/dataService';
+import { testAudioPlayback } from '../services/elevenLabsService';
+import { browserTTS, getPreferredVoice } from '../services/browserTTSService';
+import { toast } from 'react-toastify';
+
+interface CaptionSettings {
+  enabled: boolean;
+  fontSize: 'small' | 'medium' | 'large';
+  position: 'bottom' | 'top' | 'center';
+  showSpeakerLabel: boolean;
+  backgroundColor: string;
+}
+
+interface AudioSettings {
+  preferElevenLabs: boolean;
+  volume: number;
+  defaultVoice: string;
+}
+
+const CAPTION_STORAGE_KEY = 'captionSettings';
+const AUDIO_STORAGE_KEY = 'audioSettings';
+
+const DEFAULT_CAPTION_SETTINGS: CaptionSettings = {
+  enabled: true,
+  fontSize: 'medium',
+  position: 'bottom',
+  showSpeakerLabel: true,
+  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+};
+
+const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
+  preferElevenLabs: false,
+  volume: 80,
+  defaultVoice: '',
+};
+
+const CAPTION_BG_COLORS = [
+  { label: 'Black (80%)', value: 'rgba(0, 0, 0, 0.8)' },
+  { label: 'Black (60%)', value: 'rgba(0, 0, 0, 0.6)' },
+  { label: 'Black (100%)', value: 'rgba(0, 0, 0, 1)' },
+  { label: 'Slate (80%)', value: 'rgba(30, 41, 59, 0.8)' },
+  { label: 'Slate (60%)', value: 'rgba(30, 41, 59, 0.6)' },
+  { label: 'Gold (80%)', value: 'rgba(212, 175, 55, 0.8)' },
+  { label: 'White (80%)', value: 'rgba(255, 255, 255, 0.8)' },
+];
+
+const loadCaptionSettings = (): CaptionSettings => {
+  try {
+    const stored = localStorage.getItem(CAPTION_STORAGE_KEY);
+    if (stored) {
+      return { ...DEFAULT_CAPTION_SETTINGS, ...JSON.parse(stored) };
+    }
+  } catch (e) {
+    console.warn('Failed to load caption settings:', e);
+  }
+  return DEFAULT_CAPTION_SETTINGS;
+};
+
+const saveCaptionSettings = (settings: CaptionSettings): void => {
+  try {
+    localStorage.setItem(CAPTION_STORAGE_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.warn('Failed to save caption settings:', e);
+  }
+};
+
+const loadAudioSettings = (): AudioSettings => {
+  try {
+    const stored = localStorage.getItem(AUDIO_STORAGE_KEY);
+    if (stored) {
+      return { ...DEFAULT_AUDIO_SETTINGS, ...JSON.parse(stored) };
+    }
+  } catch (e) {
+    console.warn('Failed to load audio settings:', e);
+  }
+  return DEFAULT_AUDIO_SETTINGS;
+};
+
+const saveAudioSettings = (settings: AudioSettings): void => {
+  try {
+    localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.warn('Failed to save audio settings:', e);
+  }
+};
 
 const Settings = () => {
   const { cases, theme, setTheme } = useContext(AppContext);
@@ -15,6 +98,10 @@ const Settings = () => {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [supabaseStatus, setSupabaseStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
   const [supabaseMessage, setSupabaseMessage] = useState<string | null>(null);
+  const [captionSettings, setCaptionSettings] = useState<CaptionSettings>(DEFAULT_CAPTION_SETTINGS);
+  const [audioSettings, setAudioSettings] = useState<AudioSettings>(DEFAULT_AUDIO_SETTINGS);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [isTestingAudio, setIsTestingAudio] = useState(false);
 
   const currentApiKey = process.env.API_KEY || '';
   const isApiKeyConfigured = currentApiKey && currentApiKey !== '';
@@ -26,11 +113,28 @@ const Settings = () => {
     setTitle(prefs.title);
     setAutoSaveEnabled(prefs.autoSave);
     updateStorageInfo();
+    setCaptionSettings(loadCaptionSettings());
+    setAudioSettings(loadAudioSettings());
+    setAvailableVoices(browserTTS.getVoices());
   }, []);
 
   useEffect(() => {
     updateStorageInfo();
   }, [cases]);
+
+  useEffect(() => {
+    const handleVoicesChanged = () => {
+      setAvailableVoices(browserTTS.getVoices());
+    };
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+    }
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
 
   const updateStorageInfo = () => {
     setStorageInfo(getStorageInfo());
@@ -56,6 +160,49 @@ const Settings = () => {
     const newValue = !autoSaveEnabled;
     setAutoSaveEnabled(newValue);
     savePreferences({ autoSave: newValue });
+  };
+
+  const handleCaptionToggle = () => {
+    const newSettings = { ...captionSettings, enabled: !captionSettings.enabled };
+    setCaptionSettings(newSettings);
+    saveCaptionSettings(newSettings);
+  };
+
+  const handleCaptionSettingChange = <K extends keyof CaptionSettings>(
+    key: K,
+    value: CaptionSettings[K]
+  ) => {
+    const newSettings = { ...captionSettings, [key]: value };
+    setCaptionSettings(newSettings);
+    saveCaptionSettings(newSettings);
+  };
+
+  const handleAudioSettingChange = <K extends keyof AudioSettings>(
+    key: K,
+    value: AudioSettings[K]
+  ) => {
+    const newSettings = { ...audioSettings, [key]: value };
+    setAudioSettings(newSettings);
+    saveAudioSettings(newSettings);
+    if (key === 'volume') {
+      browserTTS.setVolume(value as number / 100);
+    }
+  };
+
+  const handleTestAudio = async () => {
+    setIsTestingAudio(true);
+    try {
+      const result = await testAudioPlayback();
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      toast.error(`Audio test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsTestingAudio(false);
+    }
   };
 
   const handleSupabaseCheck = async () => {
@@ -117,7 +264,7 @@ const Settings = () => {
       }
     };
     reader.readAsText(file);
-    event.target.value = ''; // Reset input
+    event.target.value = '';
   };
 
   const handleClearAllData = () => {
@@ -144,6 +291,213 @@ const Settings = () => {
             <span className="text-green-400 text-sm">{saveMessage}</span>
           </div>
         )}
+      </div>
+
+      {/* Caption Settings */}
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <ClosedCaption className="text-gold-500" size={24} />
+          <h2 className="text-xl font-semibold text-white">Caption Settings</h2>
+        </div>
+
+        <div className="space-y-4">
+          {/* Enable/Disable Toggle */}
+          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
+            <div>
+              <p className="text-slate-300 font-medium">Enable Captions</p>
+              <p className="text-xs text-slate-400 mt-1">Display captions during audio playback</p>
+            </div>
+            <button
+              onClick={handleCaptionToggle}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                captionSettings.enabled ? 'bg-gold-500' : 'bg-slate-600'
+              }`}
+            >
+              <div
+                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  captionSettings.enabled ? 'transform translate-x-6' : ''
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Font Size */}
+          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
+            <div>
+              <p className="text-slate-300 font-medium">Font Size</p>
+              <p className="text-xs text-slate-400 mt-1">Size of caption text</p>
+            </div>
+            <select
+              value={captionSettings.fontSize}
+              onChange={(e) => handleCaptionSettingChange('fontSize', e.target.value as CaptionSettings['fontSize'])}
+              className="px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 hover:bg-slate-600 transition-colors cursor-pointer"
+            >
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
+            </select>
+          </div>
+
+          {/* Position */}
+          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
+            <div>
+              <p className="text-slate-300 font-medium">Position</p>
+              <p className="text-xs text-slate-400 mt-1">Where captions appear on screen</p>
+            </div>
+            <select
+              value={captionSettings.position}
+              onChange={(e) => handleCaptionSettingChange('position', e.target.value as CaptionSettings['position'])}
+              className="px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 hover:bg-slate-600 transition-colors cursor-pointer"
+            >
+              <option value="bottom">Bottom</option>
+              <option value="top">Top</option>
+              <option value="center">Center</option>
+            </select>
+          </div>
+
+          {/* Show Speaker Label */}
+          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
+            <div>
+              <p className="text-slate-300 font-medium">Show Speaker Label</p>
+              <p className="text-xs text-slate-400 mt-1">Display who is speaking</p>
+            </div>
+            <button
+              onClick={() => handleCaptionSettingChange('showSpeakerLabel', !captionSettings.showSpeakerLabel)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                captionSettings.showSpeakerLabel ? 'bg-gold-500' : 'bg-slate-600'
+              }`}
+            >
+              <div
+                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  captionSettings.showSpeakerLabel ? 'transform translate-x-6' : ''
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Background Color */}
+          <div className="p-3 bg-slate-900/50 rounded-lg">
+            <div className="mb-3">
+              <p className="text-slate-300 font-medium">Background Color</p>
+              <p className="text-xs text-slate-400 mt-1">Caption background with transparency</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {CAPTION_BG_COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  onClick={() => handleCaptionSettingChange('backgroundColor', color.value)}
+                  className={`px-3 py-2 rounded-lg border text-xs transition-all ${
+                    captionSettings.backgroundColor === color.value
+                      ? 'border-gold-500 bg-gold-500/20 text-gold-400'
+                      : 'border-slate-600 bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  {color.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Audio Settings */}
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Volume2 className="text-gold-500" size={24} />
+          <h2 className="text-xl font-semibold text-white">Audio Settings</h2>
+        </div>
+
+        <div className="space-y-4">
+          {/* Prefer ElevenLabs */}
+          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
+            <div>
+              <p className="text-slate-300 font-medium">Prefer ElevenLabs Voices</p>
+              <p className="text-xs text-slate-400 mt-1">Use high-quality AI voices instead of browser TTS (requires API key)</p>
+            </div>
+            <button
+              onClick={() => handleAudioSettingChange('preferElevenLabs', !audioSettings.preferElevenLabs)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                audioSettings.preferElevenLabs ? 'bg-gold-500' : 'bg-slate-600'
+              }`}
+            >
+              <div
+                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  audioSettings.preferElevenLabs ? 'transform translate-x-6' : ''
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Volume Slider */}
+          <div className="p-3 bg-slate-900/50 rounded-lg">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-slate-300 font-medium">Volume</p>
+                <p className="text-xs text-slate-400 mt-1">Audio playback volume</p>
+              </div>
+              <span className="text-gold-500 font-bold">{audioSettings.volume}%</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={audioSettings.volume}
+              onChange={(e) => handleAudioSettingChange('volume', parseInt(e.target.value, 10))}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-gold-500"
+            />
+          </div>
+
+          {/* Test Audio Button */}
+          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
+            <div>
+              <p className="text-slate-300 font-medium">Test Audio</p>
+              <p className="text-xs text-slate-400 mt-1">Play a test tone to verify audio is working</p>
+            </div>
+            <button
+              onClick={handleTestAudio}
+              disabled={isTestingAudio}
+              className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-600 disabled:bg-slate-600 text-slate-900 font-medium rounded-lg transition-colors"
+            >
+              {isTestingAudio ? (
+                <>
+                  <Loader2 className="animate-spin" size={16} />
+                  Testing...
+                </>
+              ) : (
+                <>
+                  <Play size={16} />
+                  Test Audio
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Default Voice */}
+          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg">
+            <div>
+              <p className="text-slate-300 font-medium">Default Voice</p>
+              <p className="text-xs text-slate-400 mt-1">Browser TTS voice selection</p>
+            </div>
+            <select
+              value={audioSettings.defaultVoice}
+              onChange={(e) => handleAudioSettingChange('defaultVoice', e.target.value)}
+              className="px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 hover:bg-slate-600 transition-colors cursor-pointer max-w-xs"
+            >
+              <option value="">Auto (System Default)</option>
+              {availableVoices.map((voice) => (
+                <option key={voice.voiceURI} value={voice.name}>
+                  {voice.name} ({voice.lang})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {availableVoices.length === 0 && (
+            <p className="text-xs text-slate-400 italic">
+              No browser voices detected. Voices may load after the first interaction.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* API Configuration */}
