@@ -1,12 +1,16 @@
-import React, { useState, useRef, useEffect, useContext } from 'react';
+import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
 import { MOCK_WITNESSES } from '../constants';
 import { AppContext } from '../App';
 import { generateWitnessResponse, clearChatSession } from '../services/geminiService';
 import { transcribeAudio } from '../services/transcriptionService';
-import { synthesizeSpeech, playAudioBuffer, getTrialVoicePreset, TrialVoicePreset } from '../services/elevenLabsService';
-import { Message, Witness, TranscriptionProvider } from '../types';
-import { Send, Mic, User, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2 } from 'lucide-react';
+import { synthesizeSpeech, playAudioBuffer, getTrialVoicePreset, TrialVoicePreset, testAudioPlayback, ensureAudioUnlocked, isAudioUnlocked } from '../services/elevenLabsService';
+import { browserTTS, speakWithFallback, isBrowserTTSAvailable } from '../services/browserTTSService';
+import { Message, Witness, TranscriptionProvider, LiveTranscript, CaptionSettings } from '../types';
+import { Send, Mic, User, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download, Settings2 } from 'lucide-react';
 import { handleError, handleSuccess } from '../utils/errorHandler';
+import CaptionOverlay from './CaptionOverlay';
+
+type WitnessVoicePreset = 'witness-hostile' | 'witness-nervous' | 'witness-cooperative';
 
 const WitnessLab = () => {
   const { activeCase } = useContext(AppContext);
@@ -20,9 +24,19 @@ const WitnessLab = () => {
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   
+  const [captionText, setCaptionText] = useState<string>('');
+  const [captionVisible, setCaptionVisible] = useState(false);
+  const [captionSpeaker, setCaptionSpeaker] = useState<'user' | 'ai' | 'witness' | 'system'>('user');
+  
+  const [selectedVoicePreset, setSelectedVoicePreset] = useState<WitnessVoicePreset>('witness-cooperative');
+  const [showVoiceSelector, setShowVoiceSelector] = useState(false);
+  const [audioTestResult, setAudioTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const currentAudioSourceRef = useRef<'elevenlabs' | 'browser' | null>(null);
 
   const getSessionId = (witnessId: string) => `witness-${witnessId}-${activeCase?.id || 'default'}`;
 
@@ -33,6 +47,51 @@ const WitnessLab = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping, isProcessingAudio]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPlayingAudio) {
+        stopAllAudio();
+        return;
+      }
+      
+      const activeElement = document.activeElement;
+      const isInputFocused = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
+      
+      if (e.key === ' ' && !isInputFocused && !isTyping && !isProcessingAudio) {
+        e.preventDefault();
+        if (isRecording) {
+          stopRecording();
+        } else {
+          startRecording();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlayingAudio, isRecording, isTyping, isProcessingAudio]);
+
+  useEffect(() => {
+    const handleClick = () => {
+      if (isPlayingAudio) {
+        stopAllAudio();
+      }
+    };
+
+    if (isPlayingAudio) {
+      window.addEventListener('click', handleClick);
+      return () => window.removeEventListener('click', handleClick);
+    }
+  }, [isPlayingAudio]);
+
+  const stopAllAudio = useCallback(() => {
+    browserTTS.stop();
+    currentAudioSourceRef.current = null;
+    setIsPlayingAudio(false);
+    setCaptionVisible(false);
+    setCaptionText('');
+  }, []);
 
   const startRecording = async () => {
     try {
@@ -55,8 +114,12 @@ const WitnessLab = () => {
 
       mediaRecorder.start();
       setIsRecording(true);
+      setCaptionText('Listening...');
+      setCaptionSpeaker('user');
+      setCaptionVisible(true);
     } catch (error) {
       handleError(error, 'Could not access microphone', 'WitnessLab');
+      setCaptionVisible(false);
     }
   };
 
@@ -64,13 +127,13 @@ const WitnessLab = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      setCaptionText('Processing...');
     }
   };
 
   const handleAudioUpload = async (audioBlob: Blob) => {
     setIsProcessingAudio(true);
     try {
-      // Use Gemini for speech-to-text
       const result = await transcribeAudio(
         audioBlob, 
         '', 
@@ -79,91 +142,109 @@ const WitnessLab = () => {
           customVocabulary: [],
           legalMode: true,
           openaiKey: '', 
-          assemblyAiKey: ''
+          assemblyAiKey: '',
+          googleClientId: '',
+          googleApiKey: '',
+          autoDownloadAudio: false,
+          autoDriveUpload: false
         }
       );
 
       if (result.text) {
+        setCaptionText(result.text);
+        setCaptionSpeaker('user');
+        setTimeout(() => {
+          setCaptionVisible(false);
+        }, 1500);
         setInput(result.text);
-        // Automatically send the transcribed text
         await handleSendMessage(undefined, result.text);
       } else {
         handleError(new Error('No speech detected'), 'Could not transcribe audio', 'WitnessLab');
+        setCaptionVisible(false);
       }
     } catch (error) {
       handleError(error, 'Transcription failed', 'WitnessLab');
+      setCaptionVisible(false);
     } finally {
       setIsProcessingAudio(false);
     }
   };
 
-  const getVoiceForWitness = (witness: Witness): string | undefined => {
-    // Simple mapping strategy - ideally this would be a property on the Witness object
-    let preset: TrialVoicePreset = 'witness-cooperative';
-    
+  const getVoiceForWitness = (witness: Witness): WitnessVoicePreset => {
     if (witness.personality.toLowerCase().includes('hostile')) {
-      preset = 'witness-hostile';
+      return 'witness-hostile';
     } else if (witness.personality.toLowerCase().includes('nervous')) {
-      preset = 'witness-nervous';
-    } else if (witness.role.toLowerCase().includes('expert')) {
-      preset = 'prosecutor'; // Use an authoritative voice
+      return 'witness-nervous';
     }
-
-    const voiceConfig = getTrialVoicePreset(preset);
-    // You would map the preset to an actual ID here based on the imported voices in elevenLabsService
-    // For now, we rely on the service to use defaults if we just pass the ID we can find or let it fallback
-    // The verify service uses specific IDs. Let's look up the ID from the preset.
-    // Since getTrialVoicePreset returns { voice: 'name', ... }, we need to map that name to an ID.
-    // However, for simplicity, we'll let the synthesizeSpeech function handle the default or we can just pass undefined to use default.
-    // Actually, let's just return undefined to use the default voice for now, or improve the mapping if needed.
-    // But wait, the user specifically asked for Eleven Labs to read it.
-    
-    // We'll trust the default voice or add a selector later. 
-    // Ideally we pass a voiceId. synthesizeSpeech takes a voiceId. 
-    // We can map the 'voice' name from the preset to the ID in ELEVENLABS_VOICES if we had access to the object.
-    // For now let's pass undefined and let the service use its default.
-    return undefined; 
+    return 'witness-cooperative';
   };
+
+  useEffect(() => {
+    const voicePreset = getVoiceForWitness(selectedWitness);
+    setSelectedVoicePreset(voicePreset);
+  }, [selectedWitness]);
 
   const playResponse = async (text: string) => {
     try {
+      const unlocked = await ensureAudioUnlocked();
+      if (!unlocked) {
+        console.warn('[WitnessLab TTS] Audio not unlocked, attempting fallback');
+      }
+      
       setIsPlayingAudio(true);
-      // Determine voice based on witness personality
-      let voicePreset: TrialVoicePreset = 'witness-cooperative';
-      if (selectedWitness.personality === 'Hostile') voicePreset = 'witness-hostile';
-      else if (selectedWitness.personality === 'Nervous') voicePreset = 'witness-nervous';
+      setCaptionText(text);
+      setCaptionSpeaker('witness');
+      setCaptionVisible(true);
       
-      const voiceConfig = getTrialVoicePreset(voicePreset);
-      
-      // DIAGNOSTIC: Check if ElevenLabs is configured
+      const voiceConfig = getTrialVoicePreset(selectedVoicePreset);
       const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
-      console.log('[WitnessLab TTS] ElevenLabs API Key present:', !!elevenLabsKey, 'Length:', elevenLabsKey?.length || 0);
-      console.log('[WitnessLab TTS] Text to synthesize:', text.substring(0, 100) + '...');
       
-      if (!elevenLabsKey || elevenLabsKey.length < 10) {
-        console.warn('[WitnessLab TTS] ElevenLabs API key is missing or invalid - TTS disabled');
-        handleError(new Error('ElevenLabs API key not configured'), 'Text-to-speech unavailable. Add ELEVENLABS_API_KEY to .env.local', 'WitnessLab');
-        return;
+      console.log('[WitnessLab TTS] ElevenLabs API Key present:', !!elevenLabsKey);
+      console.log('[WitnessLab TTS] Selected voice preset:', selectedVoicePreset);
+      
+      if (elevenLabsKey && elevenLabsKey.length > 10) {
+        try {
+          console.log('[WitnessLab TTS] Attempting ElevenLabs synthesis...');
+          const audioBuffer = await synthesizeSpeech(text, undefined, {
+            stability: 0.5,
+            similarityBoost: 0.75,
+          });
+          
+          if (audioBuffer && audioBuffer.byteLength > 0) {
+            currentAudioSourceRef.current = 'elevenlabs';
+            await playAudioBuffer(audioBuffer);
+            console.log('[WitnessLab TTS] ElevenLabs playback complete');
+            return;
+          }
+        } catch (elevenLabsError) {
+          console.warn('[WitnessLab TTS] ElevenLabs failed, falling back to browser TTS:', elevenLabsError);
+        }
       }
       
-      console.log('[WitnessLab TTS] Calling synthesizeSpeech...');
-      const audioBuffer = await synthesizeSpeech(text);
-      console.log('[WitnessLab TTS] Audio buffer received, size:', audioBuffer.byteLength, 'bytes');
-      
-      if (!audioBuffer || audioBuffer.byteLength === 0) {
-        console.error('[WitnessLab TTS] Empty audio buffer received');
-        handleError(new Error('Empty audio response'), 'TTS returned no audio', 'WitnessLab');
-        return;
+      if (isBrowserTTSAvailable()) {
+        console.log('[WitnessLab TTS] Using browser TTS fallback');
+        currentAudioSourceRef.current = 'browser';
+        await speakWithFallback(text, {
+          rate: 0.95,
+          pitch: 1.0,
+          onEnd: () => {
+            console.log('[WitnessLab TTS] Browser TTS playback complete');
+          },
+          onError: (error) => {
+            console.error('[WitnessLab TTS] Browser TTS error:', error);
+          }
+        });
+      } else {
+        throw new Error('No TTS available');
       }
-      
-      console.log('[WitnessLab TTS] Playing audio buffer...');
-      await playAudioBuffer(audioBuffer);
-      console.log('[WitnessLab TTS] Playback complete');
     } catch (error) {
       console.error('[WitnessLab TTS] Error:', error);
-      handleError(error, 'Text-to-speech failed. Check console for details.', 'WitnessLab');
+      handleError(error, 'Text-to-speech failed', 'WitnessLab');
     } finally {
       setIsPlayingAudio(false);
+      setCaptionVisible(false);
+      setCaptionText('');
+      currentAudioSourceRef.current = null;
     }
   };
 
@@ -202,7 +283,6 @@ const WitnessLab = () => {
 
       setMessages(prev => [...prev, witnessMsg]);
       
-      // Trigger TTS
       void playResponse(responseText);
       
     } catch (err) {
@@ -212,9 +292,86 @@ const WitnessLab = () => {
     }
   };
 
+  const handleTestAudio = async () => {
+    setAudioTestResult(null);
+    try {
+      const result = await testAudioPlayback();
+      setAudioTestResult({ success: result.success, message: result.message });
+      if (result.success) {
+        handleSuccess('Audio test successful!');
+      } else {
+        handleError(new Error(result.message), 'Audio test failed', 'WitnessLab');
+      }
+    } catch (error) {
+      handleError(error, 'Audio test failed', 'WitnessLab');
+    }
+  };
+
+  const exportTranscript = () => {
+    if (messages.length === 0) {
+      handleError(new Error('No messages to export'), 'Cannot export transcript', 'WitnessLab');
+      return;
+    }
+
+    const formatTimestamp = (ts: number) => {
+      const date = new Date(ts);
+      return date.toLocaleString();
+    };
+
+    const getSpeakerLabel = (sender: Message['sender']) => {
+      switch (sender) {
+        case 'user': return 'Attorney';
+        case 'witness': return selectedWitness.name;
+        case 'system': return 'System';
+        default: return sender;
+      }
+    };
+
+    const transcriptText = messages
+      .map(msg => `[${formatTimestamp(msg.timestamp)}] ${getSpeakerLabel(msg.sender)}: ${msg.text}`)
+      .join('\n\n');
+
+    const header = `Witness Examination Transcript
+Witness: ${selectedWitness.name}
+Role: ${selectedWitness.role}
+Personality: ${selectedWitness.personality}
+Case: ${activeCase?.title || 'Unknown'}
+Date Exported: ${new Date().toLocaleString()}
+${'='.repeat(50)}
+
+`;
+
+    const blob = new Blob([header + transcriptText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcript-${selectedWitness.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    handleSuccess('Transcript exported successfully!');
+  };
+
+  const voicePresetOptions: { value: WitnessVoicePreset; label: string; description: string }[] = [
+    { value: 'witness-hostile', label: 'Hostile', description: 'Grainy, defensive voice' },
+    { value: 'witness-nervous', label: 'Nervous', description: 'Young, anxious voice' },
+    { value: 'witness-cooperative', label: 'Cooperative', description: 'Calm, helpful voice' },
+  ];
+
   return (
     <div className="h-[calc(100vh-8rem)] flex gap-6">
-      {/* Sidebar: Witness Selection */}
+      <CaptionOverlay
+        text={captionText}
+        isVisible={captionVisible}
+        speaker={captionSpeaker}
+        position="bottom"
+        fontSize="medium"
+        showSpeaker={true}
+        onDismiss={() => setCaptionVisible(false)}
+      />
+      
       <div className="w-72 flex flex-col gap-4 bg-slate-800 border border-slate-700 rounded-xl p-4 overflow-y-auto hidden md:flex">
         <h3 className="text-white font-serif font-bold px-2">Witness List</h3>
         {MOCK_WITNESSES.map(w => (
@@ -234,11 +391,27 @@ const WitnessLab = () => {
             </div>
           </button>
         ))}
+        
+        <div className="mt-4 pt-4 border-t border-slate-700">
+          <h4 className="text-white font-semibold text-sm px-2 mb-2">Voice Settings</h4>
+          {voicePresetOptions.map(option => (
+            <button
+              key={option.value}
+              onClick={() => setSelectedVoicePreset(option.value)}
+              className={`w-full text-left p-2 rounded-lg transition-colors text-sm ${
+                selectedVoicePreset === option.value 
+                  ? 'bg-gold-600/20 text-gold-400 border border-gold-500/30' 
+                  : 'hover:bg-slate-700/50 text-slate-300'
+              }`}
+            >
+              <div className="font-medium">{option.label}</div>
+              <div className="text-xs text-slate-400">{option.description}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Chat Area */}
       <div className="flex-1 flex flex-col bg-slate-900 border border-slate-700 rounded-xl overflow-hidden relative">
-        {/* Chat Header */}
         <div className="h-16 bg-slate-800 border-b border-slate-700 flex items-center px-6 justify-between">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -257,23 +430,43 @@ const WitnessLab = () => {
           
           <div className="flex items-center gap-4 text-slate-400 text-xs">
             {isPlayingAudio && (
-               <div className="flex items-center gap-1 text-gold-500 animate-pulse font-semibold">
-                 <Volume2 size={16} />
-                 Speaking...
-               </div>
+              <button
+                onClick={stopAllAudio}
+                className="flex items-center gap-1 text-red-400 hover:text-red-300 bg-red-500/10 px-3 py-1 rounded-lg transition-colors"
+              >
+                <StopCircle size={14} />
+                Stop Speaking
+              </button>
             )}
+            {!isPlayingAudio && (
+              <button
+                onClick={handleTestAudio}
+                className="flex items-center gap-1 hover:text-white transition-colors"
+                title="Test audio playback"
+              >
+                <Volume2 size={14} />
+                Test Audio
+              </button>
+            )}
+            <button
+              onClick={exportTranscript}
+              className="flex items-center gap-1 hover:text-white transition-colors"
+              title="Export transcript"
+            >
+              <Download size={14} />
+              Export
+            </button>
             <div className="flex items-center gap-1">
-               <HeartPulse size={14} className={selectedWitness.personality === 'Nervous' ? 'text-red-400 animate-pulse' : 'text-green-400'} />
-               Stress Level
+              <HeartPulse size={14} className={selectedWitness.personality === 'Nervous' ? 'text-red-400 animate-pulse' : 'text-green-400'} />
+              Stress Level
             </div>
             <div className="flex items-center gap-1">
-               <ShieldAlert size={14} className={selectedWitness.personality === 'Hostile' ? 'text-red-400' : 'text-slate-500'} />
-               Hostility
+              <ShieldAlert size={14} className={selectedWitness.personality === 'Hostile' ? 'text-red-400' : 'text-slate-500'} />
+              Hostility
             </div>
           </div>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
           {messages.map((msg) => {
             const isUser = msg.sender === 'user';
@@ -301,12 +494,12 @@ const WitnessLab = () => {
           })}
           
           {isProcessingAudio && (
-             <div className="flex justify-end">
-               <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-br-none px-5 py-3 flex items-center gap-2 text-gold-500 text-sm">
-                 <Loader2 size={16} className="animate-spin" />
-                 Transcribing audio...
-               </div>
-             </div>
+            <div className="flex justify-end">
+              <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-br-none px-5 py-3 flex items-center gap-2 text-gold-500 text-sm">
+                <Loader2 size={16} className="animate-spin" />
+                Transcribing audio...
+              </div>
+            </div>
           )}
 
           {isTyping && (
@@ -321,28 +514,34 @@ const WitnessLab = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
         <div className="bg-slate-800 border-t border-slate-700 p-4">
           <form onSubmit={(e) => handleSendMessage(e)} className="flex gap-2 items-center bg-slate-900 border border-slate-600 rounded-xl p-1 pr-2 focus-within:border-gold-500 focus-within:ring-1 focus-within:ring-gold-500 transition-all">
             <input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage(e);
+                }
+              }}
               placeholder={isRecording ? "Listening..." : "Ask your question..."}
               className="flex-1 bg-transparent border-none focus:ring-0 text-white px-4 py-3 placeholder-slate-500"
               disabled={isTyping || isRecording || isProcessingAudio}
             />
             
             <button 
-               type="button"
-               onMouseDown={startRecording}
-               onMouseUp={stopRecording}
-               onMouseLeave={stopRecording}
-               onTouchStart={startRecording}
-               onTouchEnd={stopRecording}
-               disabled={isTyping || isProcessingAudio}
-               className={`p-2 transition-all rounded-full ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-               title="Hold to speak"
+              type="button"
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onMouseLeave={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              disabled={isTyping || isProcessingAudio}
+              className={`p-2 transition-all rounded-full ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+              title="Hold to speak"
             >
               {isRecording ? <StopCircle size={20} /> : <Mic size={20} />}
             </button>
@@ -356,7 +555,9 @@ const WitnessLab = () => {
             </button>
           </form>
           <div className="text-center mt-2">
-            <p className="text-[10px] text-slate-500">Hold microphone button to speak • Uses Gemini Transcription • ElevenLabs Voice Synthesis</p>
+            <p className="text-[10px] text-slate-500">
+              Hold mic or press Space to speak • Press Escape to stop audio • Enter to send
+            </p>
           </div>
         </div>
       </div>
