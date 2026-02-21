@@ -255,10 +255,16 @@ export class ElevenLabsStreamer {
    * Send text to be synthesized
    */
   async sendText(text: string, flush = false): Promise<void> {
+    // Try to reconnect if not connected
     if (!this.ws || !this.isConnected) {
-      console.warn('[ElevenLabs] Not connected, buffering text');
+      console.warn('[ElevenLabs] Not connected, buffering text and attempting reconnect');
       this.textBuffer += text;
-      return;
+      try {
+        await this.ensureConnected();
+      } catch (err) {
+        console.error('[ElevenLabs] Reconnect failed:', err);
+        return;
+      }
     }
 
     // Send any buffered text first
@@ -267,7 +273,7 @@ export class ElevenLabsStreamer {
         text: this.textBuffer,
         flush: false,
       };
-      this.ws.send(JSON.stringify(message));
+      this.ws?.send(JSON.stringify(message));
       this.textBuffer = '';
     }
 
@@ -275,7 +281,7 @@ export class ElevenLabsStreamer {
       text,
       flush,
     };
-    this.ws.send(JSON.stringify(message));
+    this.ws?.send(JSON.stringify(message));
     console.log('[ElevenLabs] Sent text:', text.substring(0, 50) + (text.length > 50 ? '...' : ''));
   }
 
@@ -322,9 +328,22 @@ export class ElevenLabsStreamer {
       // Check AudioContext state
       console.log('[ElevenLabs] AudioContext state before decode:', this.audioContext.state);
       
+      // Handle audio device errors
+      if (this.audioContext.state === 'closed') {
+        console.error('[ElevenLabs] AudioContext is closed, recreating...');
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        this.audioContext = new AudioContextClass();
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.connect(this.audioContext.destination);
+      }
+      
       if (this.audioContext.state === 'suspended') {
         console.log('[ElevenLabs] AudioContext suspended, resuming...');
         await this.audioContext.resume();
+      }
+      
+      if (this.audioContext.state !== 'running') {
+        console.warn('[ElevenLabs] AudioContext not running, state:', this.audioContext.state);
       }
       
       // Decode MP3 chunk to AudioBuffer
@@ -345,14 +364,16 @@ export class ElevenLabsStreamer {
         this.playNextChunk();
       };
       
+      source.onerror = (err) => {
+        console.error('[ElevenLabs] AudioSource error:', err);
+        this.sourceNode = null;
+        this.playNextChunk();
+      };
+      
       this.sourceNode = source;
       console.log('[ElevenLabs] Starting source playback...');
       source.start();
       console.log('[ElevenLabs] source.start() called successfully');
-    } catch (err) {
-      console.error('[ElevenLabs] Error playing audio chunk:', err);
-      // Try next chunk on error
-      this.playNextChunk();
     }
   }
 
