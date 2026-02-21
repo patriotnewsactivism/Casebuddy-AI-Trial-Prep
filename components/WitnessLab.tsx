@@ -41,6 +41,7 @@ const WitnessLab = () => {
   const recognitionRef = useRef<any>(null);
   const isRecordingRef = useRef(false);
   const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingMimeTypeRef = useRef<string>('audio/webm');
   const finalSpeechTranscriptRef = useRef('');
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -129,8 +130,22 @@ const WitnessLab = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordingStreamRef.current = stream;
-      const mediaRecorder = new MediaRecorder(stream);
+      const supportedMimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus'
+      ];
+      const selectedMimeType = supportedMimeTypes.find((candidate) =>
+        typeof MediaRecorder !== 'undefined' &&
+        typeof MediaRecorder.isTypeSupported === 'function' &&
+        MediaRecorder.isTypeSupported(candidate)
+      );
+      const mediaRecorder = selectedMimeType
+        ? new MediaRecorder(stream, { mimeType: selectedMimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
+      recordingMimeTypeRef.current = mediaRecorder.mimeType || selectedMimeType || 'audio/webm';
       audioChunksRef.current = [];
       finalSpeechTranscriptRef.current = '';
       setLiveMicTranscript('');
@@ -142,7 +157,21 @@ const WitnessLab = () => {
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        if (audioChunksRef.current.length === 0) {
+          handleError(new Error('No audio chunks captured'), 'No audio captured. Please try again and speak for at least 1-2 seconds.', 'WitnessLab');
+          stream.getTracks().forEach(track => track.stop());
+          recordingStreamRef.current = null;
+          return;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: recordingMimeTypeRef.current });
+        if (audioBlob.size === 0) {
+          handleError(new Error('Captured audio blob was empty'), 'Audio capture was empty. Check microphone permissions and input device.', 'WitnessLab');
+          stream.getTracks().forEach(track => track.stop());
+          recordingStreamRef.current = null;
+          return;
+        }
+
         const optimisticTranscript = finalSpeechTranscriptRef.current.trim();
         await handleAudioUpload(audioBlob, optimisticTranscript);
         finalSpeechTranscriptRef.current = '';
@@ -202,7 +231,7 @@ const WitnessLab = () => {
         recognitionRef.current = null;
       }
 
-      mediaRecorder.start();
+      mediaRecorder.start(250);
       setIsRecording(true);
       isRecordingRef.current = true;
       setCaptionText('Listening...');
@@ -236,7 +265,9 @@ const WitnessLab = () => {
         recognitionRef.current = null;
       }
 
-      mediaRecorderRef.current.stop();
+      if (mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
       setIsRecording(false);
       setCaptionText('Processing...');
     }
@@ -257,8 +288,22 @@ const WitnessLab = () => {
         return;
       }
 
+      const normalizedMimeType = audioBlob.type || recordingMimeTypeRef.current || 'audio/webm';
+      const extension = normalizedMimeType.includes('webm')
+        ? 'webm'
+        : normalizedMimeType.includes('ogg')
+          ? 'ogg'
+          : normalizedMimeType.includes('mp4')
+            ? 'm4a'
+            : 'wav';
+      const transcriptionInput = new File(
+        [audioBlob],
+        `witness-recording-${Date.now()}.${extension}`,
+        { type: normalizedMimeType }
+      );
+
       const result = await transcribeAudio(
-        audioBlob, 
+        transcriptionInput, 
         '', 
         { 
           provider: TranscriptionProvider.GEMINI,
