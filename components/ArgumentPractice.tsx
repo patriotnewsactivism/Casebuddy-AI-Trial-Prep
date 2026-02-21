@@ -5,6 +5,7 @@ import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession, Vo
 import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link, Settings, Volume2, ChevronUp, FolderOpen, X } from 'lucide-react';
 import { getTrialSimSystemPrompt, isOpenAIConfigured, streamOpenAIResponse } from '../services/openAIService';
 import { ElevenLabsStreamer, ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured } from '../services/elevenLabsService';
+import { browserTTS, isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
 
 interface EvidenceDataForSim {
@@ -97,6 +98,9 @@ const TrialSim = () => {
   const [avgRhetoricalScore, setAvgRhetoricalScore] = useState(50);
   const [rhetoricalScores, setRhetoricalScores] = useState<number[]>([]);
   const [useElevenLabs, setUseElevenLabs] = useState(true);
+  const [liveInputTranscript, setLiveInputTranscript] = useState('');
+  const [liveOutputTranscript, setLiveOutputTranscript] = useState('');
+  const [isAISpeaking, setIsAISpeaking] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<any>(null);
@@ -108,8 +112,8 @@ const TrialSim = () => {
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const keepaliveRef = useRef<NodeJS.Timeout | null>(null);
   const isLiveRef = useRef<boolean>(false);
-  const currentInputTranscription = useRef('');
-  const currentOutputTranscription = useRef('');
+  const recognitionRef = useRef<any>(null);
+  const isAISpeakingRef = useRef<boolean>(false);
   const sessionStartTime = useRef<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -175,6 +179,11 @@ const TrialSim = () => {
     ? activeCase.opposingCounsel 
     : MOCK_OPPONENT.name;
 
+  const setAISpeakingState = (speaking: boolean) => {
+    isAISpeakingRef.current = speaking;
+    setIsAISpeaking(speaking);
+  };
+
   const saveSession = () => {
     if (recordedChunksRef.current.length === 0 || !activeCase) return;
     
@@ -217,6 +226,18 @@ const TrialSim = () => {
       saveSession();
       reconnectAttemptsRef.current = 0; // Reset on intentional stop
     }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+      } catch (recognitionStopError) {
+        console.warn('[TrialSim] Failed to stop speech recognition cleanly:', recognitionStopError);
+      }
+      recognitionRef.current = null;
+    }
+
+    browserTTS.stop();
     
     // Cleanup ElevenLabs
     if (elevenLabsRef.current) {
@@ -246,6 +267,9 @@ const TrialSim = () => {
     setIsLive(false);
     isLiveRef.current = false;
     setIsConnecting(false);
+    setAISpeakingState(false);
+    setLiveInputTranscript('');
+    setLiveOutputTranscript('');
     setLiveVolume(0);
     sourcesRef.current.forEach(s => s.stop());
     sourcesRef.current.clear();
@@ -399,10 +423,10 @@ const TrialSim = () => {
     console.log('[TrialSim] Using ElevenLabs for voice:', shouldUseElevenLabs, '(useElevenLabs:', useElevenLabs, ')');
 
     if (!elevenLabsKey || elevenLabsKey.length < 10) {
-      toast.error('ElevenLabs API key not configured. Add ELEVENLABS_API_KEY to .env.local for voice output.');
+      toast.info('ElevenLabs key not found. Falling back to browser voice output.');
       console.error('[TrialSim] ELEVENLABS_API_KEY is missing or invalid');
     } else if (!shouldUseElevenLabs) {
-      toast.warning('ElevenLabs disabled in settings. Enable it for voice output.');
+      toast.info('ElevenLabs disabled. Using browser voice output.');
     }
 
     setIsConnecting(true);
@@ -412,6 +436,9 @@ const TrialSim = () => {
     setRhetoricalScores([]);
     setAvgRhetoricalScore(50);
     setSessionScore(50);
+    setLiveInputTranscript('');
+    setLiveOutputTranscript('');
+    setAISpeakingState(false);
     
     try {
       // Initialize ElevenLabs FIRST (before grabbing microphone)
@@ -475,6 +502,7 @@ const TrialSim = () => {
       recognition.interimResults = true;
       recognition.lang = 'en-US';
       recognition.maxAlternatives = 1;
+      recognitionRef.current = recognition;
       console.log('[TrialSim] SpeechRecognition instance created with settings:', {
         continuous: recognition.continuous,
         interimResults: recognition.interimResults,
@@ -482,8 +510,6 @@ const TrialSim = () => {
       });
 
       let isProcessing = false;
-      let silenceTimer: NodeJS.Timeout | null = null;
-      let currentTranscript = '';
       let restartAttempts = 0;
       const maxRestartAttempts = 10;
 
@@ -515,6 +541,10 @@ const TrialSim = () => {
       };
 
       recognition.onresult = async (event: any) => {
+        if (isAISpeakingRef.current) {
+          return;
+        }
+
         console.log('[TrialSim] Speech recognition result received');
         let interimTranscript = '';
         let finalTranscript = '';
@@ -536,61 +566,82 @@ const TrialSim = () => {
         // Show interim results
         if (interimTranscript) {
           console.log('[TrialSim] Interim transcript:', interimTranscript);
-          currentTranscript = interimTranscript;
+          setLiveInputTranscript(interimTranscript.trim());
         }
 
         // Process final transcript
-        if (finalTranscript && !isProcessing) {
-          console.log('[TrialSim] User said:', finalTranscript);
-          currentTranscript = '';
+        const normalizedFinalTranscript = finalTranscript.trim();
+        if (normalizedFinalTranscript && !isProcessing) {
+          console.log('[TrialSim] User said:', normalizedFinalTranscript);
+          setLiveInputTranscript(normalizedFinalTranscript);
+          setLiveOutputTranscript('');
           isProcessing = true;
 
           // Add user message to chat
           setMessages(prev => [...prev, { 
             id: Date.now() + 'u', 
             sender: 'user', 
-            text: finalTranscript, 
+            text: normalizedFinalTranscript, 
             timestamp: Date.now() 
           }]);
 
           // Get AI response
           try {
             const systemPrompt = getTrialSimSystemPrompt(phase!, mode!, opponentName, activeCase.summary);
+            const canUseElevenLabs = shouldUseElevenLabs && !!elevenLabsRef.current;
             
             let fullResponse = '';
             
             console.log('[TrialSim] Streaming OpenAI response...');
             // Stream response from OpenAI
-            for await (const chunk of streamOpenAIResponse(systemPrompt, finalTranscript, [])) {
+            for await (const chunk of streamOpenAIResponse(systemPrompt, normalizedFinalTranscript, [])) {
               fullResponse += chunk;
+              setLiveOutputTranscript(fullResponse);
               
               // Send to ElevenLabs as we receive it
-              if (shouldUseElevenLabs && elevenLabsRef.current) {
+              if (canUseElevenLabs && elevenLabsRef.current) {
                 console.log('[TrialSim] Sending chunk to ElevenLabs:', chunk.substring(0, 30) + '...');
-                elevenLabsRef.current.sendText(chunk);
-              } else {
-                console.warn('[TrialSim] ElevenLabs not available for TTS. shouldUseElevenLabs:', shouldUseElevenLabs, 'ref:', !!elevenLabsRef.current);
+                await elevenLabsRef.current.sendText(chunk);
               }
             }
 
-            console.log('[TrialSim] AI response complete:', fullResponse.substring(0, 100) + '...');
+            const normalizedResponse = fullResponse.trim();
+            console.log('[TrialSim] AI response complete:', normalizedResponse.substring(0, 100) + '...');
 
             // Flush ElevenLabs and add message to chat
-            if (shouldUseElevenLabs && elevenLabsRef.current) {
+            if (canUseElevenLabs && elevenLabsRef.current) {
               console.log('[TrialSim] Flushing ElevenLabs stream...');
               elevenLabsRef.current.flush();
+            } else if (isBrowserTTSAvailable() && normalizedResponse) {
+              setAISpeakingState(true);
+              try {
+                await speakWithFallback(normalizedResponse, {
+                  rate: 1,
+                  pitch: 1,
+                  volume: 1
+                });
+              } catch (ttsError) {
+                console.error('[TrialSim] Browser TTS playback failed:', ttsError);
+                toast.error('Response generated, but voice playback failed.');
+              } finally {
+                setAISpeakingState(false);
+              }
+            } else if (!canUseElevenLabs) {
+              toast.error('No voice output is available in this browser.');
             }
 
             setMessages(prev => [...prev, { 
               id: Date.now() + 'o', 
               sender: 'opponent', 
-              text: fullResponse, 
+              text: normalizedResponse || '[No response content returned]', 
               timestamp: Date.now() 
             }]);
 
           } catch (err) {
             console.error('[TrialSim] Error getting response:', err);
             toast.error('Error getting response. Check console.');
+          } finally {
+            setLiveInputTranscript('');
           }
 
           isProcessing = false;
@@ -636,6 +687,10 @@ const TrialSim = () => {
       };
 
       recognition.onend = () => {
+        if (!recognitionRef.current) {
+          return;
+        }
+
         console.log('[TrialSim] Speech recognition ended, isLiveRef:', isLiveRef.current, 'restartAttempts:', restartAttempts);
         // Restart if still live
         if (isLiveRef.current && restartAttempts < maxRestartAttempts) {
@@ -666,6 +721,7 @@ const TrialSim = () => {
       } catch (startError) {
         console.error('[TrialSim] Failed to start recognition:', startError);
         toast.error('Failed to start speech recognition. Please refresh and try again.');
+        recognitionRef.current = null;
         setIsConnecting(false);
         return;
       }
@@ -1077,7 +1133,9 @@ const TrialSim = () => {
           <p className="mt-4 text-white font-semibold text-center">
             {phase === 'defendant-testimony' ? 'Prosecutor' : 'Opposing Counsel'}
           </p>
-          <p className="text-slate-400 text-sm">{isConnecting ? 'Connecting...' : isLive ? 'Listening...' : 'Ready'}</p>
+          <p className="text-slate-400 text-sm">
+            {isConnecting ? 'Connecting...' : isAISpeaking ? 'Speaking...' : isLive ? 'Listening...' : 'Ready'}
+          </p>
 
           {isLive && (
             <div className="w-full max-w-xs mt-4">
@@ -1086,6 +1144,25 @@ const TrialSim = () => {
                   className="h-full bg-gold-500 transition-all"
                   style={{ width: `${Math.min(100, liveVolume * 2)}%` }}
                 />
+              </div>
+            </div>
+          )}
+
+          {isLive && (
+            <div className="w-full max-w-2xl mt-4 space-y-2">
+              <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-3">
+                <p className="text-[10px] uppercase tracking-wider text-blue-300 mb-1">Hearing You</p>
+                <p className="text-sm text-blue-100 min-h-[1.25rem]">
+                  {liveInputTranscript || 'Speak now. Your words will appear live here.'}
+                </p>
+              </div>
+              <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-3">
+                <p className="text-[10px] uppercase tracking-wider text-emerald-300 mb-1">
+                  Speaking Back {isAISpeaking ? '(browser voice)' : ''}
+                </p>
+                <p className="text-sm text-emerald-100 min-h-[1.25rem]">
+                  {liveOutputTranscript || 'Waiting for AI response...'}
+                </p>
               </div>
             </div>
           )}

@@ -116,25 +116,50 @@ export async function* streamOpenAIResponse(
     throw new Error('No response body');
   }
 
+  let buffer = '';
+
   while (true) {
     const { done, value } = await reader.read();
+
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || !line.startsWith('data:')) continue;
+
+        const data = line.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            yield content;
+          }
+        } catch {
+          // Skip non-JSON lines/events.
+        }
+      }
+    }
+
     if (done) break;
+  }
 
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
-
-    for (const line of lines) {
-      const data = line.slice(6);
-      if (data === '[DONE]') continue;
-
+  const trailing = (buffer + decoder.decode()).trim();
+  if (trailing.startsWith('data:')) {
+    const data = trailing.slice(5).trim();
+    if (data && data !== '[DONE]') {
       try {
         const parsed = JSON.parse(data);
         const content = parsed.choices?.[0]?.delta?.content;
         if (content) {
           yield content;
         }
-      } catch (e) {
-        // Skip invalid JSON
+      } catch {
+        // Ignore trailing partial event.
       }
     }
   }
