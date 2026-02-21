@@ -254,45 +254,56 @@ export class ElevenLabsStreamer {
   }
 
   async initAudio(sampleRate: number = 24000): Promise<AudioContext | null> {
-    console.log('[ElevenLabs] initAudio called');
+    console.log('[ElevenLabs] initAudio called, current state:', {
+      useAudioElement: this.useAudioElement,
+      hasContext: !!this.audioContext,
+      contextState: this.audioContext?.state
+    });
     
     const unlocked = await ensureAudioUnlocked();
     console.log('[ElevenLabs] Audio unlock status:', unlocked);
     
-    if (this.useAudioElement) {
-      console.log('[ElevenLabs] Using HTML5 Audio element for playback');
-      this.audioElement = new Audio();
-      this.audioElement.volume = this.volume;
-      console.log('[ElevenLabs] HTML5 Audio volume set to:', this.volume);
-      return null;
-    }
-    
+    // Attempt to use AudioContext first, even if useAudioElement was previously set
+    // (unless we've explicitly determined it's unavailable)
     try {
-      if (!this.audioContext || this.audioContext.state === 'closed') {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        this.audioContext = new AudioContextClass();
-        console.log('[ElevenLabs] Created new AudioContext, state:', this.audioContext.state);
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) {
+        console.warn('[ElevenLabs] Web Audio API not supported, falling back to HTML5 Audio');
+        this.useAudioElement = true;
+      } else {
+        if (!this.audioContext || this.audioContext.state === 'closed') {
+          this.audioContext = new AudioContextClass();
+          console.log('[ElevenLabs] Created new AudioContext, state:', this.audioContext.state);
+          
+          this.gainNode = this.audioContext.createGain();
+          this.gainNode.gain.value = this.volume;
+          this.gainNode.connect(this.audioContext.destination);
+          console.log('[ElevenLabs] Gain node volume set to:', this.volume);
+        }
         
-        this.gainNode = this.audioContext.createGain();
-        this.gainNode.gain.value = this.volume;
-        this.gainNode.connect(this.audioContext.destination);
-        console.log('[ElevenLabs] Gain node volume set to:', this.volume);
+        if (this.audioContext.state === 'suspended') {
+          console.log('[ElevenLabs] AudioContext suspended, attempting resume from initAudio...');
+          await this.audioContext.resume();
+          console.log('[ElevenLabs] AudioContext state after resume attempt:', this.audioContext.state);
+        }
+        
+        if (this.audioContext.state === 'running') {
+          this.useAudioElement = false;
+          console.log('[ElevenLabs] Using AudioContext for playback');
+          return this.audioContext;
+        }
       }
-      
-      if (this.audioContext.state === 'suspended') {
-        console.log('[ElevenLabs] AudioContext suspended, resuming...');
-        await this.audioContext.resume();
-        console.log('[ElevenLabs] AudioContext resumed, state:', this.audioContext.state);
-      }
-      
-      return this.audioContext;
     } catch (err) {
-      console.error('[ElevenLabs] AudioContext initialization failed, falling back to HTML5 Audio:', err);
-      this.useAudioElement = true;
-      this.audioElement = new Audio();
-      this.audioElement.volume = this.volume;
-      return null;
+      console.error('[ElevenLabs] AudioContext initialization failed:', err);
     }
+
+    console.log('[ElevenLabs] Falling back to HTML5 Audio element for playback');
+    this.useAudioElement = true;
+    if (!this.audioElement) {
+      this.audioElement = new Audio();
+    }
+    this.audioElement.volume = this.volume;
+    return null;
   }
 
   async connect(onReady?: () => void): Promise<void> {
@@ -320,10 +331,16 @@ export class ElevenLabsStreamer {
           xi_api_key: this.config.apiKey,
         };
         
-        this.ws?.send(JSON.stringify(bosMessage));
-        this.isConnected = true;
-        onReady?.();
-        resolve();
+        try {
+          this.ws?.send(JSON.stringify(bosMessage));
+          this.isConnected = true;
+          audioUnlocked = true; // Connection successful usually means interaction happened
+          onReady?.();
+          resolve();
+        } catch (sendError) {
+          console.error('[ElevenLabs] Failed to send BOS message:', sendError);
+          reject(sendError);
+        }
       };
 
       this.ws.onmessage = async (event) => {

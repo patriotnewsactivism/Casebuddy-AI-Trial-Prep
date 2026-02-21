@@ -200,24 +200,38 @@ const WitnessLab = () => {
       const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
       
       console.log('[WitnessLab TTS] ElevenLabs API Key present:', !!elevenLabsKey);
-      console.log('[WitnessLab TTS] Selected voice preset:', selectedVoicePreset);
+      console.log('[WitnessLab TTS] Selected voice preset:', selectedVoicePreset, 'Voice ID:', voiceConfig.voice);
       
       if (elevenLabsKey && elevenLabsKey.length > 10) {
         try {
-          console.log('[WitnessLab TTS] Attempting ElevenLabs synthesis...');
-          const audioBuffer = await synthesizeSpeech(text, undefined, {
+          console.log('[WitnessLab TTS] Attempting ElevenLabs streaming...');
+          
+          // Use streaming for better experience and longer texts
+          const streamer = new ElevenLabsStreamer({
+            apiKey: elevenLabsKey,
+            voiceId: ELEVENLABS_VOICES[voiceConfig.voice as keyof typeof ELEVENLABS_VOICES]?.id || voiceConfig.voice,
             stability: 0.5,
             similarityBoost: 0.75,
           });
           
-          if (audioBuffer && audioBuffer.byteLength > 0) {
-            currentAudioSourceRef.current = 'elevenlabs';
-            await playAudioBuffer(audioBuffer);
-            console.log('[WitnessLab TTS] ElevenLabs playback complete');
-            return;
-          }
+          await streamer.initAudio();
+          await streamer.connect();
+          
+          // Set up streamer-specific end handler
+          const originalDisconnect = streamer.disconnect.bind(streamer);
+          streamer.disconnect = () => {
+            setIsPlayingAudio(false);
+            setCaptionVisible(false);
+            originalDisconnect();
+          };
+
+          await streamer.sendText(text, true);
+          
+          currentAudioSourceRef.current = 'elevenlabs';
+          console.log('[WitnessLab TTS] ElevenLabs streaming started');
+          return;
         } catch (elevenLabsError) {
-          console.warn('[WitnessLab TTS] ElevenLabs failed, falling back to browser TTS:', elevenLabsError);
+          console.warn('[WitnessLab TTS] ElevenLabs streaming failed, falling back to browser TTS:', elevenLabsError);
         }
       }
       
@@ -229,9 +243,13 @@ const WitnessLab = () => {
           pitch: 1.0,
           onEnd: () => {
             console.log('[WitnessLab TTS] Browser TTS playback complete');
+            setIsPlayingAudio(false);
+            setCaptionVisible(false);
           },
           onError: (error) => {
             console.error('[WitnessLab TTS] Browser TTS error:', error);
+            setIsPlayingAudio(false);
+            setCaptionVisible(false);
           }
         });
       } else {
@@ -240,11 +258,11 @@ const WitnessLab = () => {
     } catch (error) {
       console.error('[WitnessLab TTS] Error:', error);
       handleError(error, 'Text-to-speech failed', 'WitnessLab');
-    } finally {
       setIsPlayingAudio(false);
       setCaptionVisible(false);
-      setCaptionText('');
-      currentAudioSourceRef.current = null;
+    } finally {
+      // NOTE: We don't set setIsPlayingAudio(false) here because streaming is async
+      // The individual handlers (onEnd, disconnect) will manage the state
     }
   };
 
