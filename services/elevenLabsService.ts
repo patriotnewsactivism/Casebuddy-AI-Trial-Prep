@@ -112,24 +112,39 @@ export class ElevenLabsStreamer {
   async initAudio(sampleRate: number = 24000): Promise<AudioContext> {
     console.log('[ElevenLabs] initAudio called, sampleRate:', sampleRate);
     
-    if (!this.audioContext || this.audioContext.state === 'closed') {
-      this.audioContext = new AudioContext({ sampleRate });
-      console.log('[ElevenLabs] Created new AudioContext, state:', this.audioContext.state);
+    try {
+      if (!this.audioContext || this.audioContext.state === 'closed') {
+        // Use the browser's preferred sample rate to avoid device conflicts
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        this.audioContext = new AudioContextClass();
+        console.log('[ElevenLabs] Created new AudioContext');
+        console.log('[ElevenLabs] AudioContext sampleRate:', this.audioContext.sampleRate);
+        console.log('[ElevenLabs] AudioContext state:', this.audioContext.state);
+        console.log('[ElevenLabs] AudioContext baseLatency:', this.audioContext.baseLatency);
+        
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.connect(this.audioContext.destination);
+        console.log('[ElevenLabs] GainNode created and connected to destination');
+        console.log('[ElevenLabs] GainNode volume:', this.gainNode.gain.value);
+      }
       
-      this.gainNode = this.audioContext.createGain();
-      this.gainNode.connect(this.audioContext.destination);
-      console.log('[ElevenLabs] GainNode created and connected to destination');
-      console.log('[ElevenLabs] GainNode volume:', this.gainNode.gain.value);
+      if (this.audioContext.state === 'suspended') {
+        console.log('[ElevenLabs] AudioContext suspended, attempting resume...');
+        await this.audioContext.resume();
+        console.log('[ElevenLabs] AudioContext after resume:', this.audioContext.state);
+      }
+      
+      if (this.audioContext.state !== 'running') {
+        console.warn('[ElevenLabs] AudioContext is not running, state:', this.audioContext.state);
+        throw new Error(`AudioContext failed to start, state: ${this.audioContext.state}`);
+      }
+      
+      console.log('[ElevenLabs] AudioContext ready, state:', this.audioContext.state);
+      return this.audioContext;
+    } catch (err) {
+      console.error('[ElevenLabs] AudioContext initialization failed:', err);
+      throw err;
     }
-    
-    if (this.audioContext.state === 'suspended') {
-      console.log('[ElevenLabs] AudioContext suspended, attempting resume...');
-      await this.audioContext.resume();
-      console.log('[ElevenLabs] AudioContext after resume:', this.audioContext.state);
-    }
-    
-    console.log('[ElevenLabs] AudioContext ready, state:', this.audioContext.state);
-    return this.audioContext;
   }
 
   /**
@@ -196,6 +211,14 @@ export class ElevenLabsStreamer {
           
           if (data.error) {
             console.error('[ElevenLabs] Server error:', data.error);
+            // Don't throw for timeout errors - they're recoverable
+            if (data.error === 'input_timeout_exceeded' || data.error === 'input_timeout') {
+              console.log('[ElevenLabs] Input timeout - this is normal if no text was sent yet');
+            }
+          }
+          
+          if (data.code === 'input_timeout_exceeded' || data.code === 'input_timeout') {
+            console.log('[ElevenLabs] Input timeout exceeded - will reconnect on next text');
           }
         } catch (err) {
           console.error('[ElevenLabs] Error processing message:', err);
@@ -211,14 +234,27 @@ export class ElevenLabsStreamer {
       this.ws.onclose = (event) => {
         console.log('[ElevenLabs] WebSocket closed:', event.code, event.reason);
         this.isConnected = false;
+        // Clear the playing state so we can restart
+        this.isPlaying = false;
       };
     });
   }
 
   /**
+   * Reconnect if connection was lost
+   */
+  async ensureConnected(): Promise<void> {
+    if (this.isConnected && this.ws?.readyState === WebSocket.OPEN) {
+      return;
+    }
+    console.log('[ElevenLabs] Reconnecting...');
+    await this.connect();
+  }
+
+  /**
    * Send text to be synthesized
    */
-  sendText(text: string, flush = false): void {
+  async sendText(text: string, flush = false): Promise<void> {
     if (!this.ws || !this.isConnected) {
       console.warn('[ElevenLabs] Not connected, buffering text');
       this.textBuffer += text;
