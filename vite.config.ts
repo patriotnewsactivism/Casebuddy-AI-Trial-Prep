@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
+    const isProduction = mode === 'production';
+    
     return {
       server: {
         port: 5000,
@@ -23,6 +25,33 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      build: {
+        outDir: 'dist',
+        assetsDir: 'assets',
+        sourcemap: isProduction ? false : true,
+        minify: isProduction ? 'esbuild' : false,
+        esbuild: isProduction ? {
+          drop: ['console', 'debugger'],
+          legalComments: 'none'
+        } : undefined,
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              vendor: ['react', 'react-dom'],
+              router: ['react-router-dom'],
+              charts: ['recharts'],
+              icons: ['lucide-react']
+            },
+            chunkFileNames: 'assets/[name]-[hash].js',
+            entryFileNames: 'assets/[name]-[hash].js',
+            assetFileNames: 'assets/[name]-[hash].[ext]'
+          }
+        },
+        chunkSizeWarningLimit: 1000,
+        reportCompressedSize: true,
+        emptyOutDir: true
+      },
+      publicDir: 'public'
     };
 });

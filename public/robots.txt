@@ -1,0 +1,12 @@
+# Robots.txt for CaseBuddy
+# https://www.robotstxt.org/robotstxt.html
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://casebuddy.ai/sitemap.xml
+
+# Disallow admin and API routes
+Disallow: /api/
+Disallow: /_api/

@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { HashRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -322,7 +322,7 @@ const App = () => {
 
   return (
     <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence, theme, setTheme }}>
-      <HashRouter>
+      <BrowserRouter>
         <Suspense fallback={<div className="p-8 text-slate-400">Loading...</div>}>
           <Routes>
             <Route path="/" element={<LandingPage />} />
@@ -350,7 +350,7 @@ const App = () => {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-      </HashRouter>
+      </BrowserRouter>
       <ToastContainer aria-label="Notifications" />
     </AppContext.Provider>
   );

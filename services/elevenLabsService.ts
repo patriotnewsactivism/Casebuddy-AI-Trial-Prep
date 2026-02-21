@@ -4,6 +4,36 @@
  * Free tier: 10,000 characters per month
  */
 
+// Global audio unlock for browser autoplay policy
+let audioUnlocked = false;
+let unlockAudioContext: AudioContext | null = null;
+
+export const unlockAudio = async (): Promise<void> => {
+  if (audioUnlocked) return;
+  
+  try {
+    unlockAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const source = unlockAudioContext.createBufferSource();
+    source.buffer = unlockAudioContext.createBuffer(1, 1, 22050);
+    source.connect(unlockAudioContext.destination);
+    source.start();
+    audioUnlocked = true;
+    console.log('[Audio] Audio unlocked by user interaction');
+  } catch (e) {
+    console.warn('[Audio] Failed to unlock audio:', e);
+  }
+};
+
+// Auto-unlock on first user interaction
+if (typeof window !== 'undefined') {
+  const unlockEvents = ['click', 'touchstart', 'keydown', 'mousedown'];
+  const unlockHandler = () => {
+    unlockAudio();
+    unlockEvents.forEach(e => window.removeEventListener(e, unlockHandler));
+  };
+  unlockEvents.forEach(e => window.addEventListener(e, unlockHandler, { once: true }));
+}
+
 // Available voices - these are free-tier compatible
 export const ELEVENLABS_VOICES = {
   // Male voices
@@ -316,35 +346,36 @@ export class ElevenLabsStreamer {
     console.log('[ElevenLabs] playNextChunk: Processing chunk, size:', chunk.byteLength, 'bytes');
 
     try {
-      // Use HTML5 Audio element (more reliable)
+      // Use HTML5 Audio element (more reliable) - always create fresh element
       if (this.useAudioElement || !this.audioContext) {
         console.log('[ElevenLabs] Playing via HTML5 Audio element...');
         
         const blob = new Blob([chunk], { type: 'audio/mpeg' });
         const url = URL.createObjectURL(blob);
         
-        if (!this.audioElement) {
-          this.audioElement = new Audio();
-        }
+        // Always create a fresh audio element for each chunk
+        const audioElement = new Audio();
+        audioElement.src = url;
+        audioElement.volume = 1.0;
+        audioElement.preload = 'auto';
         
-        this.audioElement.src = url;
-        this.audioElement.volume = 1.0;
+        console.log('[ElevenLabs] Created fresh audio element for playback');
         
-        this.audioElement.onended = () => {
+        audioElement.onended = () => {
           console.log('[ElevenLabs] HTML5 Audio chunk ended');
           URL.revokeObjectURL(url);
           this.playNextChunk();
         };
         
-        this.audioElement.onerror = (e) => {
+        audioElement.onerror = (e) => {
           console.error('[ElevenLabs] HTML5 Audio error:', e);
           URL.revokeObjectURL(url);
           this.playNextChunk();
         };
         
-        console.log('[ElevenLabs] Playing audio blob...');
-        await this.audioElement.play();
-        console.log('[ElevenLabs] HTML5 Audio playback started');
+        console.log('[ElevenLabs] Starting audio playback...');
+        await audioElement.play();
+        console.log('[ElevenLabs] HTML5 Audio playback started successfully');
         return;
       }
       

@@ -1,0 +1,13 @@
+# Netlify Redirects Configuration
+# https://docs.netlify.com/routing/redirects/
+
+# SPA Fallback - all routes should serve index.html
+/*    /index.html   200
+
+# Specific API proxy redirects (if needed)
+# /api/*  https://api.example.com/:splat  200
+
+# Redirect www to non-www (configure based on your domain preference)
+# https://www.casebuddy.ai/*  https://casebuddy.ai/:splat  301
+
+# HTTP to HTTPS redirect (Netlify handles this automatically)
