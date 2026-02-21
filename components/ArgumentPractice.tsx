@@ -474,14 +474,44 @@ const TrialSim = () => {
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
-      console.log('[TrialSim] SpeechRecognition instance created');
+      recognition.maxAlternatives = 1;
+      console.log('[TrialSim] SpeechRecognition instance created with settings:', {
+        continuous: recognition.continuous,
+        interimResults: recognition.interimResults,
+        lang: recognition.lang
+      });
 
       let isProcessing = false;
       let silenceTimer: NodeJS.Timeout | null = null;
       let currentTranscript = '';
+      let restartAttempts = 0;
+      const maxRestartAttempts = 10;
 
       recognition.onstart = () => {
         console.log('[TrialSim] Speech recognition STARTED - microphone active');
+        restartAttempts = 0; // Reset on successful start
+      };
+
+      recognition.onaudiostart = () => {
+        console.log('[TrialSim] Audio capture STARTED - microphone is capturing');
+      };
+
+      recognition.onaudioend = () => {
+        console.log('[TrialSim] Audio capture ENDED');
+      };
+
+      recognition.onsoundstart = () => {
+        console.log('[TrialSim] Sound detected (any audio)');
+      };
+
+      recognition.onspeechstart = () => {
+        console.log('[TrialSim] SPEECH detected - user is speaking');
+        setLiveVolume(80);
+      };
+
+      recognition.onspeechend = () => {
+        console.log('[TrialSim] Speech ended');
+        setLiveVolume(30);
       };
 
       recognition.onresult = async (event: any) => {
@@ -606,16 +636,22 @@ const TrialSim = () => {
       };
 
       recognition.onend = () => {
-        console.log('[TrialSim] Speech recognition ended, isLiveRef:', isLiveRef.current);
+        console.log('[TrialSim] Speech recognition ended, isLiveRef:', isLiveRef.current, 'restartAttempts:', restartAttempts);
         // Restart if still live
-        if (isLiveRef.current) {
-          console.log('[TrialSim] Attempting to restart recognition...');
-          try { 
-            recognition.start(); 
-            console.log('[TrialSim] Recognition restart initiated');
-          } catch (e) { 
-            console.error('[TrialSim] Failed to restart recognition:', e); 
-          }
+        if (isLiveRef.current && restartAttempts < maxRestartAttempts) {
+          restartAttempts++;
+          console.log('[TrialSim] Attempting to restart recognition (attempt', restartAttempts, ')...');
+          setTimeout(() => {
+            try { 
+              recognition.start(); 
+              console.log('[TrialSim] Recognition restart initiated');
+            } catch (e) { 
+              console.error('[TrialSim] Failed to restart recognition:', e); 
+            }
+          }, 100); // Small delay before restart
+        } else if (restartAttempts >= maxRestartAttempts) {
+          console.error('[TrialSim] Max restart attempts reached');
+          toast.error('Speech recognition keeps stopping. Try refreshing the page.');
         }
       };
 
