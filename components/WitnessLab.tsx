@@ -2,11 +2,12 @@ import React, { useState, useRef, useEffect, useContext, useCallback } from 'rea
 import { MOCK_WITNESSES } from '../constants';
 import { AppContext } from '../App';
 import { generateWitnessResponse, clearChatSession } from '../services/geminiService';
+import { generateProactiveCoaching } from '../services/geminiService';
 import { transcribeAudio } from '../services/transcriptionService';
-import { synthesizeSpeech, getTrialVoicePreset, testAudioPlayback, ensureAudioUnlocked, ELEVENLABS_VOICES } from '../services/elevenLabsService';
+import { synthesizeSpeech, getTrialVoicePreset, testAudioPlayback, ensureAudioUnlocked, ELEVENLABS_VOICES, selectModelWithFallback, TrialPhase } from '../services/elevenLabsService';
 import { browserTTS, speakWithFallback, isBrowserTTSAvailable } from '../services/browserTTSService';
-import { Message, Witness, TranscriptionProvider } from '../types';
-import { Send, Mic, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download } from 'lucide-react';
+import { Message, Witness, TranscriptionProvider, CoachingSuggestion } from '../types';
+import { Send, Mic, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download, Lightbulb, Target, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import CaptionOverlay from './CaptionOverlay';
 
@@ -33,6 +34,11 @@ const WitnessLab = () => {
   const [showVoiceSelector, setShowVoiceSelector] = useState(false);
   const [audioTestResult, setAudioTestResult] = useState<{ success: boolean; message: string } | null>(null);
   
+  const [coachingSuggestions, setCoachingSuggestions] = useState<CoachingSuggestion[]>([]);
+  const [generalTip, setGeneralTip] = useState<string>('');
+  const [showCoachingPanel, setShowCoachingPanel] = useState(true);
+  const [isLoadingCoaching, setIsLoadingCoaching] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -46,6 +52,39 @@ const WitnessLab = () => {
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const getSessionId = (witnessId: string) => `witness-${witnessId}-${activeCase?.id || 'default'}`;
+
+  const fetchProactiveCoaching = useCallback(async () => {
+    if (!activeCase || !selectedWitness) return;
+    
+    setIsLoadingCoaching(true);
+    try {
+      const phase: TrialPhase = 'cross-examination';
+      const result = await generateProactiveCoaching(
+        phase,
+        activeCase.summary || 'A legal case',
+        selectedWitness.personality,
+        messages
+      );
+      setCoachingSuggestions(result.suggestions);
+      setGeneralTip(result.generalTip);
+    } catch (error) {
+      console.warn('[WitnessLab] Failed to fetch coaching:', error);
+    } finally {
+      setIsLoadingCoaching(false);
+    }
+  }, [activeCase, selectedWitness, messages]);
+
+  useEffect(() => {
+    if (messages.length <= 1) {
+      fetchProactiveCoaching();
+    }
+  }, [selectedWitness.id]);
+
+  useEffect(() => {
+    if (messages.length > 1 && messages.length % 3 === 0) {
+      fetchProactiveCoaching();
+    }
+  }, [messages.length]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -592,6 +631,8 @@ ${'='.repeat(50)}
               clearChatSession(getSessionId(selectedWitness.id));
               setSelectedWitness(w);
               setMessages([{ id: '0', sender: 'system', text: `Simulation with ${w.name} started.`, timestamp: Date.now() }]);
+              setCoachingSuggestions([]);
+              fetchProactiveCoaching();
             }}
             className={`flex items-center gap-3 p-3 rounded-lg transition-colors text-left ${selectedWitness.id === w.id ? 'bg-slate-700 border border-gold-500/30' : 'hover:bg-slate-700/50 border border-transparent'}`}
           >
@@ -692,8 +733,30 @@ ${'='.repeat(50)}
             }
 
             return (
-              <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[75%] rounded-2xl px-5 py-3 ${
+              <div key={msg.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+                <div className={`flex items-center gap-2 mb-1 px-1`}>
+                  {isUser ? (
+                    <span className="text-[10px] font-bold tracking-wide text-blue-400 uppercase bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
+                      ATTORNEY — YOU
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[10px] font-bold tracking-wide text-gold-400 uppercase bg-gold-500/20 px-2 py-0.5 rounded-full border border-gold-500/30">
+                        WITNESS: {selectedWitness.name}
+                      </span>
+                      <span className={`text-[10px] font-medium tracking-wide px-2 py-0.5 rounded-full ${
+                        selectedWitness.personality.toLowerCase().includes('hostile') 
+                          ? 'text-red-400 bg-red-500/20 border border-red-500/30' 
+                          : selectedWitness.personality.toLowerCase().includes('nervous')
+                          ? 'text-yellow-400 bg-yellow-500/20 border border-yellow-500/30'
+                          : 'text-green-400 bg-green-500/20 border border-green-500/30'
+                      }`}>
+                        {selectedWitness.personality.toUpperCase()} • Credibility: {selectedWitness.credibilityScore}%
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className={`rounded-2xl px-5 py-3 ${
                   isUser 
                     ? 'bg-blue-600 text-white rounded-br-none' 
                     : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-none'
@@ -782,6 +845,78 @@ ${'='.repeat(50)}
             </p>
           </div>
         </div>
+      </div>
+
+      <div className={`hidden lg:flex flex-col w-72 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden transition-all ${showCoachingPanel ? 'opacity-100' : 'opacity-0'}`}>
+        <button
+          onClick={() => setShowCoachingPanel(!showCoachingPanel)}
+          className="flex items-center justify-between p-3 bg-gold-500/10 border-b border-gold-500/30 hover:bg-gold-500/20 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Target size={16} className="text-gold-400" />
+            <span className="text-sm font-bold text-gold-400 uppercase tracking-wide">Coach's Suggestions</span>
+          </div>
+          {showCoachingPanel ? <ChevronUp size={16} className="text-gold-400" /> : <ChevronDown size={16} className="text-gold-400" />}
+        </button>
+        
+        {showCoachingPanel && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {isLoadingCoaching ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={20} className="animate-spin text-gold-400" />
+              </div>
+            ) : coachingSuggestions.length > 0 ? (
+              <>
+                {coachingSuggestions.map((suggestion, index) => (
+                  <button
+                    key={suggestion.id || index}
+                    onClick={() => setInput(suggestion.text)}
+                    className="w-full text-left p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg transition-colors group"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                        suggestion.type === 'question' ? 'bg-blue-500/20 text-blue-400' :
+                        suggestion.type === 'statement' ? 'bg-green-500/20 text-green-400' :
+                        suggestion.type === 'objection' ? 'bg-red-500/20 text-red-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {suggestion.type}
+                      </span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                        suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                        suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {suggestion.priority}
+                      </span>
+                    </div>
+                    <p className="text-sm text-white mt-2 leading-relaxed">{suggestion.text}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 italic">{suggestion.context}</p>
+                    <div className="flex items-center gap-1 mt-2 text-gold-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-[10px]">Click to use</span>
+                      <ChevronRight size={10} />
+                    </div>
+                  </button>
+                ))}
+                
+                {generalTip && (
+                  <div className="mt-4 pt-4 border-t border-slate-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Lightbulb size={14} className="text-yellow-400" />
+                      <span className="text-[10px] font-bold text-yellow-400 uppercase">Tip</span>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">{generalTip}</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <Target size={32} className="mx-auto text-slate-600 mb-3" />
+                <p className="text-sm text-slate-400">Start the conversation to receive coaching suggestions</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

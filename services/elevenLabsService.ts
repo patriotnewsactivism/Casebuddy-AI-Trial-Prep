@@ -191,6 +191,42 @@ export const TRIAL_VOICE_PRESETS = {
 
 export type TrialVoicePreset = keyof typeof TRIAL_VOICE_PRESETS;
 
+export type TrialPhase = 
+  | 'pre-trial-motions'
+  | 'voir-dire' 
+  | 'opening-statement' 
+  | 'direct-examination' 
+  | 'cross-examination' 
+  | 'defendant-testimony'
+  | 'closing-argument' 
+  | 'sentencing';
+
+const MODEL_FOR_PHASE: Record<TrialPhase, string> = {
+  'opening-statement': 'eleven_v3',
+  'closing-argument': 'eleven_v3',
+  'sentencing': 'eleven_v3',
+  'pre-trial-motions': 'eleven_turbo_v2_5',
+  'voir-dire': 'eleven_turbo_v2_5',
+  'direct-examination': 'eleven_turbo_v2_5',
+  'cross-examination': 'eleven_turbo_v2_5',
+  'defendant-testimony': 'eleven_turbo_v2_5',
+};
+
+const V3_CHAR_LIMIT = 5000;
+
+export const getModelForPhase = (phase: TrialPhase): string => {
+  return MODEL_FOR_PHASE[phase] || 'eleven_turbo_v2_5';
+};
+
+export const selectModelWithFallback = (phase: TrialPhase, textLength: number): string => {
+  const preferredModel = MODEL_FOR_PHASE[phase] || 'eleven_turbo_v2_5';
+  if (preferredModel === 'eleven_v3' && textLength > V3_CHAR_LIMIT) {
+    console.log(`[ElevenLabs] Text exceeds v3 char limit (${textLength} > ${V3_CHAR_LIMIT}), falling back to turbo_v2_5`);
+    return 'eleven_turbo_v2_5';
+  }
+  return preferredModel;
+};
+
 interface ElevenLabsConfig {
   apiKey: string;
   voiceId: string;
@@ -202,7 +238,7 @@ interface ElevenLabsConfig {
 }
 
 const DEFAULT_CONFIG: Partial<ElevenLabsConfig> = {
-  modelId: 'eleven_monolingual_v1',
+  modelId: 'eleven_turbo_v2_5',
   stability: 0.5,
   similarityBoost: 0.75,
   style: 0.3,
@@ -309,7 +345,7 @@ export class ElevenLabsStreamer {
   async connect(onReady?: () => void): Promise<void> {
     return new Promise((resolve, reject) => {
       const voiceId = this.config.voiceId;
-      const modelId = this.config.modelId || 'eleven_monolingual_v1';
+      const modelId = this.config.modelId || 'eleven_turbo_v2_5';
       
       const wsUrl = `wss://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream-input?model_id=${modelId}`;
       
@@ -661,7 +697,7 @@ export async function synthesizeSpeech(
     },
     body: JSON.stringify({
       text,
-      model_id: options?.modelId || 'eleven_monolingual_v1',
+      model_id: options?.modelId || 'eleven_turbo_v2_5',
       voice_settings: {
         stability: options?.stability || 0.5,
         similarity_boost: options?.similarityBoost || 0.75,
@@ -749,12 +785,6 @@ export async function playAudioBuffer(
     source.onended = () => {
       console.log('[ElevenLabs] Playback ended');
       resolve();
-    };
-    
-    source.onerror = (e) => {
-      console.error('[ElevenLabs] Source error:', e);
-      audioState.playbackError = `Audio source error: ${e}`;
-      reject(new Error(`Audio source error: ${e}`));
     };
     
     try {

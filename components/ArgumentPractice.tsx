@@ -6,14 +6,17 @@ import { AppContext } from '../App';
 import { MOCK_OPPONENT } from '../constants';
 import {
   CoachingAnalysis, Message, TrialPhase, SimulationMode,
-  TrialSession, VoiceConfig, SimulatorSettings, TrialSessionMetrics
+  TrialSession, VoiceConfig, SimulatorSettings, TrialSessionMetrics,
+  CoachingSuggestion
 } from '../types';
 import {
   Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle,
   BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText,
-  Users, Scale, Clock, Volume2, ChevronUp, FolderOpen, ChevronDown
+  Users, Scale, Clock, Volume2, ChevronUp, FolderOpen, ChevronDown,
+  Target, Loader2, ChevronRight
 } from 'lucide-react';
 import { getTrialSimSystemPrompt, isOpenAIConfigured, streamOpenAIResponse } from '../services/openAIService';
+import { generateProactiveCoaching } from '../services/geminiService';
 import { ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured, synthesizeSpeech } from '../services/elevenLabsService';
 import { isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
@@ -271,6 +274,10 @@ const TrialSim: React.FC = () => {
   const [showCoaching, setShowCoaching]     = useState(false);
   const [showTeleprompter, setShowTeleprompter] = useState(true);
   const [showEvidencePanel, setShowEvidencePanel] = useState(false);
+  const [proactiveSuggestions, setProactiveSuggestions] = useState<CoachingSuggestion[]>([]);
+  const [proactiveTip, setProactiveTip] = useState<string>('');
+  const [isLoadingProactive, setIsLoadingProactive] = useState(false);
+  const [showProactivePanel, setShowProactivePanel] = useState(true);
 
   // ── Session state machine ────────────────────────────────────────────────
   const [session, dispatch] = useReducer(sessionReducer, INITIAL_SESSION);
@@ -335,6 +342,40 @@ const TrialSim: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Proactive Coaching ───────────────────────────────────────────────────
+
+  const fetchProactiveCoaching = useCallback(async () => {
+    if (!activeCase || !phase) return;
+    
+    setIsLoadingProactive(true);
+    try {
+      const result = await generateProactiveCoaching(
+        phase,
+        activeCase.summary || 'A legal case',
+        'opponent',
+        messages
+      );
+      setProactiveSuggestions(result.suggestions);
+      setProactiveTip(result.generalTip);
+    } catch (error) {
+      console.warn('[TrialSim] Failed to fetch proactive coaching:', error);
+    } finally {
+      setIsLoadingProactive(false);
+    }
+  }, [activeCase, phase, messages]);
+
+  useEffect(() => {
+    if (view === 'active' && phase && messages.length === 0) {
+      fetchProactiveCoaching();
+    }
+  }, [view, phase, messages.length]);
+
+  useEffect(() => {
+    if (view === 'active' && messages.length > 0 && messages.length % 3 === 0) {
+      fetchProactiveCoaching();
+    }
+  }, [view, messages.length]);
+
   // ── Audio playback ────────────────────────────────────────────────────────
 
   const speakText = useCallback(async (text: string): Promise<void> => {
@@ -360,7 +401,7 @@ const TrialSim: React.FC = () => {
 
         try {
           await new Promise<void>((resolve, reject) => {
-            audio.onended = resolve;
+            audio.onended = () => resolve();
             audio.onerror = () => reject(new Error('ElevenLabs audio playback failed'));
             audio.play().catch(reject);
           });
@@ -1107,21 +1148,108 @@ const TrialSim: React.FC = () => {
           )}
         </div>
 
-        <div className="hidden md:flex flex-col gap-1 h-20 px-6 py-2 justify-end overflow-hidden">
-          {messages.slice(-2).map(m => (
-            <div
-              key={m.id}
-              className={`text-xs px-3 py-1.5 rounded-lg max-w-[75%] ${
-                m.sender === 'user'
-                  ? 'self-end bg-blue-900/50 text-blue-200'
-                  : 'self-start bg-slate-800 text-slate-300'
-              }`}
-            >
-              <span className="opacity-50 mr-1">{m.sender === 'user' ? 'You:' : 'Opp:'}</span>
-              {m.text.slice(0, 100)}{m.text.length > 100 ? '…' : ''}
-            </div>
-          ))}
+        <div className="hidden md:flex flex-col gap-2 h-28 px-6 py-2 justify-end overflow-hidden">
+          {messages.slice(-3).map(m => {
+            const isUser = m.sender === 'user';
+            const isOpponent = m.sender === 'opponent';
+            return (
+              <div
+                key={m.id}
+                className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] ${isUser ? 'ml-auto' : 'mr-auto'}`}
+              >
+                <div className="flex items-center gap-2 mb-0.5 px-1">
+                  {isUser ? (
+                    <span className="text-[9px] font-bold tracking-wide text-blue-400 uppercase bg-blue-500/20 px-1.5 py-0.5 rounded-full border border-blue-500/30">
+                      ATTORNEY — YOU
+                    </span>
+                  ) : isOpponent ? (
+                    <span className="text-[9px] font-bold tracking-wide text-red-400 uppercase bg-red-500/20 px-1.5 py-0.5 rounded-full border border-red-500/30">
+                      OPPOSING COUNSEL
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-bold tracking-wide text-slate-400 uppercase bg-slate-500/20 px-1.5 py-0.5 rounded-full border border-slate-500/30">
+                      {m.sender.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div className={`text-xs px-3 py-1.5 rounded-lg ${
+                  isUser
+                    ? 'bg-blue-900/50 text-blue-200'
+                    : 'bg-slate-800 text-slate-300'
+                }`}>
+                  {m.text.slice(0, 120)}{m.text.length > 120 ? '…' : ''}
+                </div>
+              </div>
+            );
+          })}
         </div>
+      </div>
+
+      <div className={`hidden lg:flex flex-col w-72 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden transition-all ${showProactivePanel ? 'opacity-100' : 'opacity-0'}`}>
+        <button
+          onClick={() => setShowProactivePanel(!showProactivePanel)}
+          className="flex items-center justify-between p-3 bg-gold-500/10 border-b border-gold-500/30 hover:bg-gold-500/20 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Target size={16} className="text-gold-400" />
+            <span className="text-sm font-bold text-gold-400 uppercase tracking-wide">Coach's Suggestions</span>
+          </div>
+          {showProactivePanel ? <ChevronUp size={16} className="text-gold-400" /> : <ChevronDown size={16} className="text-gold-400" />}
+        </button>
+        
+        {showProactivePanel && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[60vh]">
+            {isLoadingProactive ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={20} className="animate-spin text-gold-400" />
+              </div>
+            ) : proactiveSuggestions.length > 0 ? (
+              <>
+                {proactiveSuggestions.map((suggestion, index) => (
+                  <div
+                    key={suggestion.id || index}
+                    className="w-full text-left p-3 bg-slate-700/50 rounded-lg"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                        suggestion.type === 'question' ? 'bg-blue-500/20 text-blue-400' :
+                        suggestion.type === 'statement' ? 'bg-green-500/20 text-green-400' :
+                        suggestion.type === 'objection' ? 'bg-red-500/20 text-red-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {suggestion.type}
+                      </span>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                        suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                        suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {suggestion.priority}
+                      </span>
+                    </div>
+                    <p className="text-sm text-white mt-2 leading-relaxed">{suggestion.text}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 italic">{suggestion.context}</p>
+                  </div>
+                ))}
+                
+                {proactiveTip && (
+                  <div className="mt-4 pt-4 border-t border-slate-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Lightbulb size={14} className="text-yellow-400" />
+                      <span className="text-[10px] font-bold text-yellow-400 uppercase">Tip</span>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">{proactiveTip}</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <Target size={32} className="mx-auto text-slate-600 mb-3" />
+                <p className="text-sm text-slate-400">Start speaking to receive coaching suggestions</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className={`fixed md:relative bottom-16 md:bottom-0 left-0 right-0 z-40 transition-all duration-300 ${

@@ -117,10 +117,24 @@ export interface CoachingAnalysis {
   critique: string;
   suggestion: string;
   sampleResponse: string;
-  fallaciesIdentified: string[]; // List of logical fallacies detected
-  rhetoricalEffectiveness: number; // 0-100 score
-  rhetoricalFeedback: string; // Brief comment on tone/persuasion
-  teleprompterScript?: string; // New field for providing text to read/reference
+  fallaciesIdentified: string[];
+  rhetoricalEffectiveness: number;
+  rhetoricalFeedback: string;
+  teleprompterScript?: string;
+}
+
+export interface CoachingSuggestion {
+  id: string;
+  type: 'question' | 'statement' | 'objection' | 'follow-up' | 'tip';
+  text: string;
+  context: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface ProactiveCoaching {
+  suggestions: CoachingSuggestion[];
+  generalTip: string;
+  strategicGoal: string;
 }
 
 export interface Transcription {

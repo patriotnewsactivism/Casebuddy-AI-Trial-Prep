@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode, SimulatorSettings } from "../types";
+import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode, SimulatorSettings, CoachingSuggestion, ProactiveCoaching, Message } from "../types";
 import { retryWithBackoff, withTimeout, isRateLimitError, getErrorMessage } from "../utils/errorHandler";
 import { toast } from "react-toastify";
 import { performDocumentOCR } from "./ocrService";
@@ -420,6 +420,92 @@ export const predictStrategy = async (caseSummary: string, opponentProfile: stri
         return JSON.parse(res);
       } catch {
         return [];
+      }
+    }
+  );
+};
+
+export const generateProactiveCoaching = async (
+  phase: TrialPhase,
+  caseSummary: string,
+  witnessPersonality: string,
+  conversationHistory: Message[]
+): Promise<ProactiveCoaching> => {
+  const historyText = conversationHistory
+    .slice(-10)
+    .map(m => `${m.sender === 'user' ? 'ATTORNEY' : m.sender.toUpperCase()}: ${m.text}`)
+    .join('\n');
+
+  const prompt = `You are an expert legal coach providing proactive guidance for a trial attorney.
+
+PHASE: ${phase}
+CASE SUMMARY: ${caseSummary}
+WITNESS PERSONALITY: ${witnessPersonality}
+
+RECENT CONVERSATION:
+${historyText || 'No conversation yet - this is the start of the session.'}
+
+Generate proactive coaching suggestions. Provide 3-5 specific suggestions for what the attorney should ask or say next.
+Consider:
+- The phase of trial (opening, cross-exam, etc.)
+- The witness personality (hostile witnesses need different approaches)
+- What has already been covered in the conversation
+- Strategic goals for this phase
+
+Return JSON with suggestions, a general tip, and the strategic goal.`;
+
+  return queueRequest(
+    async () => {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              suggestions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    type: { type: Type.STRING, enum: ['question', 'statement', 'objection', 'follow-up', 'tip'] },
+                    text: { type: Type.STRING },
+                    context: { type: Type.STRING },
+                    priority: { type: Type.STRING, enum: ['high', 'medium', 'low'] }
+                  }
+                }
+              },
+              generalTip: { type: Type.STRING },
+              strategicGoal: { type: Type.STRING }
+            }
+          }
+        }
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      return {
+        suggestions: parsed.suggestions || [],
+        generalTip: parsed.generalTip || 'Focus on building your case methodically.',
+        strategicGoal: parsed.strategicGoal || 'Establish key facts and credibility.'
+      } as ProactiveCoaching;
+    },
+    async () => {
+      const res = await generateOpenAIResponse("You are a legal coaching expert. Output ONLY valid JSON.", prompt);
+      try {
+        const parsed = JSON.parse(res);
+        return {
+          suggestions: parsed.suggestions || [],
+          generalTip: parsed.generalTip || 'Focus on building your case methodically.',
+          strategicGoal: parsed.strategicGoal || 'Establish key facts and credibility.'
+        } as ProactiveCoaching;
+      } catch {
+        return {
+          suggestions: [],
+          generalTip: 'Prepare your questions in advance.',
+          strategicGoal: 'Build a strong case foundation.'
+        };
       }
     }
   );
