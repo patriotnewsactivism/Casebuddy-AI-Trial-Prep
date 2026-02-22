@@ -4,7 +4,7 @@ import { MOCK_OPPONENT } from '../constants';
 import { CoachingAnalysis, Message, TrialPhase, SimulationMode, TrialSession, VoiceConfig, SimulatorSettings, TrialSessionMetrics } from '../types';
 import { Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle, PlayCircle, BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText, Users, Scale, Clock, Play, Pause, Trash2, Download, List, ChevronDown, Link, Settings, Volume2, ChevronUp, FolderOpen, X } from 'lucide-react';
 import { getTrialSimSystemPrompt, isOpenAIConfigured, streamOpenAIResponse } from '../services/openAIService';
-import { ElevenLabsStreamer, ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured } from '../services/elevenLabsService';
+import { ElevenLabsStreamer, ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured, synthesizeSpeech } from '../services/elevenLabsService';
 import { browserTTS, isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
 
@@ -118,6 +118,7 @@ const TrialSim = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
   const reconnectAttemptsRef = useRef<number>(0);
   const maxReconnectAttempts = 3;
   const elevenLabsRef = useRef<ElevenLabsStreamer | null>(null);
@@ -238,6 +239,11 @@ const TrialSim = () => {
     }
 
     browserTTS.stop();
+    if (playbackAudioRef.current) {
+      playbackAudioRef.current.pause();
+      playbackAudioRef.current.src = '';
+      playbackAudioRef.current = null;
+    }
     
     // Cleanup ElevenLabs
     if (elevenLabsRef.current) {
@@ -441,29 +447,9 @@ const TrialSim = () => {
     setAISpeakingState(false);
     
     try {
-      // Initialize ElevenLabs FIRST (before grabbing microphone)
-      // This prevents conflicts between AudioContext and microphone access
       if (shouldUseElevenLabs) {
         const voiceId = ELEVENLABS_VOICES[voiceConfig.voiceName as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
-        console.log('[TrialSim] Initializing ElevenLabs with voice:', voiceId, 'voiceName:', voiceConfig.voiceName);
-        
-        try {
-          elevenLabsRef.current = new ElevenLabsStreamer({
-            voiceId,
-            stability: 0.5,
-            similarityBoost: 0.75,
-          });
-          
-          console.log('[TrialSim] ElevenLabs streamer created, initializing audio...');
-          await elevenLabsRef.current.initAudio(24000);
-          console.log('[TrialSim] Audio context initialized, connecting WebSocket...');
-          await elevenLabsRef.current.connect();
-          console.log('[TrialSim] ElevenLabs connected successfully');
-        } catch (elevenLabsError) {
-          console.error('[TrialSim] ElevenLabs initialization failed:', elevenLabsError);
-          toast.error(`Voice synthesis failed: ${elevenLabsError instanceof Error ? elevenLabsError.message : 'Unknown error'}`);
-          // Continue without voice - don't block the whole session
-        }
+        console.log('[TrialSim] ElevenLabs direct playback enabled with voice:', voiceId, 'voiceName:', voiceConfig.voiceName);
       }
 
       // Request microphone access AFTER ElevenLabs is set up
@@ -588,7 +574,7 @@ const TrialSim = () => {
           // Get AI response
           try {
             const systemPrompt = getTrialSimSystemPrompt(phase!, mode!, opponentName, activeCase.summary);
-            const canUseElevenLabs = shouldUseElevenLabs && !!elevenLabsRef.current;
+            const canUseElevenLabs = shouldUseElevenLabs && !!elevenLabsKey && elevenLabsKey.length > 10;
             
             let fullResponse = '';
             
@@ -597,37 +583,90 @@ const TrialSim = () => {
             for await (const chunk of streamOpenAIResponse(systemPrompt, normalizedFinalTranscript, [])) {
               fullResponse += chunk;
               setLiveOutputTranscript(fullResponse);
-              
-              // Send to ElevenLabs as we receive it
-              if (canUseElevenLabs && elevenLabsRef.current) {
-                console.log('[TrialSim] Sending chunk to ElevenLabs:', chunk.substring(0, 30) + '...');
-                await elevenLabsRef.current.sendText(chunk);
-              }
             }
 
             const normalizedResponse = fullResponse.trim();
             console.log('[TrialSim] AI response complete:', normalizedResponse.substring(0, 100) + '...');
 
-            // Flush ElevenLabs and add message to chat
-            if (canUseElevenLabs && elevenLabsRef.current) {
-              console.log('[TrialSim] Flushing ElevenLabs stream...');
-              elevenLabsRef.current.flush();
-            } else if (isBrowserTTSAvailable() && normalizedResponse) {
+            if (normalizedResponse) {
+              let playedAudio = false;
               setAISpeakingState(true);
+
               try {
-                await speakWithFallback(normalizedResponse, {
-                  rate: 1,
-                  pitch: 1,
-                  volume: 1
-                });
-              } catch (ttsError) {
-                console.error('[TrialSim] Browser TTS playback failed:', ttsError);
-                toast.error('Response generated, but voice playback failed.');
+                if (canUseElevenLabs) {
+                  try {
+                    const voiceId = ELEVENLABS_VOICES[voiceConfig.voiceName as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
+                    const audioData = await synthesizeSpeech(normalizedResponse, voiceId, {
+                      apiKey: elevenLabsKey,
+                      stability: 0.5,
+                      similarityBoost: 0.75,
+                    });
+                    const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audioElement = new Audio(audioUrl);
+                    playbackAudioRef.current = audioElement;
+
+                    await new Promise<void>((resolve, reject) => {
+                      let settled = false;
+                      const cleanup = () => {
+                        if (settled) return;
+                        settled = true;
+                        URL.revokeObjectURL(audioUrl);
+                      };
+
+                      audioElement.onended = () => {
+                        cleanup();
+                        resolve();
+                      };
+
+                      audioElement.onpause = () => {
+                        if (audioElement.ended) return;
+                        cleanup();
+                        resolve();
+                      };
+
+                      audioElement.onerror = () => {
+                        cleanup();
+                        reject(new Error('ElevenLabs audio playback failed'));
+                      };
+
+                      audioElement.play().catch((playError) => {
+                        cleanup();
+                        reject(playError);
+                      });
+                    });
+
+                    playbackAudioRef.current = null;
+                    playedAudio = true;
+                  } catch (elevenLabsPlaybackError) {
+                    console.error('[TrialSim] ElevenLabs direct playback failed:', elevenLabsPlaybackError);
+                    if (playbackAudioRef.current) {
+                      playbackAudioRef.current.pause();
+                      playbackAudioRef.current.src = '';
+                      playbackAudioRef.current = null;
+                    }
+                  }
+                }
+
+                if (!playedAudio && isBrowserTTSAvailable()) {
+                  try {
+                    await speakWithFallback(normalizedResponse, {
+                      rate: 1,
+                      pitch: 1,
+                      volume: 1
+                    });
+                    playedAudio = true;
+                  } catch (ttsError) {
+                    console.error('[TrialSim] Browser TTS playback failed:', ttsError);
+                  }
+                }
               } finally {
                 setAISpeakingState(false);
               }
-            } else if (!canUseElevenLabs) {
-              toast.error('No voice output is available in this browser.');
+
+              if (!playedAudio) {
+                toast.error('Response generated, but voice playback failed.');
+              }
             }
 
             setMessages(prev => [...prev, { 
