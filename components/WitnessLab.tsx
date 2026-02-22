@@ -161,7 +161,7 @@ const WitnessLab = () => {
     setCaptionText('');
   }, []);
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     if (isRecordingRef.current || isTyping || isProcessingAudio) {
       return;
     }
@@ -196,18 +196,25 @@ const WitnessLab = () => {
       };
 
       mediaRecorder.onstop = async () => {
-        if (audioChunksRef.current.length === 0) {
+        const chunks = audioChunksRef.current;
+        audioChunksRef.current = [];
+        
+        if (chunks.length === 0) {
           handleError(new Error('No audio chunks captured'), 'No audio captured. Please try again and speak for at least 1-2 seconds.', 'WitnessLab');
-          stream.getTracks().forEach(track => track.stop());
-          recordingStreamRef.current = null;
+          if (recordingStreamRef.current) {
+            recordingStreamRef.current.getTracks().forEach(track => track.stop());
+            recordingStreamRef.current = null;
+          }
           return;
         }
 
-        const audioBlob = new Blob(audioChunksRef.current, { type: recordingMimeTypeRef.current });
+        const audioBlob = new Blob(chunks, { type: recordingMimeTypeRef.current });
         if (audioBlob.size === 0) {
           handleError(new Error('Captured audio blob was empty'), 'Audio capture was empty. Check microphone permissions and input device.', 'WitnessLab');
-          stream.getTracks().forEach(track => track.stop());
-          recordingStreamRef.current = null;
+          if (recordingStreamRef.current) {
+            recordingStreamRef.current.getTracks().forEach(track => track.stop());
+            recordingStreamRef.current = null;
+          }
           return;
         }
 
@@ -215,14 +222,17 @@ const WitnessLab = () => {
         await handleAudioUpload(audioBlob, optimisticTranscript);
         finalSpeechTranscriptRef.current = '';
         setLiveMicTranscript('');
-        stream.getTracks().forEach(track => track.stop());
-        recordingStreamRef.current = null;
+        
+        if (recordingStreamRef.current) {
+          recordingStreamRef.current.getTracks().forEach(track => track.stop());
+          recordingStreamRef.current = null;
+        }
       };
 
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
-        recognition.continuous = true;
+        recognition.continuous = false;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
         recognition.maxAlternatives = 1;
@@ -253,19 +263,22 @@ const WitnessLab = () => {
 
         recognition.onerror = (event: any) => {
           console.warn('[WitnessLab] Speech recognition error:', event?.error || event);
-        };
-
-        recognition.onend = () => {
-          if (isRecordingRef.current) {
-            try {
-              recognition.start();
-            } catch {
-              // no-op
-            }
+          if (event?.error === 'aborted' || event?.error === 'no-speech') {
+            return;
           }
         };
 
+        recognition.onend = () => {
+          // Don't auto-restart - user controls recording with hold-to-speak
+        };
+
         recognitionRef.current = recognition;
+        
+        try {
+          recognition.start();
+        } catch (e) {
+          console.warn('[WitnessLab] Failed to start recognition:', e);
+        }
       } else {
         recognitionRef.current = null;
       }
@@ -276,41 +289,44 @@ const WitnessLab = () => {
       setCaptionText('Listening...');
       setCaptionSpeaker('user');
       setCaptionVisible(true);
-
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch {
-          // no-op
-        }
-      }
     } catch (error) {
       handleError(error, 'Could not access microphone', 'WitnessLab');
       setCaptionVisible(false);
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecordingRef.current) {
-      isRecordingRef.current = false;
-
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.onend = null;
-          recognitionRef.current.stop();
-        } catch {
-          // no-op
-        }
-        recognitionRef.current = null;
-      }
-
-      if (mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
-      }
       setIsRecording(false);
-      setCaptionText('Processing...');
+      isRecordingRef.current = false;
     }
-  };
+  }, [isTyping, isProcessingAudio, handleAudioUpload]);
+
+  const stopRecording = useCallback(() => {
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+        recognitionRef.current.stop();
+      } catch {
+        // no-op
+      }
+      recognitionRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // no-op
+      }
+    }
+    
+    if (recordingStreamRef.current) {
+      recordingStreamRef.current.getTracks().forEach(track => track.stop());
+      recordingStreamRef.current = null;
+    }
+    
+    setCaptionText('Processing...');
+  }, []);
 
   const handleAudioUpload = async (audioBlob: Blob, preferredTranscript?: string) => {
     setIsProcessingAudio(true);

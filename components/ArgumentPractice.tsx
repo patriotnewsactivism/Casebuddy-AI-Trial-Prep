@@ -490,6 +490,7 @@ const TrialSim: React.FC = () => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.onend = () => {};
+        recognitionRef.current.onerror = () => {};
         recognitionRef.current.stop();
       } catch {}
       recognitionRef.current = null;
@@ -635,20 +636,37 @@ const TrialSim: React.FC = () => {
     recognitionRef.current = recognition;
 
     const MAX_RESTARTS = 10;
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastTranscriptTime = Date.now();
 
-    recognition.onspeechstart = () => dispatch({ type: 'SET_VOLUME', volume: 80 });
-    recognition.onspeechend   = () => dispatch({ type: 'SET_VOLUME', volume: 20 });
+    recognition.onspeechstart = () => {
+      dispatch({ type: 'SET_VOLUME', volume: 80 });
+      lastTranscriptTime = Date.now();
+    };
+    
+    recognition.onspeechend = () => {
+      dispatch({ type: 'SET_VOLUME', volume: 20 });
+    };
 
     recognition.onresult = async (event: SpeechRecognitionEvent) => {
-      if (isAISpeakingRef.current || isProcessingRef.current) return;
+      if (isAISpeakingRef.current) return;
+      
+      lastTranscriptTime = Date.now();
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
 
       let interimTranscript = '';
-      let finalTranscript   = '';
+      let finalTranscript = '';
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const t = event.results[i][0].transcript;
-        if (event.results[i].isFinal) finalTranscript += t;
-        else interimTranscript += t;
+        if (event.results[i].isFinal) {
+          finalTranscript += t;
+        } else {
+          interimTranscript += t;
+        }
       }
 
       if (interimTranscript) {
@@ -656,7 +674,7 @@ const TrialSim: React.FC = () => {
         dispatch({ type: 'SET_VOLUME', volume: 50 + Math.random() * 30 });
       }
 
-      if (finalTranscript.trim()) {
+      if (finalTranscript.trim() && !isProcessingRef.current) {
         await handleUserTranscript(finalTranscript.trim());
       }
     };
@@ -668,6 +686,9 @@ const TrialSim: React.FC = () => {
         stopSession();
         return;
       }
+      if (event.error === 'aborted' || event.error === 'no-speech') {
+        return;
+      }
       console.warn('[TrialSim] Non-fatal recognition error:', event.error);
     };
 
@@ -676,10 +697,13 @@ const TrialSim: React.FC = () => {
 
       if (restartAttemptsRef.current >= MAX_RESTARTS) {
         toast.error('Speech recognition stopped repeatedly. Please refresh the page.');
+        dispatch({ type: 'SESSION_STOPPED' });
         return;
       }
 
+      const delay = Math.min(200, 100 + restartAttemptsRef.current * 20);
       setTimeout(() => {
+        if (!isLiveRef.current || !recognitionRef.current) return;
         try {
           recognition.start();
           restartAttemptsRef.current = 0;
@@ -687,7 +711,7 @@ const TrialSim: React.FC = () => {
           restartAttemptsRef.current++;
           console.error('[TrialSim] Recognition restart failed:', err);
         }
-      }, 150);
+      }, delay);
     };
 
     try {
