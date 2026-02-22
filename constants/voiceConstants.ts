@@ -109,3 +109,10 @@ export const SUPPORTED_LANGUAGES = [
   { code: 'en-GB', name: 'English (UK)' },
   { code: 'es-US', name: 'Spanish (US)' },
 ] as const;
+
+export const OBJECTION_RESPONSES = [
+  { label: 'Withdraw',        text: 'Your Honor, I withdraw the question.' },
+  { label: 'Rephrase',        text: 'Your Honor, I will rephrase the question.' },
+  { label: 'Argue Relevance', text: 'Your Honor, this question is directly relevant to the central issues before the court.' },
+  { label: 'Foundation',      text: 'Your Honor, I have laid proper foundation for this line of questioning.' },
+] as const;
