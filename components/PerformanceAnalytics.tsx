@@ -1,8 +1,9 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useMemo } from 'react';
 import { AppContext } from '../App';
-import { PerformanceSession, PerformanceTrend, PerformanceSummary, SessionMetrics } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
-import { TrendingUp, TrendingDown, Target, Award, AlertTriangle, Clock, Mic, BarChart2, Link } from 'lucide-react';
+import { PerformanceSession, PerformanceTrend, PerformanceSummary, SessionMetrics, TrialSession } from '../types';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { TrendingUp, TrendingDown, Target, Award, AlertTriangle, Clock, Mic, BarChart2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const PerformanceAnalytics = () => {
   const { activeCase } = useContext(AppContext);
@@ -12,16 +13,51 @@ const PerformanceAnalytics = () => {
 
   useEffect(() => {
     if (activeCase) {
-      const saved = localStorage.getItem(`performance_${activeCase.id}`);
-      if (saved) {
-        setSessions(JSON.parse(saved));
-      } else {
-        generateMockSessions();
-      }
+      // 1. Load from trial_sessions (The source of truth for live sessions)
+      const trialSessionsRaw = localStorage.getItem(`trial_sessions_${activeCase.id}`);
+      const trialSessions: TrialSession[] = trialSessionsRaw ? JSON.parse(trialSessionsRaw) : [];
+
+      // 2. Load from performance (Historical/manual analytics)
+      const performanceRaw = localStorage.getItem(`performance_${activeCase.id}`);
+      const perfSessions: PerformanceSession[] = performanceRaw ? JSON.parse(performanceRaw) : [];
+
+      // 3. Map TrialSessions to PerformanceSessions
+      const mappedTrialSessions: PerformanceSession[] = trialSessions.map(ts => ({
+        id: ts.id,
+        caseId: ts.caseId,
+        date: ts.date,
+        phase: ts.phase as any,
+        mode: ts.mode as any,
+        duration: ts.duration / 60, // Convert to minutes
+        transcript: ts.transcript.map(m => `${m.sender}: ${m.text}`).join('\n'),
+        audioUrl: ts.audioUrl,
+        metrics: {
+          objectionsReceived: ts.metrics?.objectionsReceived || 0,
+          objectionsSustained: 0, // Not currently tracked in live sessions
+          objectionsOverruled: 0, // Not currently tracked in live sessions
+          rhetoricalScore: ts.metrics?.avgRhetoricalScore || ts.score || 50,
+          legalAccuracyScore: ts.score || 50,
+          overallScore: ts.score || 50,
+          fillerWordCount: ts.metrics?.fillerWordsCount || 0,
+          fillerWords: [],
+          weakPhrases: [],
+          wordsPerMinute: ts.metrics?.wordCount ? Math.round(ts.metrics.wordCount / (ts.duration / 60 || 1)) : 0,
+          pauseCount: 0,
+          averagePauseLength: 0
+        }
+      }));
+
+      // Combine and sort by date descending
+      const combined = [...mappedTrialSessions, ...perfSessions].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      setSessions(combined);
     }
   }, [activeCase]);
 
   const generateMockSessions = () => {
+    if (!activeCase) return;
     const phases = ['opening-statement', 'direct-examination', 'cross-examination', 'closing-argument'];
     const mockSessions: PerformanceSession[] = [];
     
@@ -30,8 +66,8 @@ const PerformanceAnalytics = () => {
       date.setDate(date.getDate() - i * 3);
       
       mockSessions.push({
-        id: `session-${i}`,
-        caseId: activeCase?.id || '',
+        id: `mock-${i}-${Date.now()}`,
+        caseId: activeCase.id,
         date: date.toISOString(),
         phase: phases[Math.floor(Math.random() * phases.length)] as any,
         mode: ['learn', 'practice', 'trial'][Math.floor(Math.random() * 3)] as any,
@@ -50,14 +86,12 @@ const PerformanceAnalytics = () => {
           pauseCount: Math.floor(Math.random() * 15 + 5),
           averagePauseLength: Math.random() * 2 + 0.5
         },
-        transcript: 'Session transcript would be stored here...'
+        transcript: 'Mock transcript...'
       });
     }
     
-    setSessions(mockSessions);
-    if (activeCase) {
-      localStorage.setItem(`performance_${activeCase.id}`, JSON.stringify(mockSessions));
-    }
+    setSessions(prev => [...mockSessions, ...prev]);
+    localStorage.setItem(`performance_${activeCase.id}`, JSON.stringify(mockSessions));
   };
 
   const getSummary = (): PerformanceSummary => {

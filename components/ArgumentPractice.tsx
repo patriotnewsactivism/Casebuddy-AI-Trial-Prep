@@ -1,33 +1,7 @@
-/**
- * TrialSim.tsx — Production-grade Trial Simulator
- *
- * KEY IMPROVEMENTS OVER v1:
- *  1. Structured AI responses (JSON) — coaching + objection detection NOW WORK
- *  2. useReducer replaces 12 scattered useState calls for session lifecycle
- *  3. isProcessing + restartAttempts as refs (were closure vars → race conditions)
- *  4. Fixed: Link from react-router-dom (was incorrectly from lucide-react)
- *  5. AbortController for in-flight AI request cancellation on stop/unmount
- *  6. Audio URL revocation in finally blocks (was leaking ObjectURLs)
- *  7. useSavedSessions hook encapsulates all localStorage CRUD
- *  8. ElevenLabsStreamer WebSocket removed (was imported but never functionally used)
- *  9. All sub-components extracted as typed, pure components
- * 10. Word count + filler word tracking wired into metricsRef
- *
- * RECOMMENDED FOLLOW-UP EXTRACTIONS:
- *  - hooks/useSpeechRecognition.ts
- *  - hooks/useAudioPlayback.ts
- *  - hooks/useSavedSessions.ts
- *  - components/TrialSim/ObjectionModal.tsx
- *  - components/TrialSim/SessionCard.tsx
- *  - components/TrialSim/TeleprompterPanel.tsx
- *  - components/TrialSim/SetupScreen.tsx
- *  - components/TrialSim/HistoryScreen.tsx
- */
-
 import React, {
   useState, useRef, useEffect, useContext, useReducer, useCallback
 } from 'react';
-import { Link } from 'react-router-dom'; // FIX: was incorrectly imported from lucide-react
+import { Link } from 'react-router-dom';
 import { AppContext } from '../App';
 import { MOCK_OPPONENT } from '../constants';
 import {
@@ -37,20 +11,21 @@ import {
 import {
   Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle,
   BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText,
-  Users, Scale, Clock, Play, Pause, Trash2, Download, ChevronDown,
-  Volume2, ChevronUp, FolderOpen
+  Users, Scale, Clock, Volume2, ChevronUp, FolderOpen, ChevronDown
 } from 'lucide-react';
 import { getTrialSimSystemPrompt, isOpenAIConfigured, streamOpenAIResponse } from '../services/openAIService';
 import { ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured, synthesizeSpeech } from '../services/elevenLabsService';
 import { isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
 
+// Extracted components and hooks
+import ObjectionModal from './TrialSim/ObjectionModal';
+import SessionCard from './TrialSim/SessionCard';
+import { StatPill, TranscriptBubble, SettingRow } from './TrialSim/AtomicComponents';
+import { useSavedSessions } from '../hooks/useSavedSessions';
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/**
- * Structured JSON shape the AI must return on every turn.
- * "speak" → spoken aloud. "coaching" → shown privately in HUD.
- */
 interface AIStructuredResponse {
   speak: string;
   action: 'response' | 'objection' | 'ruling' | 'question';
@@ -59,14 +34,37 @@ interface AIStructuredResponse {
     critique: string;
     suggestion: string;
     teleprompterScript: string;
-    rhetoricalEffectiveness: number; // 0–100
+    rhetoricalEffectiveness: number;
     fallaciesIdentified: string[];
   };
 }
 
+// Web Speech API types
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  onend: () => void;
+  onspeechstart: () => void;
+  onspeechend: () => void;
+  start: () => void;
+  stop: () => void;
+}
+
 type SimView = 'setup' | 'active' | 'history';
 
-// Session lifecycle — replaces 12+ scattered useState calls
 interface SessionState {
   isLive: boolean;
   isConnecting: boolean;
@@ -130,7 +128,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
       return { ...state, objectionCount: state.objectionCount + 1 };
     case 'RHETORICAL_SCORE': {
       const scores = [...state.rhetoricalScores, action.score];
-      const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      const avg = Math.round(scores.reduce((a, b) => a + b, 0) / (scores.length || 1));
       return { ...state, rhetoricalScores: scores, sessionScore: avg };
     }
     case 'RESET_SESSION':
@@ -144,10 +142,6 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 
 const FILLER_WORDS = ['um', 'uh', 'like', 'you know', 'basically', 'literally', 'actually', 'right', 'so'];
 
-/**
- * Augments the base system prompt with JSON output requirements.
- * This is the core fix that makes coaching + objection detection actually work.
- */
 function buildStructuredSystemPrompt(
   phase: TrialPhase,
   mode: SimulationMode,
@@ -182,9 +176,6 @@ Rules:
 • Output ONLY valid JSON. Non-JSON output breaks the simulator.`;
 }
 
-/**
- * Parse AI JSON response with graceful fallback for malformed output.
- */
 function parseAIResponse(raw: string): AIStructuredResponse {
   const cleaned = raw
     .replace(/^```(?:json)?\s*/m, '')
@@ -193,7 +184,6 @@ function parseAIResponse(raw: string): AIStructuredResponse {
 
   try {
     const parsed = JSON.parse(cleaned) as AIStructuredResponse;
-    // Validate required shape
     if (typeof parsed.speak !== 'string') throw new Error('Missing speak field');
     return parsed;
   } catch (err) {
@@ -211,52 +201,6 @@ function parseAIResponse(raw: string): AIStructuredResponse {
       },
     };
   }
-}
-
-// ─── Custom Hook: useSavedSessions ───────────────────────────────────────────
-
-function useSavedSessions(caseId: string | undefined) {
-  const [sessions, setSessions] = useState<TrialSession[]>(() => {
-    if (!caseId) return [];
-    try {
-      return JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]');
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    if (!caseId) return;
-    try {
-      setSessions(JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]'));
-    } catch {
-      setSessions([]);
-    }
-  }, [caseId]);
-
-  const persist = useCallback((updated: TrialSession[]) => {
-    if (!caseId) return;
-    setSessions(updated);
-    localStorage.setItem(`trial_sessions_${caseId}`, JSON.stringify(updated));
-  }, [caseId]);
-
-  const addSession = useCallback((session: TrialSession) => {
-    setSessions(prev => {
-      const updated = [session, ...prev].slice(0, 20);
-      if (caseId) localStorage.setItem(`trial_sessions_${caseId}`, JSON.stringify(updated));
-      return updated;
-    });
-  }, [caseId]);
-
-  const removeSession = useCallback((id: string) => {
-    setSessions(prev => {
-      const updated = prev.filter(s => s.id !== id);
-      if (caseId) localStorage.setItem(`trial_sessions_${caseId}`, JSON.stringify(updated));
-      return updated;
-    });
-  }, [caseId]);
-
-  return { sessions, addSession, removeSession };
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -294,13 +238,6 @@ const MODES = [
     icon: Sword,
     colorClass: 'bg-red-600',
   },
-] as const;
-
-const OBJECTION_RESPONSES = [
-  { label: 'Withdraw',        text: 'Your Honor, I withdraw the question.' },
-  { label: 'Rephrase',        text: 'Your Honor, I will rephrase the question.' },
-  { label: 'Argue Relevance', text: 'Your Honor, this question is directly relevant to the central issues before the court.' },
-  { label: 'Foundation',      text: 'Your Honor, I have laid proper foundation for this line of questioning.' },
 ] as const;
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -348,11 +285,11 @@ const TrialSim: React.FC = () => {
   // ── Stable refs (prevent stale closure bugs) ─────────────────────────────
   const isLiveRef        = useRef(false);
   const isAISpeakingRef  = useRef(false);
-  const isProcessingRef  = useRef(false); // FIX: was a closure variable → race conditions
-  const restartAttemptsRef = useRef(0);   // FIX: was a closure variable → incorrect counts
+  const isProcessingRef  = useRef(false);
+  const restartAttemptsRef = useRef(0);
 
   // ── Infrastructure refs ──────────────────────────────────────────────────
-  const recognitionRef      = useRef<any>(null);
+  const recognitionRef      = useRef<SpeechRecognition | null>(null);
   const streamRef           = useRef<MediaStream | null>(null);
   const mediaRecorderRef    = useRef<MediaRecorder | null>(null);
   const recordedChunksRef   = useRef<Blob[]>([]);
@@ -374,7 +311,7 @@ const TrialSim: React.FC = () => {
   const canUseElevenLabs = useElevenLabs && isElevenLabsConfigured() && elevenLabsKey.length > 10;
 
   const avgRhetoricalScore = session.rhetoricalScores.length > 0
-    ? Math.round(session.rhetoricalScores.reduce((a, b) => a + b, 0) / session.rhetoricalScores.length)
+    ? Math.round(session.rhetoricalScores.reduce((a, b) => a + b, 0) / (session.rhetoricalScores.length || 1))
     : 50;
 
   // ── Effects ──────────────────────────────────────────────────────────────
@@ -383,16 +320,13 @@ const TrialSim: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Keep refs in sync with state (for use inside speech recognition callbacks)
   useEffect(() => { isAISpeakingRef.current = session.isAISpeaking; }, [session.isAISpeaking]);
   useEffect(() => { isLiveRef.current = session.isLive; }, [session.isLive]);
 
-  // Sync objection count to metrics
   useEffect(() => {
     metricsRef.current.objectionsReceived = session.objectionCount;
   }, [session.objectionCount]);
 
-  // Cleanup on unmount — abort any pending AI request and stop the session silently
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
@@ -430,9 +364,9 @@ const TrialSim: React.FC = () => {
             audio.onerror = () => reject(new Error('ElevenLabs audio playback failed'));
             audio.play().catch(reject);
           });
-          return; // Success — skip fallback
+          return;
         } finally {
-          URL.revokeObjectURL(audioUrl); // FIX: always revoke — was leaking ObjectURLs
+          URL.revokeObjectURL(audioUrl);
           playbackAudioRef.current = null;
         }
       }
@@ -442,7 +376,6 @@ const TrialSim: React.FC = () => {
       playbackAudioRef.current = null;
     }
 
-    // Browser TTS fallback
     if (isBrowserTTSAvailable()) {
       try {
         await speakWithFallback(text, { rate: 1, pitch: 1, volume: 1 });
@@ -505,38 +438,30 @@ const TrialSim: React.FC = () => {
 
   // ── Stop session ──────────────────────────────────────────────────────────
 
-  /**
-   * @param silent - if true, skip saving (used for unmount cleanup)
-   */
   const stopSession = useCallback((silent = false) => {
     if (!silent && recordedChunksRef.current.length > 0) {
       saveSession();
     }
 
-    // Cancel any pending AI request
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
 
-    // Stop speech recognition cleanly
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.onend = null; // Prevent auto-restart
+        recognitionRef.current.onend = () => {};
         recognitionRef.current.stop();
       } catch {}
       recognitionRef.current = null;
     }
 
-    // Stop audio playback
     playbackAudioRef.current?.pause();
     playbackAudioRef.current = null;
 
-    // Stop recording
     if (mediaRecorderRef.current?.state !== 'inactive') {
       try { mediaRecorderRef.current?.stop(); } catch {}
     }
     mediaRecorderRef.current = null;
 
-    // Release microphone
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
 
@@ -548,20 +473,14 @@ const TrialSim: React.FC = () => {
 
   // ── Core AI turn orchestration ────────────────────────────────────────────
 
-  /**
-   * Single point of control for the full AI interaction turn:
-   * transcribe → stream OpenAI → parse JSON → update coaching → speak.
-   * This is the function the original lacked — coaching/objections never fired.
-   */
   const handleUserTranscript = useCallback(async (transcript: string) => {
     if (!phase || !mode || !activeCase) return;
-    if (isProcessingRef.current) return; // FIX: ref check, not closure variable
+    if (isProcessingRef.current) return;
 
     isProcessingRef.current = true;
     dispatch({ type: 'SET_INPUT_TRANSCRIPT', text: transcript });
     dispatch({ type: 'SET_OUTPUT_TRANSCRIPT', text: '' });
 
-    // Accumulate metrics
     metricsRef.current.wordCount += transcript.split(/\s+/).filter(Boolean).length;
     const lc = transcript.toLowerCase();
     metricsRef.current.fillerWordsCount += FILLER_WORDS.filter(f => lc.includes(f)).length;
@@ -585,13 +504,11 @@ const TrialSim: React.FC = () => {
 
       const parsed = parseAIResponse(rawResponse);
 
-      // ── Handle objection (NOW ACTUALLY FIRES — was broken in v1)
       if (parsed.objection) {
         dispatch({ type: 'OBJECTION_DETECTED' });
         setObjectionAlert(parsed.objection);
       }
 
-      // ── Update coaching HUD (NOW ACTUALLY FIRES — was broken in v1)
       if (parsed.coaching) {
         const { coaching } = parsed;
         setCoachingTip({
@@ -610,7 +527,6 @@ const TrialSim: React.FC = () => {
         }
       }
 
-      // ── Add AI message to transcript
       setMessages(prev => [...prev, {
         id: `${Date.now()}-o`,
         sender: 'opponent',
@@ -618,11 +534,10 @@ const TrialSim: React.FC = () => {
         timestamp: Date.now(),
       }]);
 
-      // ── Speak the response
       await speakText(parsed.speak);
 
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return; // Intentional cancel on stop
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       console.error('[TrialSim] AI turn error:', err);
       toast.error('Failed to get AI response — check console.');
     } finally {
@@ -650,7 +565,6 @@ const TrialSim: React.FC = () => {
     isProcessingRef.current = false;
     restartAttemptsRef.current = 0;
 
-    // Request microphone
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -664,16 +578,15 @@ const TrialSim: React.FC = () => {
       return;
     }
 
-    // Check Web Speech API availability
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
       toast.error('Speech recognition not supported. Use Chrome or Edge.');
       stream.getTracks().forEach(t => t.stop());
       dispatch({ type: 'SESSION_STOPPED' });
       return;
     }
 
-    const recognition = new SpeechRecognition();
+    const recognition = new SpeechRecognitionClass() as SpeechRecognition;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
@@ -685,8 +598,7 @@ const TrialSim: React.FC = () => {
     recognition.onspeechstart = () => dispatch({ type: 'SET_VOLUME', volume: 80 });
     recognition.onspeechend   = () => dispatch({ type: 'SET_VOLUME', volume: 20 });
 
-    recognition.onresult = async (event: any) => {
-      // Guard: never process while AI is speaking or already processing
+    recognition.onresult = async (event: SpeechRecognitionEvent) => {
       if (isAISpeakingRef.current || isProcessingRef.current) return;
 
       let interimTranscript = '';
@@ -708,20 +620,17 @@ const TrialSim: React.FC = () => {
       }
     };
 
-    recognition.onerror = (event: any) => {
-      // Fatal errors require full stop
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       const FATAL_ERRORS = ['not-allowed', 'audio-capture', 'service-not-allowed'];
       if (FATAL_ERRORS.includes(event.error)) {
         toast.error(`Speech recognition: ${event.error} — check browser settings.`);
         stopSession();
         return;
       }
-      // Non-fatal (network, no-speech, aborted) — onend will auto-restart
       console.warn('[TrialSim] Non-fatal recognition error:', event.error);
     };
 
     recognition.onend = () => {
-      // Null guard: explicitly stopped = no restart
       if (!recognitionRef.current || !isLiveRef.current) return;
 
       if (restartAttemptsRef.current >= MAX_RESTARTS) {
@@ -732,7 +641,7 @@ const TrialSim: React.FC = () => {
       setTimeout(() => {
         try {
           recognition.start();
-          restartAttemptsRef.current = 0; // Reset on successful restart
+          restartAttemptsRef.current = 0;
         } catch (err) {
           restartAttemptsRef.current++;
           console.error('[TrialSim] Recognition restart failed:', err);
@@ -760,14 +669,10 @@ const TrialSim: React.FC = () => {
     toast.success('Session started — speak to begin!');
   }, [activeCase, phase, mode, canUseElevenLabs, handleUserTranscript, startRecording, stopSession]);
 
-  // ── Objection quick-responses ─────────────────────────────────────────────
-
   const handleObjectionResponse = useCallback((response: string) => {
     setObjectionAlert(null);
     handleUserTranscript(response);
   }, [handleUserTranscript]);
-
-  // ── History actions ───────────────────────────────────────────────────────
 
   const playHistorySession = useCallback((s: TrialSession) => {
     if (playingSessionId === s.id) {
@@ -838,10 +743,6 @@ const TrialSim: React.FC = () => {
     toast.success('Session deleted.');
   }, [removeSession]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────
-
   if (!activeCase) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[80vh] text-slate-500 p-4">
@@ -858,8 +759,6 @@ const TrialSim: React.FC = () => {
     );
   }
 
-  // ── Setup ─────────────────────────────────────────────────────────────────
-
   if (view === 'setup') {
     return (
       <div className="min-h-screen pb-20">
@@ -872,7 +771,6 @@ const TrialSim: React.FC = () => {
         </div>
 
         <div className="p-4 space-y-6">
-          {/* Phase selection */}
           <section>
             <h2 className="text-gold-500 font-semibold mb-3">Select Phase</h2>
             <div className="grid grid-cols-4 gap-2">
@@ -893,7 +791,6 @@ const TrialSim: React.FC = () => {
             </div>
           </section>
 
-          {/* Mode selection */}
           <section>
             <h2 className="text-gold-500 font-semibold mb-3">Select Mode</h2>
             <div className="space-y-2">
@@ -915,7 +812,6 @@ const TrialSim: React.FC = () => {
             </div>
           </section>
 
-          {/* Voice & Settings */}
           <section>
             <button
               onClick={() => setShowVoiceSettings(v => !v)}
@@ -933,7 +829,6 @@ const TrialSim: React.FC = () => {
 
             {showVoiceSettings && (
               <div className="mt-2 p-4 bg-slate-800 rounded-lg space-y-5 border border-slate-700">
-                {/* ElevenLabs toggle */}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-slate-300">ElevenLabs Voices</p>
@@ -955,7 +850,6 @@ const TrialSim: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Voice picker */}
                 <div>
                   <label className="block text-sm text-slate-400 mb-2">Voice</label>
                   <select
@@ -971,7 +865,6 @@ const TrialSim: React.FC = () => {
                   </select>
                 </div>
 
-                {/* Role presets */}
                 {phase && (
                   <div>
                     <label className="block text-sm text-slate-400 mb-2">Role Preset</label>
@@ -1016,7 +909,6 @@ const TrialSim: React.FC = () => {
             )}
           </section>
 
-          {/* Start */}
           <button
             disabled={!phase || !mode}
             onClick={() => {
@@ -1038,8 +930,6 @@ const TrialSim: React.FC = () => {
       </div>
     );
   }
-
-  // ── History ───────────────────────────────────────────────────────────────
 
   if (view === 'history') {
     return (
@@ -1079,11 +969,8 @@ const TrialSim: React.FC = () => {
     );
   }
 
-  // ── Active Session ────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen flex flex-col pb-20 md:pb-0">
-      {/* Objection modal */}
       {objectionAlert && (
         <ObjectionModal
           grounds={objectionAlert.grounds}
@@ -1093,7 +980,6 @@ const TrialSim: React.FC = () => {
         />
       )}
 
-      {/* Session header */}
       <div className="bg-slate-800 border-b border-slate-700 p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
@@ -1126,10 +1012,8 @@ const TrialSim: React.FC = () => {
         </div>
       </div>
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col">
         <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-900">
-          {/* Metrics strip */}
           <div className="flex items-center gap-4 md:gap-8 mb-6">
             <StatPill label="Score"      value={`${session.sessionScore}%`} color="gold" />
             <div className="w-px h-6 bg-slate-700" />
@@ -1140,7 +1024,6 @@ const TrialSim: React.FC = () => {
             <StatPill label="Words" value={metricsRef.current.wordCount} color="slate" className="hidden sm:block" />
           </div>
 
-          {/* Opponent avatar */}
           <div className={`w-32 h-32 rounded-full border-4 transition-all duration-200 ${
             session.isLive && session.liveVolume > 20
               ? 'border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.4)]'
@@ -1168,7 +1051,6 @@ const TrialSim: React.FC = () => {
              session.isLive       ? '● Listening' : 'Ready'}
           </p>
 
-          {/* Volume meter */}
           {session.isLive && (
             <div className="w-full max-w-xs mt-4 h-1.5 bg-slate-800 rounded-full overflow-hidden">
               <div
@@ -1178,7 +1060,6 @@ const TrialSim: React.FC = () => {
             </div>
           )}
 
-          {/* Live transcript panels */}
           {session.isLive && (
             <div className="w-full max-w-2xl mt-5 space-y-2">
               <TranscriptBubble
@@ -1194,7 +1075,6 @@ const TrialSim: React.FC = () => {
             </div>
           )}
 
-          {/* Evidence quick-reference */}
           {(activeCase.evidence ?? []).length > 0 && (
             <div className="w-full max-w-sm mt-5">
               <button
@@ -1203,7 +1083,7 @@ const TrialSim: React.FC = () => {
               >
                 <span className="flex items-center gap-2">
                   <FolderOpen size={16} className="text-gold-500" />
-                  Evidence ({activeCase.evidence!.length} items)
+                  Evidence ({(activeCase.evidence || []).length} items)
                 </span>
                 <ChevronDown
                   size={16}
@@ -1212,7 +1092,7 @@ const TrialSim: React.FC = () => {
               </button>
               <div className={`overflow-hidden transition-all duration-300 ${showEvidencePanel ? 'max-h-52' : 'max-h-0'}`}>
                 <div className="mt-1.5 space-y-1 max-h-52 overflow-y-auto pr-0.5">
-                  {activeCase.evidence!.map((e, i) => (
+                  {(activeCase.evidence || []).map((e, i) => (
                     <div key={i} className="p-2.5 bg-slate-800 rounded text-xs">
                       <p className="font-semibold text-white truncate">{e.title}</p>
                       <p className="text-slate-400 line-clamp-2 mt-0.5">
@@ -1227,7 +1107,6 @@ const TrialSim: React.FC = () => {
           )}
         </div>
 
-        {/* Mini transcript strip (desktop only) */}
         <div className="hidden md:flex flex-col gap-1 h-20 px-6 py-2 justify-end overflow-hidden">
           {messages.slice(-2).map(m => (
             <div
@@ -1245,7 +1124,6 @@ const TrialSim: React.FC = () => {
         </div>
       </div>
 
-      {/* Teleprompter panel */}
       <div className={`fixed md:relative bottom-16 md:bottom-0 left-0 right-0 z-40 transition-all duration-300 ${
         showTeleprompter ? 'max-h-[50vh]' : 'max-h-14'
       }`}>
@@ -1327,7 +1205,6 @@ const TrialSim: React.FC = () => {
         </div>
       </div>
 
-      {/* Session controls */}
       <div className="fixed md:relative bottom-0 left-0 right-0 z-50 bg-slate-800 border-t border-slate-700 p-4">
         <div className="flex items-center justify-center">
           {!session.isLive ? (
@@ -1359,190 +1236,9 @@ const TrialSim: React.FC = () => {
         </div>
       </div>
 
-      {/* Scroll anchor */}
       <div ref={messagesEndRef} />
     </div>
   );
 };
-
-// ─── Pure Sub-components ──────────────────────────────────────────────────────
-// These are candidates for extraction to components/TrialSim/
-
-interface ObjectionModalProps {
-  grounds: string;
-  explanation: string;
-  onRespond: (response: string) => void;
-  onDismiss: () => void;
-}
-
-const ObjectionModal: React.FC<ObjectionModalProps> = ({ grounds, explanation, onRespond, onDismiss }) => (
-  <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Objection"
-  >
-    <div className="bg-red-700 p-6 rounded-2xl text-center max-w-sm w-full shadow-2xl border border-red-500/50">
-      <p className="text-4xl font-black text-white mb-1 tracking-tighter">OBJECTION!</p>
-      <p className="text-xl text-red-100 font-bold mb-2">{grounds}</p>
-      <p className="text-sm text-white/80 mb-6">{explanation}</p>
-      <div className="space-y-2">
-        {OBJECTION_RESPONSES.map(({ label, text }) => (
-          <button
-            key={label}
-            onClick={() => onRespond(text)}
-            className="w-full py-3 bg-white/20 hover:bg-white/30 text-white rounded-lg font-semibold transition-all text-sm"
-          >
-            {label}
-          </button>
-        ))}
-        <button
-          onClick={onDismiss}
-          className="w-full pt-2 pb-1 text-white/50 hover:text-white/80 text-sm transition-colors"
-        >
-          Dismiss
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
-interface SessionCardProps {
-  session: TrialSession;
-  isPlaying: boolean;
-  onPlay: () => void;
-  onDownload: () => void;
-  onExport: () => void;
-  onDelete: () => void;
-}
-
-const SessionCard: React.FC<SessionCardProps> = ({ session: s, isPlaying, onPlay, onDownload, onExport, onDelete }) => (
-  <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <p className="font-semibold text-white capitalize">{s.phase.replace(/-/g, ' ')}</p>
-        <p className="text-xs text-slate-400 mt-0.5">
-          {new Date(s.date).toLocaleDateString()} · {Math.floor(s.duration / 60)}m {s.duration % 60}s · {s.mode}
-        </p>
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-          <span className="text-xs font-semibold text-gold-400">Score: {s.score}%</span>
-          {s.metrics && (
-            <>
-              <span className="text-slate-600 text-xs">·</span>
-              <span className="text-xs text-slate-500">
-                {s.metrics.objectionsReceived ?? 0} objections
-              </span>
-              <span className="text-slate-600 text-xs">·</span>
-              <span className="text-xs text-slate-500">
-                {s.metrics.wordCount ?? 0} words
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-      <div className="flex gap-1 shrink-0">
-        {s.audioUrl && (
-          <IconButton onClick={onPlay} title={isPlaying ? 'Pause audio' : 'Play audio'} colorClass="bg-gold-500 text-slate-900">
-            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-          </IconButton>
-        )}
-        <IconButton onClick={onDownload} title="Download audio" colorClass="bg-slate-700 text-slate-300 hover:text-white">
-          <Download size={16} />
-        </IconButton>
-        <IconButton onClick={onExport} title="Export transcript" colorClass="bg-slate-700 text-blue-400 hover:text-blue-300">
-          <FileText size={16} />
-        </IconButton>
-        <IconButton onClick={onDelete} title="Delete session" colorClass="bg-slate-700 text-red-400 hover:text-red-300">
-          <Trash2 size={16} />
-        </IconButton>
-      </div>
-    </div>
-    {(s.transcript ?? []).length > 0 && (
-      <div className="mt-3 pt-3 border-t border-slate-700">
-        <p className="text-xs text-slate-500 line-clamp-2">
-          {s.transcript!.slice(0, 2).map(m =>
-            `${m.sender === 'user' ? 'You' : 'Opp'}: ${m.text.slice(0, 60)}`
-          ).join(' · ')}
-        </p>
-      </div>
-    )}
-  </div>
-);
-
-// ── Atomic components ─────────────────────────────────────────────────────────
-
-const IconButton: React.FC<{
-  onClick: () => void;
-  title: string;
-  colorClass: string;
-  children: React.ReactNode;
-}> = ({ onClick, title, colorClass, children }) => (
-  <button
-    onClick={onClick}
-    title={title}
-    className={`p-2 rounded-lg transition-opacity hover:opacity-80 active:scale-95 ${colorClass}`}
-  >
-    {children}
-  </button>
-);
-
-const StatPill: React.FC<{
-  label: string;
-  value: string | number;
-  color: 'gold' | 'slate' | 'red';
-  className?: string;
-}> = ({ label, value, color, className = '' }) => {
-  const textColor = { gold: 'text-gold-500', slate: 'text-slate-300', red: 'text-red-400' }[color];
-  return (
-    <div className={`text-center ${className}`}>
-      <p className="text-[10px] text-slate-500 uppercase tracking-wider">{label}</p>
-      <p className={`text-xl font-bold ${textColor}`}>{value}</p>
-    </div>
-  );
-};
-
-const TranscriptBubble: React.FC<{
-  label: string;
-  text: string;
-  color: 'blue' | 'emerald';
-}> = ({ label, text, color }) => {
-  const cls = {
-    blue:    { label: 'text-blue-400',    text: 'text-blue-100' },
-    emerald: { label: 'text-emerald-400', text: 'text-emerald-100' },
-  }[color];
-
-  return (
-    <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-3">
-      <p className={`text-[10px] uppercase tracking-widest font-bold mb-1 ${cls.label}`}>{label}</p>
-      <p className={`text-sm min-h-[1.25rem] leading-relaxed ${cls.text}`}>{text}</p>
-    </div>
-  );
-};
-
-const SettingRow: React.FC<{
-  label: string;
-  options: readonly string[];
-  value: string;
-  onChange: (v: string) => void;
-}> = ({ label, options, value, onChange }) => (
-  <div>
-    <label className="block text-sm text-slate-400 mb-2">{label}</label>
-    <div className="flex gap-2">
-      {options.map(opt => (
-        <button
-          key={opt}
-          onClick={() => onChange(opt)}
-          className={`flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-all ${
-            value === opt
-              ? 'bg-gold-500 text-slate-900'
-              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-          }`}
-        >
-          {opt}
-        </button>
-      ))}
-    </div>
-  </div>
-);
 
 export default TrialSim;
