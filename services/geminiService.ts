@@ -3,6 +3,7 @@ import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, Simulation
 import { retryWithBackoff, withTimeout, isRateLimitError, getErrorMessage } from "../utils/errorHandler";
 import { toast } from "react-toastify";
 import { performDocumentOCR } from "./ocrService";
+import { generateOpenAIResponse, isOpenAIConfigured } from "./openAIService";
 
 const apiKey = process.env.API_KEY || '';
 
@@ -38,6 +39,7 @@ const chatSessions = new Map<string, ChatSession>();
 
 type QueuedRequest = {
   fn: () => Promise<any>;
+  fallbackFn?: () => Promise<any>;
   resolve: (value: any) => void;
   reject: (error: any) => void;
 };
@@ -45,7 +47,9 @@ type QueuedRequest = {
 let requestQueue: QueuedRequest[] = [];
 let isProcessing = false;
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 1500;
+let currentMinInterval = 1500;
+const MAX_INTERVAL = 10000;
+const BASE_INTERVAL = 1500;
 
 const processQueue = async () => {
   if (isProcessing || requestQueue.length === 0) return;
@@ -56,8 +60,8 @@ const processQueue = async () => {
     const now = Date.now();
     const timeSinceLastRequest = now - lastRequestTime;
     
-    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-      await new Promise(r => setTimeout(r, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+    if (timeSinceLastRequest < currentMinInterval) {
+      await new Promise(r => setTimeout(r, currentMinInterval - timeSinceLastRequest));
     }
     
     const request = requestQueue.shift();
@@ -68,11 +72,26 @@ const processQueue = async () => {
     try {
       const result = await request.fn();
       request.resolve(result);
+      // Gradually decrease interval on success
+      currentMinInterval = Math.max(BASE_INTERVAL, currentMinInterval * 0.9);
     } catch (error) {
       if (isRateLimitError(error)) {
-        console.log('Rate limited, waiting before retry...');
-        toast.warning('Rate limit reached, waiting...');
-        await new Promise(r => setTimeout(r, 10000));
+        console.log(`Rate limited, dynamic interval increased to ${Math.round(currentMinInterval)}ms`);
+        currentMinInterval = Math.min(MAX_INTERVAL, currentMinInterval * 2);
+        
+        if (request.fallbackFn && isOpenAIConfigured()) {
+          console.log('Gemini capacity exhausted, attempting OpenAI fallback...');
+          try {
+            const fallbackResult = await request.fallbackFn();
+            request.resolve(fallbackResult);
+            continue;
+          } catch (fallbackError) {
+            console.error('Fallback also failed:', fallbackError);
+          }
+        }
+
+        toast.warning('Gemini capacity reached, waiting...');
+        await new Promise(r => setTimeout(r, 5000));
         requestQueue.unshift(request);
         lastRequestTime = Date.now();
       } else {
@@ -84,9 +103,9 @@ const processQueue = async () => {
   isProcessing = false;
 };
 
-const queueRequest = async <T>(fn: () => Promise<T>): Promise<T> => {
+const queueRequest = async <T>(fn: () => Promise<T>, fallbackFn?: () => Promise<T>): Promise<T> => {
   return new Promise((resolve, reject) => {
-    requestQueue.push({ fn, resolve, reject });
+    requestQueue.push({ fn, fallbackFn, resolve, reject });
     processQueue();
   });
 };
@@ -331,8 +350,7 @@ export const generateWitnessResponse = async (
   caseContext: string,
   forceNew: boolean = false
 ) => {
-  return queueRequest(async () => {
-    const systemInstruction = `You are roleplaying as a witness named ${witnessName} in a legal trial.
+  const systemInstruction = `You are roleplaying as a witness named ${witnessName} in a legal trial.
     Your personality is: ${personality}.
     Case Context: ${caseContext}.
 
@@ -344,48 +362,67 @@ export const generateWitnessResponse = async (
     5. Do not break character or mention you are an AI.
     6. Keep responses relatively concise, as in a courtroom cross-examination.`;
 
-    if (forceNew) {
-      clearChatSession(sessionId);
-    }
+  return queueRequest(
+    async () => {
+      if (forceNew) {
+        clearChatSession(sessionId);
+      }
 
-    let chat = getChatSession(sessionId);
-    if (!chat) {
-      chat = createChatSession(sessionId, 'witness', systemInstruction);
-    }
+      let chat = getChatSession(sessionId);
+      if (!chat) {
+        chat = createChatSession(sessionId, 'witness', systemInstruction);
+      }
 
-    const response = await chat.sendMessage({ message });
-    return response.text;
-  });
+      const response = await chat.sendMessage({ message });
+      return response.text;
+    },
+    async () => {
+      // OpenAI Fallback
+      return generateOpenAIResponse(systemInstruction, message);
+    }
+  );
 };
 
 export const predictStrategy = async (caseSummary: string, opponentProfile: string): Promise<StrategyInsight[]> => {
-  return queueRequest(async () => {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Analyze this case and the opposing counsel profile.
+  const prompt = `Analyze this case and the opposing counsel profile.
       Case: ${caseSummary}
       Opponent: ${opponentProfile}
 
-      Provide 3 strategic insights (Risks, Opportunities, or Predictions).`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              description: { type: Type.STRING },
-              confidence: { type: Type.NUMBER },
-              type: { type: Type.STRING, enum: ['risk', 'opportunity', 'prediction'] }
+      Provide 3 strategic insights (Risks, Opportunities, or Predictions). Return JSON array of objects with fields: title, description, confidence (number), type (risk|opportunity|prediction).`;
+
+  return queueRequest(
+    async () => {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                description: { type: Type.STRING },
+                confidence: { type: Type.NUMBER },
+                type: { type: Type.STRING, enum: ['risk', 'opportunity', 'prediction'] }
+              }
             }
           }
         }
-      }
-    });
+      });
 
-    return JSON.parse(response.text || '[]');
-  });
+      return JSON.parse(response.text || '[]');
+    },
+    async () => {
+      const res = await generateOpenAIResponse("You are a legal strategy expert. Output ONLY valid JSON.", prompt);
+      try {
+        return JSON.parse(res);
+      } catch {
+        return [];
+      }
+    }
+  );
 };
 
 export const getTrialSimSystemInstruction = (
@@ -452,22 +489,29 @@ CRITICAL RULES:
 };
 
 export const generateTranscriptSummary = async (transcript: string): Promise<string> => {
-  return queueRequest(async () => {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Summarize the following transcript concisely. Focus on key points, decisions made, and any action items. Keep the summary brief but comprehensive.
+  const prompt = `Summarize the following transcript concisely. Focus on key points, decisions made, and any action items. Keep the summary brief but comprehensive.
 
 Transcript:
 ${transcript.substring(0, 30000)}
 
-Provide a clear, well-structured summary in 2-4 paragraphs.`,
-      config: {
-        temperature: 0.3,
-      }
-    });
+Provide a clear, well-structured summary in 2-4 paragraphs.`;
 
-    return response.text || 'Unable to generate summary.';
-  });
+  return queueRequest(
+    async () => {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          temperature: 0.3,
+        }
+      });
+
+      return response.text || 'Unable to generate summary.';
+    },
+    async () => {
+      return generateOpenAIResponse("You are a helpful assistant that summarizes legal transcripts.", prompt);
+    }
+  );
 };
 
 export const translateTranscript = async (transcript: string, targetLanguage: string): Promise<string> => {
