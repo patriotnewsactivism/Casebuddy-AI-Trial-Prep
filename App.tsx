@@ -26,6 +26,7 @@ import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
 import { appendEvidence, fetchCases, removeCase, supabaseReady, upsertCase } from './services/dataService';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolean) => void }) => {
   const location = useLocation();
@@ -322,35 +323,37 @@ const App = () => {
 
   return (
     <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence, theme, setTheme }}>
-      <BrowserRouter>
-        <Suspense fallback={<div className="p-8 text-slate-400">Loading...</div>}>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/tos" element={<TermsOfService />} />
-            
-            <Route path="/app" element={<Layout><Dashboard /></Layout>} />
-            <Route path="/app/cases" element={<Layout><CaseManager /></Layout>} />
-            <Route path="/app/witness-lab" element={<Layout><WitnessLab /></Layout>} />
-            <Route path="/app/practice" element={<Layout><ArgumentPractice /></Layout>} />
-            <Route path="/app/strategy" element={<Layout><StrategyRoom /></Layout>} />
-            <Route path="/app/transcriber" element={<Layout><Transcriber /></Layout>} />
-            <Route path="/app/docs" element={<Layout><DraftingAssistant /></Layout>} />
-            <Route path="/app/settings" element={<Layout><SettingsPage /></Layout>} />
-            <Route path="/app/settlement" element={<Layout><SettlementCalculator /></Layout>} />
-            <Route path="/app/discovery" element={<Layout><DiscoveryManager /></Layout>} />
-            <Route path="/app/case-law" element={<Layout><CaseLawResearch /></Layout>} />
-            <Route path="/app/admissibility" element={<Layout><EvidenceAdmissibility /></Layout>} />
-            <Route path="/app/performance" element={<Layout><PerformanceAnalytics /></Layout>} />
-            <Route path="/app/deposition" element={<Layout><DepositionOutlineGenerator /></Layout>} />
-            <Route path="/app/negotiation" element={<Layout><NegotiationSimulator /></Layout>} />
-            <Route path="/app/timeline" element={<Layout><EvidenceTimeline /></Layout>} />
-            <Route path="/app/mock-jury" element={<Layout><MockJury /></Layout>} />
-            
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <Suspense fallback={<div className="p-8 text-slate-400">Loading...</div>}>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/tos" element={<TermsOfService />} />
+              
+              <Route path="/app" element={<Layout><Dashboard /></Layout>} />
+              <Route path="/app/cases" element={<Layout><CaseManager /></Layout>} />
+              <Route path="/app/witness-lab" element={<Layout><WitnessLab /></Layout>} />
+              <Route path="/app/practice" element={<Layout><ArgumentPractice /></Layout>} />
+              <Route path="/app/strategy" element={<Layout><StrategyRoom /></Layout>} />
+              <Route path="/app/transcriber" element={<Layout><Transcriber /></Layout>} />
+              <Route path="/app/docs" element={<Layout><DraftingAssistant /></Layout>} />
+              <Route path="/app/settings" element={<Layout><SettingsPage /></Layout>} />
+              <Route path="/app/settlement" element={<Layout><SettlementCalculator /></Layout>} />
+              <Route path="/app/discovery" element={<Layout><DiscoveryManager /></Layout>} />
+              <Route path="/app/case-law" element={<Layout><CaseLawResearch /></Layout>} />
+              <Route path="/app/admissibility" element={<Layout><EvidenceAdmissibility /></Layout>} />
+              <Route path="/app/performance" element={<Layout><PerformanceAnalytics /></Layout>} />
+              <Route path="/app/deposition" element={<Layout><DepositionOutlineGenerator /></Layout>} />
+              <Route path="/app/negotiation" element={<Layout><NegotiationSimulator /></Layout>} />
+              <Route path="/app/timeline" element={<Layout><EvidenceTimeline /></Layout>} />
+              <Route path="/app/mock-jury" element={<Layout><MockJury /></Layout>} />
+              
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </ErrorBoundary>
       <ToastContainer aria-label="Notifications" />
     </AppContext.Provider>
   );
