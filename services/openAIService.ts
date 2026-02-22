@@ -1,7 +1,4 @@
-/**
- * OpenAI Service for Trial Simulator
- * Used for conversation logic when Gemini is unavailable
- */
+import { callOpenAIProxy, streamOpenAIProxy, isProxyReady } from './apiProxy';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -18,26 +15,17 @@ interface OpenAIResponse {
   }[];
 }
 
-/**
- * Check if OpenAI is configured
- */
 export const isOpenAIConfigured = (): boolean => {
-  const key = process.env.OPENAI_API_KEY;
-  return !!(key && key.length > 10);
+  return isProxyReady();
 };
 
-/**
- * Generate a response from OpenAI
- */
 export const generateOpenAIResponse = async (
   systemPrompt: string,
   userMessage: string,
   conversationHistory: ChatMessage[] = []
 ): Promise<string> => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('OpenAI API key not configured');
+  if (!isProxyReady()) {
+    throw new Error('OpenAI proxy is not configured. Please check Supabase configuration.');
   }
 
   const messages: ChatMessage[] = [
@@ -46,41 +34,23 @@ export const generateOpenAIResponse = async (
     { role: 'user', content: userMessage }
   ];
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini', // Fast and cheap
-      messages,
+  return callOpenAIProxy({
+    messages,
+    model: 'gpt-4o-mini',
+    options: {
+      temperature: 0.7,
       max_tokens: 500,
-      temperature: 0.7
-    })
+    },
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} - ${error}`);
-  }
-
-  const data: OpenAIResponse = await response.json();
-  return data.choices[0]?.message?.content || '';
 };
 
-/**
- * Stream a response from OpenAI
- */
 export async function* streamOpenAIResponse(
   systemPrompt: string,
   userMessage: string,
   conversationHistory: ChatMessage[] = []
 ): AsyncGenerator<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('OpenAI API key not configured');
+  if (!isProxyReady()) {
+    throw new Error('OpenAI proxy is not configured. Please check Supabase configuration.');
   }
 
   const messages: ChatMessage[] = [
@@ -89,85 +59,13 @@ export async function* streamOpenAIResponse(
     { role: 'user', content: userMessage }
   ];
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages,
-      max_tokens: 500,
-      temperature: 0.7,
-      stream: true
-    })
+  yield* streamOpenAIProxy(messages, {
+    model: 'gpt-4o-mini',
+    temperature: 0.7,
+    max_tokens: 500,
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} - ${error}`);
-  }
-
-  const reader = response.body?.getReader();
-  const decoder = new TextDecoder();
-
-  if (!reader) {
-    throw new Error('No response body');
-  }
-
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-
-    if (value) {
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line || !line.startsWith('data:')) continue;
-
-        const data = line.slice(5).trim();
-        if (!data || data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            yield content;
-          }
-        } catch {
-          // Skip non-JSON lines/events.
-        }
-      }
-    }
-
-    if (done) break;
-  }
-
-  const trailing = (buffer + decoder.decode()).trim();
-  if (trailing.startsWith('data:')) {
-    const data = trailing.slice(5).trim();
-    if (data && data !== '[DONE]') {
-      try {
-        const parsed = JSON.parse(data);
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) {
-          yield content;
-        }
-      } catch {
-        // Ignore trailing partial event.
-      }
-    }
-  }
 }
 
-/**
- * Get system prompt for trial simulation
- */
 export const getTrialSimSystemPrompt = (
   phase: string,
   mode: string,

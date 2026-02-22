@@ -1,41 +1,37 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode, SimulatorSettings, CoachingSuggestion, ProactiveCoaching, Message } from "../types";
 import { retryWithBackoff, withTimeout, isRateLimitError, getErrorMessage } from "../utils/errorHandler";
 import { toast } from "react-toastify";
 import { performDocumentOCR } from "./ocrService";
 import { generateOpenAIResponse, isOpenAIConfigured } from "./openAIService";
+import { callGeminiProxy, callOpenAIProxy, isProxyReady, checkProxyHealth, GeminiProxyRequest } from "./apiProxy";
 
 const apiKey = process.env.API_KEY || '';
 
 if (!apiKey) {
-  console.error('[Gemini] API key is missing. Set GEMINI_API_KEY in .env.local');
-} else if (!apiKey.startsWith('AIzaSy')) {
-  console.error('[Gemini] API key appears invalid. Get a valid key from https://aistudio.google.com/apikey');
+  console.warn('[Gemini] API key not set - using Edge Function proxy instead');
 }
 
-const ai = new GoogleGenAI({ apiKey });
-
 export const isApiKeyValid = (): boolean => {
-  return !!(apiKey && apiKey.startsWith('AIzaSy'));
+  return isProxyReady();
 };
 
-export const validateApiKey = (): void => {
-  if (!apiKey) {
-    throw new Error('Gemini API key is missing. Please set GEMINI_API_KEY in your .env.local file.');
-  }
-  if (!apiKey.startsWith('AIzaSy')) {
-    throw new Error('Gemini API key appears invalid. Please get a valid key from https://aistudio.google.com/apikey');
+export const validateApiKey = async (): Promise<void> => {
+  const healthy = await checkProxyHealth();
+  if (!healthy) {
+    throw new Error('Gemini proxy is not available. Please check your Supabase configuration.');
   }
 };
 
-interface ChatSession {
+interface ChatSessionData {
   id: string;
-  chat: ReturnType<typeof ai.chats.create>;
   type: 'witness' | 'opponent' | 'trial';
+  systemInstruction: string;
+  history: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }>;
   createdAt: number;
 }
 
-const chatSessions = new Map<string, ChatSession>();
+const chatSessions = new Map<string, ChatSessionData>();
 
 type QueuedRequest = {
   fn: () => Promise<any>;
@@ -72,7 +68,6 @@ const processQueue = async () => {
     try {
       const result = await request.fn();
       request.resolve(result);
-      // Gradually decrease interval on success
       currentMinInterval = Math.max(BASE_INTERVAL, currentMinInterval * 0.9);
     } catch (error) {
       if (isRateLimitError(error)) {
@@ -118,30 +113,22 @@ export const createChatSession = (
 ) => {
   const existing = chatSessions.get(id);
   if (existing) {
-    return existing.chat;
+    return existing;
   }
-
-  const chat = ai.chats.create({
-    model: 'gemini-2.5-flash',
-    config: {
-      systemInstruction,
-      temperature: 0.9,
-    },
-    history: initialHistory
-  });
 
   chatSessions.set(id, {
     id,
-    chat,
     type,
+    systemInstruction,
+    history: initialHistory,
     createdAt: Date.now()
   });
 
-  return chat;
+  return chatSessions.get(id);
 };
 
 export const getChatSession = (id: string) => {
-  return chatSessions.get(id)?.chat || null;
+  return chatSessions.get(id) || null;
 };
 
 export const clearChatSession = (id: string) => {
@@ -228,11 +215,11 @@ Return JSON format.`;
 
   return queueRequest(async () => {
     return retryWithBackoff(async () => {
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
+        options: {
+          responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
@@ -313,17 +300,13 @@ Extract and provide:
 
 Return JSON format.`;
 
-    const parts: any[] = [];
-    if (filePart) {
-      parts.push(filePart);
-    }
-    parts.push({ text: prompt + "\n\n" + (text || "Analyze this uploaded document.") });
+    const fullPrompt = prompt + "\n\n" + (text || "Analyze this uploaded document.");
 
-    const response = await ai.models.generateContent({
+    const response = await callGeminiProxy({
+      prompt: fullPrompt,
       model: 'gemini-2.5-flash',
-      contents: { parts },
-      config: {
-        responseMimeType: "application/json",
+      options: {
+        responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -368,16 +351,30 @@ export const generateWitnessResponse = async (
         clearChatSession(sessionId);
       }
 
-      let chat = getChatSession(sessionId);
-      if (!chat) {
-        chat = createChatSession(sessionId, 'witness', systemInstruction);
+      let session = getChatSession(sessionId);
+      if (!session) {
+        session = createChatSession(sessionId, 'witness', systemInstruction);
       }
 
-      const response = await chat.sendMessage({ message });
+      const updatedHistory = [...session.history];
+      updatedHistory.push({ role: 'user', parts: [{ text: message }] });
+
+      const response = await callGeminiProxy({
+        prompt: message,
+        systemPrompt: systemInstruction,
+        model: 'gemini-2.5-flash',
+        options: {
+          temperature: 0.9,
+        },
+        conversationHistory: session.history
+      });
+
+      session.history = updatedHistory;
+      session.history.push({ role: 'model', parts: [{ text: response.text }] });
+
       return response.text;
     },
     async () => {
-      // OpenAI Fallback
       return generateOpenAIResponse(systemInstruction, message);
     }
   );
@@ -392,11 +389,11 @@ export const predictStrategy = async (caseSummary: string, opponentProfile: stri
 
   return queueRequest(
     async () => {
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
+        options: {
+          responseMimeType: 'application/json',
           responseSchema: {
             type: Type.ARRAY,
             items: {
@@ -456,11 +453,11 @@ Return JSON with suggestions, a general tip, and the strategic goal.`;
 
   return queueRequest(
     async () => {
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
+        options: {
+          responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
@@ -584,10 +581,10 @@ Provide a clear, well-structured summary in 2-4 paragraphs.`;
 
   return queueRequest(
     async () => {
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        options: {
           temperature: 0.3,
         }
       });
@@ -602,15 +599,17 @@ Provide a clear, well-structured summary in 2-4 paragraphs.`;
 
 export const translateTranscript = async (transcript: string, targetLanguage: string): Promise<string> => {
   return queueRequest(async () => {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Translate the following transcript to ${targetLanguage}. Preserve the speaker labels and formatting. Maintain the same level of formality and tone.
+    const prompt = `Translate the following transcript to ${targetLanguage}. Preserve the speaker labels and formatting. Maintain the same level of formality and tone.
 
 Transcript:
 ${transcript.substring(0, 30000)}
 
-Provide the translation with the same structure as the original.`,
-      config: {
+Provide the translation with the same structure as the original.`;
+
+    const response = await callGeminiProxy({
+      prompt,
+      model: 'gemini-2.5-flash',
+      options: {
         temperature: 0.3,
       }
     });
