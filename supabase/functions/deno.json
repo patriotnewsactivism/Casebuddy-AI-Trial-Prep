@@ -1,0 +1,13 @@
+{
+  "imports": {
+    "supabase": "jsr:@supabase/functions-helpers@0.0.8",
+    "@supabase/auth-helpers-shared": "jsr:@supabase/auth-helpers-shared@0.0.1"
+  },
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window"]
+  },
+  "tasks": {
+    "serve": "deno run --allow-net --allow-read --allow-env index.ts"
+  }
+}
