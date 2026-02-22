@@ -157,86 +157,134 @@ export const callGeminiProxy = async (
   request: GeminiProxyRequest
 ): Promise<GeminiProxyResponse> => {
   if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.');
+    return {
+      success: false,
+      text: '',
+      model: '',
+      error: createProxyError('NOT_CONFIGURED', 'Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.'),
+    };
   }
 
-  const { data, error } = await supabase.functions.invoke('gemini-proxy', {
-    body: request,
-  });
+  try {
+    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+      body: request,
+    });
 
-  if (error) {
-    throw new Error(error.message || 'Proxy request failed');
+    if (error) {
+      return {
+        success: false,
+        text: '',
+        model: '',
+        error: createProxyError('FUNCTION_ERROR', error.message || 'Proxy request failed'),
+      };
+    }
+
+    if (!data?.success) {
+      return {
+        success: false,
+        text: '',
+        model: '',
+        error: createProxyError('FUNCTION_ERROR', data?.error || 'Proxy returned unsuccessful response'),
+      };
+    }
+
+    return data as GeminiProxyResponse;
+  } catch (err) {
+    return {
+      success: false,
+      text: '',
+      model: '',
+      error: handleProxyError(err, 'callGeminiProxy'),
+    };
   }
-
-  if (!data?.success) {
-    throw new Error(data?.error || 'Proxy returned unsuccessful response');
-  }
-
-  return data as GeminiProxyResponse;
 };
 
 export const callOpenAIProxy = async (
   request: OpenAIProxyRequest
-): Promise<string> => {
+): Promise<OpenAIProxyResponse> => {
   if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured.');
+    return {
+      success: false,
+      content: '',
+      error: createProxyError('NOT_CONFIGURED', 'Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.'),
+    };
   }
 
-  const { data, error } = await supabase.functions.invoke('openai-proxy', {
-    body: request,
-  });
+  try {
+    const { data, error } = await supabase.functions.invoke('openai-proxy', {
+      body: { ...request, stream: false },
+    });
 
-  if (error) {
-    throw new Error(error.message || 'OpenAI proxy request failed');
+    if (error) {
+      return {
+        success: false,
+        content: '',
+        error: createProxyError('FUNCTION_ERROR', error.message || 'OpenAI proxy request failed'),
+      };
+    }
+
+    if (!data?.success) {
+      return {
+        success: false,
+        content: '',
+        error: createProxyError('FUNCTION_ERROR', data?.error || 'OpenAI proxy returned unsuccessful response'),
+      };
+    }
+
+    return {
+      success: true,
+      content: data.text || data.content || '',
+    };
+  } catch (err) {
+    return {
+      success: false,
+      content: '',
+      error: handleProxyError(err, 'callOpenAIProxy'),
+    };
   }
-
-  if (!data?.success) {
-    throw new Error(data?.error || 'OpenAI proxy returned unsuccessful response');
-  }
-
-  return data.text || '';
 };
 
 export async function* streamOpenAIProxy(
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-  options: { model?: string; temperature?: number; max_tokens?: number } = {}
-): AsyncGenerator<string> {
+  request: OpenAIProxyRequest
+): AsyncGenerator<string, void, unknown> {
   if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured.');
+    throw createProxyError('NOT_CONFIGURED', 'Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.');
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL || '';
-  const accessToken = await getAuthToken();
+  const url = getEdgeFunctionUrl('openai-proxy');
+  const token = await getAuthToken();
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/openai-proxy`, {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken || ''}`,
-    },
-    body: JSON.stringify({
-      messages,
-      model: options.model || 'gpt-4o-mini',
-      stream: true,
-      options: {
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.max_tokens ?? 2048,
-      },
-    }),
+    headers,
+    body: JSON.stringify({ ...request, stream: true }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI proxy error: ${response.status} - ${errorText}`);
+    let errorDetails: string;
+    try {
+      const errorData = await response.json();
+      errorDetails = String(errorData.error ?? response.statusText);
+    } catch {
+      errorDetails = await response.text();
+    }
+    throw createProxyError('HTTP_ERROR', errorDetails, response.status);
   }
 
   const reader = response.body?.getReader();
-  const decoder = new TextDecoder();
-
   if (!reader) {
-    throw new Error('No response body from OpenAI proxy');
+    throw createProxyError('NO_BODY', 'Response body is null');
   }
 
+  const decoder = new TextDecoder();
   let buffer = '';
 
   while (true) {
@@ -261,7 +309,7 @@ export async function* streamOpenAIProxy(
             yield content;
           }
         } catch {
-          // Skip non-JSON lines/events.
+          // Skip non-JSON lines
         }
       }
     }
@@ -280,46 +328,160 @@ export async function* streamOpenAIProxy(
           yield content;
         }
       } catch {
-        // Ignore trailing partial event.
+        // Ignore trailing partial event
       }
     }
   }
 }
 
-export const callElevenLabsProxy = async (
-  request: ElevenLabsProxyRequest
-): Promise<ArrayBuffer> => {
+export const callWhisperProxy = async (file: File): Promise<WhisperProxyResponse> => {
   if (!isSupabaseConfigured()) {
-    throw new Error('Supabase is not configured.');
+    return {
+      success: false,
+      text: '',
+      error: createProxyError('NOT_CONFIGURED', 'Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.'),
+    };
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL || '';
-  const accessToken = await getAuthToken();
+  try {
+    const url = getEdgeFunctionUrl('whisper-proxy');
+    const token = await getAuthToken();
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/elevenlabs-proxy`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken || ''}`,
-    },
-    body: JSON.stringify(request),
-  });
+    const formData = new FormData();
+    formData.append('file', file);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`ElevenLabs proxy error: ${response.status} - ${errorText}`);
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let errorDetails: unknown;
+      try {
+        errorDetails = await response.json();
+      } catch {
+        errorDetails = await response.text();
+      }
+
+      const errorMessage = typeof errorDetails === 'object' && errorDetails !== null && 'error' in errorDetails
+        ? String((errorDetails as Record<string, unknown>).error)
+        : `HTTP ${response.status}`;
+
+      return {
+        success: false,
+        text: '',
+        error: createProxyError('HTTP_ERROR', errorMessage, response.status, errorDetails),
+      };
+    }
+
+    const result = await response.json();
+
+    if (result.error) {
+      return {
+        success: false,
+        text: '',
+        error: createProxyError('FUNCTION_ERROR', result.error),
+      };
+    }
+
+    return {
+      success: true,
+      text: result.text ?? '',
+      duration: result.duration,
+      language: result.language,
+      segments: result.segments,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      text: '',
+      error: handleProxyError(err, 'callWhisperProxy'),
+    };
   }
-
-  return response.arrayBuffer();
 };
 
-export const getElevenLabsWebSocketUrl = (): string => {
-  const supabaseUrl = process.env.SUPABASE_URL || '';
-  if (!supabaseUrl) {
-    throw new Error('Supabase URL not configured for ElevenLabs proxy');
+export const callElevenLabsProxy = async (
+  request: ElevenLabsProxyRequest
+): Promise<ElevenLabsProxyResponse> => {
+  if (!isSupabaseConfigured()) {
+    return {
+      success: false,
+      error: createProxyError('NOT_CONFIGURED', 'Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.'),
+    };
   }
-  const wsUrl = supabaseUrl.replace(/^https?:\/\//, 'wss://');
-  return `${wsUrl}/functions/v1/elevenlabs-proxy/stream`;
+
+  try {
+    const url = getEdgeFunctionUrl('elevenlabs-proxy');
+    const token = await getAuthToken();
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      let errorDetails: string;
+      try {
+        const errorData = await response.json();
+        errorDetails = String(errorData.error ?? response.statusText);
+      } catch {
+        errorDetails = await response.text();
+      }
+      return {
+        success: false,
+        error: createProxyError('HTTP_ERROR', errorDetails, response.status),
+      };
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      const result = await response.json();
+      if (result.error) {
+        return {
+          success: false,
+          error: createProxyError('FUNCTION_ERROR', result.error),
+        };
+      }
+      return {
+        success: true,
+        audioUrl: result.audioUrl,
+        audioBase64: result.audioBase64,
+      };
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = btoa(
+      new Uint8Array(arrayBuffer).reduce(
+        (data, byte) => data + String.fromCharCode(byte),
+        ''
+      )
+    );
+    return {
+      success: true,
+      audioBase64: base64,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: handleProxyError(err, 'callElevenLabsProxy'),
+    };
+  }
 };
 
 export const isProxyReady = (): boolean => {
