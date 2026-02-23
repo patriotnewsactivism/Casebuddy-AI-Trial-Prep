@@ -14,12 +14,10 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        // Only expose Supabase public keys - these are safe for client-side
+        // All AI API keys are now proxied through Edge Functions
         'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL),
         'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY),
-        'process.env.ELEVENLABS_API_KEY': JSON.stringify(env.ELEVENLABS_API_KEY),
-        'process.env.OPENAI_API_KEY': JSON.stringify(env.OPENAI_API_KEY)
       },
       resolve: {
         alias: {
