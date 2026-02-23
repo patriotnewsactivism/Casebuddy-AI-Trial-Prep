@@ -1,0 +1,330 @@
+# System Architecture
+
+This document provides a comprehensive overview of CaseBuddy AI's architecture.
+
+## System Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT LAYER                                    │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                         React Application                                │ │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐           │ │
+│  │  │ Dashboard  │ │ Case       │ │ Witness    │ │ Strategy   │           │ │
+│  │  │            │ │ Manager    │ │ Lab        │ │ Room       │           │ │
+│  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘           │ │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐           │ │
+│  │  │ Transcriber│ │ Drafting   │ │ Settings   │ │ Auth       │           │ │
+│  │  │            │ │ Assistant  │ │            │ │ Context    │           │ │
+│  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘           │ │
+│  │                                                                          │ │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐      │ │
+│  │  │ Supabase Client  │  │ Gemini Service   │  │ Storage Utils    │      │ │
+│  │  │ (auth, data)     │  │ (API proxy)      │  │ (file uploads)   │      │ │
+│  │  └──────────────────┘  └──────────────────┘  └──────────────────┘      │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SUPABASE PLATFORM                                  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        EDGE FUNCTIONS (Deno)                           │  │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  │  │
+│  │  │ gemini-proxy │ │ openai-proxy │ │whisper-proxy │ │elevenlabs-   │  │  │
+│  │  │              │ │              │ │              │ │   proxy      │  │  │
+│  │  │ • Auth check │ │ • Auth check │ │ • Auth check │ │ • Auth check │  │  │
+│  │  │ • Rate limit │ │ • Rate limit │ │ • Rate limit │ │ • Rate limit │  │  │
+│  │  │ • Key access │ │ • Streaming  │ │ • File valid │ │ • Audio gen  │  │  │
+│  │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘  │  │
+│  │                                                                       │  │
+│  │  ┌───────────────────────────────────────────────────────────────────┐│  │
+│  │  │                    Shared Utilities (_shared/)                     ││  │
+│  │  │  ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  ││  │
+│  │  │  │  auth.ts │ │ rate-limit.ts│ │   cors.ts    │ │   index.ts   │  ││  │
+│  │  │  │JWT valid.│ │ Per-user lim.│ │ CORS headers │ │  Responses   │  ││  │
+│  │  │  └──────────┘ └──────────────┘ └──────────────┘ └──────────────┘  ││  │
+│  │  └───────────────────────────────────────────────────────────────────┘│  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                      │                                       │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                          AUTHENTICATION                                │  │
+│  │  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐  │  │
+│  │  │   Supabase Auth   │  │   JWT Tokens      │  │  Session Mgmt     │  │  │
+│  │  │   • Email/Pass    │  │   • Access tokens │  │  • Auto refresh   │  │  │
+│  │  │   • OAuth (opt)   │  │   • Refresh tokens│  │  • Secure storage │  │  │
+│  │  └───────────────────┘  └───────────────────┘  └───────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                      │                                       │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                         DATABASE (PostgreSQL)                          │  │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐     │  │
+│  │  │  profiles   │ │   cases     │ │  evidence   │ │   tasks     │     │  │
+│  │  │─────────────│ │─────────────│ │─────────────│ │─────────────│     │  │
+│  │  │ id (PK/FK)  │ │ id (PK)     │ │ id (PK)     │ │ id (PK)     │     │  │
+│  │  │ email       │ │ user_id(FK) │ │ case_id(FK) │ │ case_id(FK) │     │  │
+│  │  │ full_name   │ │ name        │ │ name        │ │ title       │     │  │
+│  │  │ role        │ │ case_type   │ │ type        │ │ status      │     │  │
+│  │  │ preferences │ │ status      │ │ ai_analysis │ │ priority    │     │  │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘     │  │
+│  │                                                                       │  │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐     │  │
+│  │  │witnesses    │ │ documents   │ │transcriptions│ │trial_sessions│    │  │
+│  │  │─────────────│ │─────────────│ │─────────────│ │─────────────│     │  │
+│  │  │ id (PK)     │ │ id (PK)     │ │ id (PK)     │ │ id (PK)     │     │  │
+│  │  │ case_id(FK) │ │ case_id(FK) │ │ case_id(FK) │ │ case_id(FK) │     │  │
+│  │  │ name        │ │ name        │ │ title       │ │ session_name│     │  │
+│  │  │ role        │ │ document_   │ │ audio_      │ │ session_date│     │  │
+│  │  │ ai_questions│ │   type      │ │   file_path │ │ session_type│     │  │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘     │  │
+│  │                                                                       │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
+│  │  │                    RLS Policies (per-table)                      │  │  │
+│  │  │  • All tables have Row Level Security enabled                    │  │  │
+│  │  │  • Policies enforce user_id-based access control                 │  │  │
+│  │  │  • Related tables inherit via EXISTS checks                      │  │  │
+│  │  └─────────────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                      │                                       │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                         STORAGE BUCKETS                                │  │
+│  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐               │  │
+│  │  │  case-files   │ │ evidence-files│ │ transcription │               │  │
+│  │  │───────────────│ │───────────────│ │    -audio     │               │  │
+│  │  │ Limit: 50MB   │ │ Limit: 100MB  │ │ Limit: 500MB  │               │  │
+│  │  │ PDFs, Docs,   │ │ PDFs, Images, │ │ Audio/Video   │               │  │
+│  │  │ Images        │ │ Audio, Video  │ │ files         │               │  │
+│  │  └───────────────┘ └───────────────┘ └───────────────┘               │  │
+│  │  ┌───────────────┐                                                   │  │
+│  │  │document-      │                                                   │  │
+│  │  │  templates    │                                                   │  │
+│  │  │───────────────│                                                   │  │
+│  │  │ Limit: 10MB   │                                                   │  │
+│  │  │ Templates     │                                                   │  │
+│  │  └───────────────┘                                                   │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          EXTERNAL APIS                                       │
+│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐   │
+│  │ Google Gemini │ │   OpenAI      │ │   OpenAI      │ │  ElevenLabs   │   │
+│  │               │ │   GPT-4       │ │   Whisper     │ │   TTS         │   │
+│  │ • AI analysis │ │ • Chat        │ │ • Audio       │ │ • Voice       │   │
+│  │ • Witness sim │ │   completion  │ │   transcript  │ │   synthesis   │   │
+│  │ • Strategy    │ │ • Streaming   │ │               │ │               │   │
+│  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Data Flow
+
+### Authentication Flow
+
+```
+1. User enters credentials
+2. Supabase Auth validates and returns JWT tokens
+3. Tokens stored in browser (secure httpOnly cookies or localStorage)
+4. Tokens included in all subsequent API requests
+5. Edge Functions validate token before processing
+6. RLS policies use token's user_id for data filtering
+```
+
+### API Request Flow
+
+```
+┌─────────┐     ┌─────────────────┐     ┌──────────────┐     ┌───────────┐
+│  React  │────▶│  Supabase       │────▶│  Edge        │────▶│  External │
+│  App    │     │  Client SDK     │     │  Function    │     │  API      │
+└─────────┘     └─────────────────┘     └──────────────┘     └───────────┘
+     │                 │                       │                    │
+     │                 │                       │                    │
+     ▼                 ▼                       ▼                    ▼
+ Prepare         Add JWT token          Validate auth         Add API key
+ request         to headers            Check rate limit       from secrets
+                                       Forward request        Make request
+                                       Return response        Return data
+```
+
+### File Upload Flow
+
+```
+┌─────────┐     ┌─────────────────┐     ┌──────────────┐
+│  User   │────▶│  React App      │────▶│  Supabase    │
+│  selects│     │  Validate file  │     │  Storage     │
+│  file   │     │  type/size      │     │  API         │
+└─────────┘     └─────────────────┘     └──────────────┘
+                                              │
+                                              ▼
+                                        ┌──────────────┐
+                                        │  Storage     │
+                                        │  Bucket      │
+                                        │              │
+                                        │ Path:        │
+                                        │ {user_id}/   │
+                                        │ {case_id}/   │
+                                        │ {filename}   │
+                                        └──────────────┘
+```
+
+---
+
+## Component Responsibilities
+
+### Frontend (React)
+
+| Component | Responsibility |
+|-----------|---------------|
+| `App.tsx` | Routing, layout, navigation |
+| `components/Dashboard` | Overview, statistics |
+| `components/CaseManager` | Case CRUD operations |
+| `components/WitnessLab` | AI witness simulation |
+| `components/StrategyRoom` | AI strategy analysis |
+| `components/Transcriber` | Audio upload & transcription |
+| `components/DraftingAssistant` | Document drafting with AI |
+| `components/Settings` | User preferences |
+| `services/geminiService.ts` | AI API communication (via Edge Functions) |
+| `utils/storage.ts` | LocalStorage persistence |
+| `utils/errorHandler.ts` | Error handling & toasts |
+
+### Edge Functions
+
+| Function | Purpose | Rate Limit |
+|----------|---------|------------|
+| `gemini-proxy` | Google Gemini AI requests | 30/min |
+| `openai-proxy` | OpenAI GPT-4 requests | 30/min |
+| `whisper-proxy` | Audio transcription | 10/min |
+| `elevenlabs-proxy` | Text-to-speech | 20/min |
+
+### Shared Utilities
+
+| Module | Purpose |
+|--------|---------|
+| `auth.ts` | JWT validation, user extraction |
+| `rate-limit.ts` | Per-user request throttling |
+| `cors.ts` | CORS headers, response utilities |
+
+---
+
+## Database Schema Overview
+
+### Core Tables
+
+```
+profiles (extends auth.users)
+├── id: UUID (FK to auth.users)
+├── email: TEXT
+├── full_name: TEXT
+├── role: TEXT (attorney, paralegal, admin, client)
+└── preferences: JSONB
+
+cases
+├── id: UUID (PK)
+├── user_id: UUID (FK to auth.users)
+├── name: TEXT
+├── case_type: TEXT (civil, criminal, family, etc.)
+├── status: TEXT (active, pending, settled, etc.)
+├── plaintiffs: TEXT[]
+├── defendants: TEXT[]
+├── key_dates: JSONB
+└── metadata: JSONB
+
+evidence
+├── id: UUID (PK)
+├── case_id: UUID (FK to cases)
+├── name: TEXT
+├── type: TEXT (document, image, video, etc.)
+├── file_path: TEXT
+├── ai_analysis: JSONB
+└── tags: TEXT[]
+
+tasks
+├── id: UUID (PK)
+├── case_id: UUID (FK to cases)
+├── title: TEXT
+├── status: TEXT (pending, in_progress, completed)
+├── priority: TEXT (low, medium, high, urgent)
+└── due_date: DATE
+
+witnesses
+├── id: UUID (PK)
+├── case_id: UUID (FK to cases)
+├── name: TEXT
+├── role: TEXT (plaintiff, defendant, expert, etc.)
+├── credibility_assessment: JSONB
+└── ai_questions: TEXT[]
+
+documents
+├── id: UUID (PK)
+├── case_id: UUID (FK to cases)
+├── name: TEXT
+├── document_type: TEXT (pleading, motion, brief, etc.)
+├── version: INTEGER
+├── ai_draft_suggestions: JSONB
+└── tags: TEXT[]
+```
+
+### Relationships
+
+```
+auth.users
+    │
+    ├── 1:1 ── profiles
+    │
+    ├── 1:N ── cases
+    │              │
+    │              ├── 1:N ── evidence
+    │              ├── 1:N ── tasks
+    │              ├── 1:N ── witnesses
+    │              ├── 1:N ── documents
+    │              ├── 1:N ── trial_sessions
+    │              └── 1:N ── settlement_analyses
+    │
+    └── 1:N ── transcriptions
+```
+
+---
+
+## Migration Files
+
+Migrations must be applied in order:
+
+| File | Description |
+|------|-------------|
+| `001_initial_schema.sql` | Core tables (profiles, cases, evidence, tasks) |
+| `002_rls_policies.sql` | Row Level Security policies |
+| `003_additional_tables.sql` | Extended tables (witnesses, documents, etc.) |
+| `004_storage_buckets.sql` | Storage buckets and policies |
+| `005_functions_and_triggers.sql` | Database functions and triggers |
+
+---
+
+## Environment Variables
+
+### Frontend (.env.local)
+
+```bash
+VITE_SUPABASE_URL=https://project.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...
+```
+
+### Edge Functions (Supabase Secrets)
+
+```bash
+GEMINI_API_KEY=AIza...
+OPENAI_API_KEY=sk-...
+ELEVENLABS_API_KEY=...
+```
+
+---
+
+## Scaling Considerations
+
+- **Database**: Supabase handles automatic scaling; consider read replicas for high traffic
+- **Edge Functions**: Automatically scale with demand
+- **Storage**: Consider CDN for frequently accessed files
+- **Rate Limiting**: Current implementation uses in-memory store; consider Redis for multi-instance deployments

@@ -9,6 +9,7 @@
 
 import { callElevenLabsProxy, isProxyReady } from './apiProxy';
 
+// Global audio unlock for browser autoplay policy
 let audioUnlocked = false;
 let unlockAudioContext: AudioContext | null = null;
 let globalAudioContext: AudioContext | null = null;
@@ -216,120 +217,4 @@ const MODEL_FOR_PHASE: Record<TrialPhase, string> = {
   'defendant-testimony': 'eleven_turbo_v2_5',
 };
 
-export const isElevenLabsConfigured = (): boolean => {
-  return isProxyReady();
-};
-
-export const getTrialVoicePreset = (preset: TrialVoicePreset): { voiceId: string; description: string } => {
-  const config = TRIAL_VOICE_PRESETS[preset];
-  const voice = ELEVENLABS_VOICES[config.voice];
-  return {
-    voiceId: voice.id,
-    description: config.description,
-  };
-};
-
-export const selectModelWithFallback = (phase: TrialPhase): string => {
-  return MODEL_FOR_PHASE[phase] || 'eleven_turbo_v2_5';
-};
-
-export interface SynthesizeSpeechOptions {
-  modelId?: string;
-  stability?: number;
-  similarityBoost?: number;
-  style?: number;
-  useSpeakerBoost?: boolean;
-}
-
-export const synthesizeSpeech = async (
-  text: string,
-  voiceId?: string,
-  options?: SynthesizeSpeechOptions
-): Promise<ArrayBuffer> => {
-  if (!isProxyReady()) {
-    throw new Error('ElevenLabs proxy is not configured. Please set up Supabase.');
-  }
-
-  const response = await callElevenLabsProxy({
-    text,
-    voiceId: voiceId || ELEVENLABS_VOICES.rachel.id,
-    modelId: options?.modelId || 'eleven_turbo_v2_5',
-    stability: options?.stability,
-    similarityBoost: options?.similarityBoost,
-    style: options?.style,
-    useSpeakerBoost: options?.useSpeakerBoost,
-  });
-
-  if (!response.success || !response.audioBase64) {
-    throw new Error(response.error?.message || 'Failed to synthesize speech');
-  }
-
-  const binaryString = atob(response.audioBase64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer as ArrayBuffer;
-};
-
-export const playAudioBuffer = async (audioBuffer: ArrayBuffer): Promise<void> => {
-  if (!audioBuffer || audioBuffer.byteLength === 0) {
-    console.warn('[Audio] Empty audio buffer, skipping playback');
-    return;
-  }
-
-  audioState.lastPlaybackAttempt = Date.now();
-  audioState.playbackError = null;
-
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    const audioContext = globalAudioContext || new AudioContextClass();
-    
-    if (!globalAudioContext) {
-      globalAudioContext = audioContext;
-    }
-
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
-    }
-
-    const decodedBuffer = await audioContext.decodeAudioData(audioBuffer);
-    const source = audioContext.createBufferSource();
-    source.buffer = decodedBuffer;
-    
-    const gainNode = audioContext.createGain();
-    gainNode.gain.value = currentVolume;
-    
-    source.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    source.start(0);
-    
-    console.log('[Audio] Playback started successfully');
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    audioState.playbackError = errorMsg;
-    console.error('[Audio] Playback error:', error);
-    throw error;
-  }
-};
-
-export const testAudioPlayback = async (): Promise<{ success: boolean; message: string }> => {
-  try {
-    await ensureAudioUnlocked();
-    
-    if (!audioUnlocked) {
-      return { success: false, message: 'Failed to unlock audio context' };
-    }
-
-    const testText = 'Audio test successful.';
-    const audioBuffer = await synthesizeSpeech(testText, ELEVENLABS_VOICES.rachel.id);
-    
-    await playAudioBuffer(audioBuffer);
-    
-    return { success: true, message: 'Audio playback test passed' };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    return { success: false, message: `Audio test failed: ${errorMsg}` };
-  }
-};
+c

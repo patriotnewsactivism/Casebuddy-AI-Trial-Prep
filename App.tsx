@@ -1,7 +1,13 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+const LoginPage = lazy(() => import('./components/auth/LoginPage'));
+const SignupPage = lazy(() => import('./components/auth/SignupPage'));
+const ForgotPasswordPage = lazy(() => import('./components/auth/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./components/auth/ResetPasswordPage'));
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const CaseManager = lazy(() => import('./components/CaseManager'));
 const WitnessLab = lazy(() => import('./components/WitnessLab'));
@@ -77,7 +83,7 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
       `}>
         <div className="h-16 flex items-center px-4 border-b border-slate-800">
-          <Link to="/" className="flex items-center gap-2 text-gold-500 hover:opacity-80 transition-opacity">
+          <Link to="/app" className="flex items-center gap-2 text-gold-500 hover:opacity-80 transition-opacity">
             <Gavel size={24} />
             <span className="text-lg font-serif font-bold text-white">CaseBuddy</span>
           </Link>
@@ -122,6 +128,17 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
 
 const Layout = ({ children }: { children?: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth/login');
+  };
+
+  if (!user) {
+    return <Navigate to="/auth/login" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
@@ -134,12 +151,20 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
           </button>
           <div className="flex items-center gap-4 ml-auto">
              <div className="hidden sm:flex flex-col items-end">
-               <span className="text-sm font-semibold text-white">Attorney J. Doe</span>
-               <span className="text-xs text-slate-400">Senior Litigator</span>
+               <span className="text-sm font-semibold text-white">{user.fullName}</span>
+               <span className="text-xs text-slate-400">{user.email}</span>
              </div>
-             <div className="h-9 w-9 rounded-full bg-slate-700 border border-slate-600 overflow-hidden">
-                <img src="https://picsum.photos/id/1005/100/100" alt="Profile" className="h-full w-full object-cover"/>
+             <div className="h-9 w-9 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center">
+                <span className="text-sm font-semibold text-white">{user.fullName.charAt(0).toUpperCase()}</span>
              </div>
+             <button
+               onClick={handleSignOut}
+               className="flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+               title="Sign out"
+             >
+               <LogOut size={18} />
+               <span className="hidden sm:inline">Sign Out</span>
+             </button>
           </div>
         </header>
 
@@ -151,6 +176,12 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
   );
 };
 
+const AuthenticatedLayout = ({ children }: { children?: React.ReactNode }) => (
+  <ProtectedRoute>
+    <Layout>{children}</Layout>
+  </ProtectedRoute>
+);
+
 export const AppContext = React.createContext<{
     cases: Case[];
     activeCase: Case | null;
@@ -161,6 +192,7 @@ export const AppContext = React.createContext<{
     addEvidence: (caseId: string, evidence: EvidenceItem) => Promise<void>;
     theme: 'dark' | 'light';
     setTheme: (t: 'dark' | 'light') => void;
+    user: { id: string; email: string; fullName: string; firmName?: string } | null;
   }>({
     cases: [],
     activeCase: null,
@@ -171,6 +203,7 @@ export const AppContext = React.createContext<{
     addEvidence: async () => {},
     theme: 'dark',
     setTheme: () => {},
+    user: null,
   });
 
 const App = () => {
@@ -178,6 +211,7 @@ const App = () => {
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>('dark');
+  const { user } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
@@ -322,7 +356,7 @@ const App = () => {
   };
 
   return (
-    <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence, theme, setTheme }}>
+    <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence, theme, setTheme, user }}>
       <ErrorBoundary>
         <BrowserRouter>
           <Suspense fallback={<div className="p-8 text-slate-400">Loading...</div>}>
@@ -331,23 +365,28 @@ const App = () => {
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/tos" element={<TermsOfService />} />
               
-              <Route path="/app" element={<Layout><Dashboard /></Layout>} />
-              <Route path="/app/cases" element={<Layout><CaseManager /></Layout>} />
-              <Route path="/app/witness-lab" element={<Layout><WitnessLab /></Layout>} />
-              <Route path="/app/practice" element={<Layout><ArgumentPractice /></Layout>} />
-              <Route path="/app/strategy" element={<Layout><StrategyRoom /></Layout>} />
-              <Route path="/app/transcriber" element={<Layout><Transcriber /></Layout>} />
-              <Route path="/app/docs" element={<Layout><DraftingAssistant /></Layout>} />
-              <Route path="/app/settings" element={<Layout><SettingsPage /></Layout>} />
-              <Route path="/app/settlement" element={<Layout><SettlementCalculator /></Layout>} />
-              <Route path="/app/discovery" element={<Layout><DiscoveryManager /></Layout>} />
-              <Route path="/app/case-law" element={<Layout><CaseLawResearch /></Layout>} />
-              <Route path="/app/admissibility" element={<Layout><EvidenceAdmissibility /></Layout>} />
-              <Route path="/app/performance" element={<Layout><PerformanceAnalytics /></Layout>} />
-              <Route path="/app/deposition" element={<Layout><DepositionOutlineGenerator /></Layout>} />
-              <Route path="/app/negotiation" element={<Layout><NegotiationSimulator /></Layout>} />
-              <Route path="/app/timeline" element={<Layout><EvidenceTimeline /></Layout>} />
-              <Route path="/app/mock-jury" element={<Layout><MockJury /></Layout>} />
+              <Route path="/auth/login" element={<LoginPage />} />
+              <Route path="/auth/signup" element={<SignupPage />} />
+              <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+              
+              <Route path="/app" element={<AuthenticatedLayout><Dashboard /></AuthenticatedLayout>} />
+              <Route path="/app/cases" element={<AuthenticatedLayout><CaseManager /></AuthenticatedLayout>} />
+              <Route path="/app/witness-lab" element={<AuthenticatedLayout><WitnessLab /></AuthenticatedLayout>} />
+              <Route path="/app/practice" element={<AuthenticatedLayout><ArgumentPractice /></AuthenticatedLayout>} />
+              <Route path="/app/strategy" element={<AuthenticatedLayout><StrategyRoom /></AuthenticatedLayout>} />
+              <Route path="/app/transcriber" element={<AuthenticatedLayout><Transcriber /></AuthenticatedLayout>} />
+              <Route path="/app/docs" element={<AuthenticatedLayout><DraftingAssistant /></AuthenticatedLayout>} />
+              <Route path="/app/settings" element={<AuthenticatedLayout><SettingsPage /></AuthenticatedLayout>} />
+              <Route path="/app/settlement" element={<AuthenticatedLayout><SettlementCalculator /></AuthenticatedLayout>} />
+              <Route path="/app/discovery" element={<AuthenticatedLayout><DiscoveryManager /></AuthenticatedLayout>} />
+              <Route path="/app/case-law" element={<AuthenticatedLayout><CaseLawResearch /></AuthenticatedLayout>} />
+              <Route path="/app/admissibility" element={<AuthenticatedLayout><EvidenceAdmissibility /></AuthenticatedLayout>} />
+              <Route path="/app/performance" element={<AuthenticatedLayout><PerformanceAnalytics /></AuthenticatedLayout>} />
+              <Route path="/app/deposition" element={<AuthenticatedLayout><DepositionOutlineGenerator /></AuthenticatedLayout>} />
+              <Route path="/app/negotiation" element={<AuthenticatedLayout><NegotiationSimulator /></AuthenticatedLayout>} />
+              <Route path="/app/timeline" element={<AuthenticatedLayout><EvidenceTimeline /></AuthenticatedLayout>} />
+              <Route path="/app/mock-jury" element={<AuthenticatedLayout><MockJury /></AuthenticatedLayout>} />
               
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
@@ -359,4 +398,10 @@ const App = () => {
   );
 };
 
-export default App;
+const AppWithAuth = () => (
+  <AuthProvider>
+    <App />
+  </AuthProvider>
+);
+
+export default AppWithAuth;
