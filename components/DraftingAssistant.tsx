@@ -1,6 +1,7 @@
 
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
+import { useKnowledge } from '../contexts/KnowledgeContext';
 import { FileText, Sparkles, Download, Copy, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -91,6 +92,7 @@ const TEMPLATES: TemplateOption[] = [
 
 const DraftingAssistant = () => {
   const { activeCase, cases } = useContext(AppContext);
+  const { getKnowledgeContext, ingestDocument } = useKnowledge();
   const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
   const [generatedContent, setGeneratedContent] = useState('');
@@ -122,14 +124,19 @@ const DraftingAssistant = () => {
 
     try {
       const template = TEMPLATES.find(t => t.id === selectedTemplate);
+      const knowledgeContext = activeCase?.id ? getKnowledgeContext(activeCase.id) : '';
+      
       const caseContext = activeCase
         ? `Case: ${activeCase.title}\nClient: ${activeCase.client}\nSummary: ${activeCase.summary}\nOpposing Counsel: ${activeCase.opposingCounsel}\nJudge: ${activeCase.judge}`
         : 'No active case selected. Generate a general template.';
 
+      const knowledgeSection = knowledgeContext 
+        ? `\n\nRELEVANT CASE KNOWLEDGE:\n${knowledgeContext}\n`
+        : '';
+
       const prompt = `You are an expert legal document drafter. Generate a professional ${template?.label} for the following case.
 
-${caseContext}
-
+${caseContext}${knowledgeSection}
 Additional Instructions: ${customPrompt || 'None'}
 
 Requirements:
@@ -137,7 +144,7 @@ Requirements:
 2. Include all standard sections for this document type
 3. Be persuasive and professionally written
 4. Use formal legal language appropriate for court filings
-5. Include fact-specific arguments based on the case context
+5. Include fact-specific arguments based on the case context and knowledge
 6. If no case context is provided, use [PARTY NAME], [FACTS], etc. as placeholders
 
 Generate the complete document ready for attorney review.`;
@@ -150,7 +157,22 @@ Generate the complete document ready for attorney review.`;
         }
       });
 
-      setGeneratedContent(response.text || '');
+      const generatedText = response.text || '';
+      setGeneratedContent(generatedText);
+
+      if (activeCase?.id && generatedText && template) {
+        try {
+          await ingestDocument(activeCase.id, {
+            text: generatedText,
+            fileName: `${template.label} (Generated)`,
+            analysis: {
+              summary: generatedText.substring(0, 500) + '...',
+            }
+          });
+        } catch (ingestError) {
+          console.warn('[DraftingAssistant] Failed to ingest document:', ingestError);
+        }
+      }
     } catch (err: any) {
       console.error('Document generation failed', err);
       setError(`Generation failed: ${err.message || 'Unknown error'}`);

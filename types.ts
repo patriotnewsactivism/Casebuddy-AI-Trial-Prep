@@ -903,3 +903,38 @@ export interface CaptionWord {
   end?: number;
   isHighlighted?: boolean;
 }
+
+export interface KnowledgeEntity {
+  text: string;
+  type: 'person' | 'organization' | 'date' | 'amount' | 'location' | 'statute' | 'case-citation' | 'other';
+  confidence: number;
+  source: string;
+}
+
+export interface KnowledgeFact {
+  id: string;
+  text: string;
+  source: string;
+  confidence: number;
+  category: 'procedural' | 'factual' | 'legal' | 'evidentiary' | 'testimonial';
+  createdAt: number;
+}
+
+export interface DocumentSummary {
+  id: string;
+  fileName: string;
+  summary: string;
+  entities: KnowledgeEntity[];
+  keyDates: string[];
+  monetaryAmounts: string[];
+  risks: string[];
+  addedAt: number;
+}
+
+export interface CaseKnowledge {
+  caseId: string;
+  entities: KnowledgeEntity[];
+  facts: KnowledgeFact[];
+  documentSummaries: DocumentSummary[];
+  lastUpdated: number;
+}

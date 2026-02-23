@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate 
 import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { KnowledgeProvider } from './contexts/KnowledgeContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 const LoginPage = lazy(() => import('./components/auth/LoginPage'));
 const SignupPage = lazy(() => import('./components/auth/SignupPage'));
@@ -400,7 +401,9 @@ const App = () => {
 
 const AppWithAuth = () => (
   <AuthProvider>
-    <App />
+    <KnowledgeProvider>
+      <App />
+    </KnowledgeProvider>
   </AuthProvider>
 );
 

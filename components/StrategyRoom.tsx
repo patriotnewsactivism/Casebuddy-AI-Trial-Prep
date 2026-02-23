@@ -1,5 +1,6 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
+import { useKnowledge } from '../contexts/KnowledgeContext';
 import { MOCK_OPPONENT } from '../constants';
 import { predictStrategy } from '../services/geminiService';
 import { StrategyInsight } from '../types';
@@ -7,6 +8,7 @@ import { BrainCircuit, Target, Shield, AlertOctagon, Lightbulb, RefreshCw } from
 
 const StrategyRoom = () => {
   const { activeCase } = useContext(AppContext);
+  const { getKnowledgeContext } = useKnowledge();
   const [insights, setInsights] = useState<StrategyInsight[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -21,9 +23,11 @@ const StrategyRoom = () => {
   const handleGenerateStrategy = async () => {
     if (!activeCase) return;
     setLoading(true);
+    const knowledgeContext = getKnowledgeContext(activeCase.id);
     const result = await predictStrategy(
       activeCase.summary,
-      JSON.stringify(MOCK_OPPONENT)
+      JSON.stringify(MOCK_OPPONENT),
+      knowledgeContext
     );
     setInsights(result);
     setLoading(false);

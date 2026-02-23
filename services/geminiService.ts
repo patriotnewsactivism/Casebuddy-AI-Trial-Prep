@@ -331,11 +331,16 @@ export const generateWitnessResponse = async (
   witnessName: string,
   personality: string,
   caseContext: string,
+  knowledgeContext?: string,
   forceNew: boolean = false
 ) => {
+  const knowledgeSection = knowledgeContext 
+    ? `\n\nRELEVANT CASE KNOWLEDGE:\n${knowledgeContext}\n`
+    : '';
+    
   const systemInstruction = `You are roleplaying as a witness named ${witnessName} in a legal trial.
     Your personality is: ${personality}.
-    Case Context: ${caseContext}.
+    Case Context: ${caseContext}.${knowledgeSection}
 
     Rules:
     1. Stay in character at all times.
@@ -343,7 +348,8 @@ export const generateWitnessResponse = async (
     3. If you are 'nervous', stutter occasionally and be unsure.
     4. If you are 'cooperative', provide helpful details but only what you know.
     5. Do not break character or mention you are an AI.
-    6. Keep responses relatively concise, as in a courtroom cross-examination.`;
+    6. Keep responses relatively concise, as in a courtroom cross-examination.
+    7. Reference specific facts, dates, and evidence from the case knowledge when relevant.`;
 
   return queueRequest(
     async () => {
@@ -380,9 +386,17 @@ export const generateWitnessResponse = async (
   );
 };
 
-export const predictStrategy = async (caseSummary: string, opponentProfile: string): Promise<StrategyInsight[]> => {
+export const predictStrategy = async (
+  caseSummary: string, 
+  opponentProfile: string,
+  knowledgeContext?: string
+): Promise<StrategyInsight[]> => {
+  const knowledgeSection = knowledgeContext 
+    ? `\n\nRELEVANT CASE KNOWLEDGE:\n${knowledgeContext}\n`
+    : '';
+  
   const prompt = `Analyze this case and the opposing counsel profile.
-      Case: ${caseSummary}
+      Case: ${caseSummary}${knowledgeSection}
       Opponent: ${opponentProfile}
 
       Provide 3 strategic insights (Risks, Opportunities, or Predictions). Return JSON array of objects with fields: title, description, confidence (number), type (risk|opportunity|prediction).`;
@@ -426,17 +440,22 @@ export const generateProactiveCoaching = async (
   phase: TrialPhase,
   caseSummary: string,
   witnessPersonality: string,
-  conversationHistory: Message[]
+  conversationHistory: Message[],
+  knowledgeContext?: string
 ): Promise<ProactiveCoaching> => {
   const historyText = conversationHistory
     .slice(-10)
     .map(m => `${m.sender === 'user' ? 'ATTORNEY' : m.sender.toUpperCase()}: ${m.text}`)
     .join('\n');
 
+  const knowledgeSection = knowledgeContext 
+    ? `\n\nRELEVANT CASE KNOWLEDGE:\n${knowledgeContext}\n`
+    : '';
+
   const prompt = `You are an expert legal coach providing proactive guidance for a trial attorney.
 
 PHASE: ${phase}
-CASE SUMMARY: ${caseSummary}
+CASE SUMMARY: ${caseSummary}${knowledgeSection}
 WITNESS PERSONALITY: ${witnessPersonality}
 
 RECENT CONVERSATION:
@@ -448,6 +467,7 @@ Consider:
 - The witness personality (hostile witnesses need different approaches)
 - What has already been covered in the conversation
 - Strategic goals for this phase
+- Specific facts and evidence from the case knowledge
 
 Return JSON with suggestions, a general tip, and the strategic goal.`;
 

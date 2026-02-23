@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
 import { MOCK_WITNESSES } from '../constants';
 import { AppContext } from '../App';
+import { useKnowledge } from '../contexts/KnowledgeContext';
 import { generateWitnessResponse, clearChatSession } from '../services/geminiService';
 import { generateProactiveCoaching } from '../services/geminiService';
 import { transcribeAudio } from '../services/transcriptionService';
@@ -15,6 +16,7 @@ type WitnessVoicePreset = 'witness-hostile' | 'witness-nervous' | 'witness-coope
 
 const WitnessLab = () => {
   const { activeCase } = useContext(AppContext);
+  const { getKnowledgeContext } = useKnowledge();
   const [selectedWitness, setSelectedWitness] = useState<Witness>(MOCK_WITNESSES[0]);
   const [messages, setMessages] = useState<Message[]>([
     { id: '0', sender: 'system', text: 'Simulation initialized. You may begin your examination.', timestamp: Date.now() }
@@ -50,6 +52,7 @@ const WitnessLab = () => {
   const recordingMimeTypeRef = useRef<string>('audio/webm');
   const finalSpeechTranscriptRef = useRef('');
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const handleAudioUploadRef = useRef<((audioBlob: Blob, preferredTranscript?: string) => Promise<void>) | undefined>(undefined);
 
   const getSessionId = (witnessId: string) => `witness-${witnessId}-${activeCase?.id || 'default'}`;
 
@@ -59,11 +62,13 @@ const WitnessLab = () => {
     setIsLoadingCoaching(true);
     try {
       const phase: TrialPhase = 'cross-examination';
+      const knowledgeContext = activeCase?.id ? getKnowledgeContext(activeCase.id) : undefined;
       const result = await generateProactiveCoaching(
         phase,
         activeCase.summary || 'A legal case',
         selectedWitness.personality,
-        messages
+        messages,
+        knowledgeContext
       );
       setCoachingSuggestions(result.suggestions);
       setGeneralTip(result.generalTip);
@@ -72,7 +77,7 @@ const WitnessLab = () => {
     } finally {
       setIsLoadingCoaching(false);
     }
-  }, [activeCase, selectedWitness, messages]);
+  }, [activeCase, selectedWitness, messages, getKnowledgeContext]);
 
   useEffect(() => {
     if (messages.length <= 1) {
@@ -219,7 +224,9 @@ const WitnessLab = () => {
         }
 
         const optimisticTranscript = finalSpeechTranscriptRef.current.trim();
-        await handleAudioUpload(audioBlob, optimisticTranscript);
+        if (handleAudioUploadRef.current) {
+          await handleAudioUploadRef.current(audioBlob, optimisticTranscript);
+        }
         finalSpeechTranscriptRef.current = '';
         setLiveMicTranscript('');
         
@@ -295,7 +302,7 @@ const WitnessLab = () => {
       setIsRecording(false);
       isRecordingRef.current = false;
     }
-  }, [isTyping, isProcessingAudio, handleAudioUpload]);
+  }, [isTyping, isProcessingAudio]);
 
   const stopRecording = useCallback(() => {
     isRecordingRef.current = false;
@@ -392,6 +399,7 @@ const WitnessLab = () => {
       setIsProcessingAudio(false);
     }
   };
+  handleAudioUploadRef.current = handleAudioUpload;
 
   const getVoiceForWitness = (witness: Witness): WitnessVoicePreset => {
     if (witness.personality.toLowerCase().includes('hostile')) {
@@ -532,12 +540,14 @@ const WitnessLab = () => {
     setIsTyping(true);
 
     try {
+      const knowledgeContext = activeCase?.id ? getKnowledgeContext(activeCase.id) : undefined;
       const responseText = await generateWitnessResponse(
         getSessionId(selectedWitness.id),
         userMsg.text,
         selectedWitness.name, 
         selectedWitness.personality, 
-        activeCase?.summary || "A generic legal case."
+        activeCase?.summary || "A generic legal case.",
+        knowledgeContext
       );
 
       const witnessMsg: Message = {
