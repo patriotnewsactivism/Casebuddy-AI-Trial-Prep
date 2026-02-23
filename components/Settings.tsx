@@ -1,12 +1,22 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../App';
-import { Settings as SettingsIcon, Key, Database, Download, Upload, AlertCircle, Check, User, Moon, Sun, Palette, Shield, Info, Trash2, CheckCircle, Cloud, Loader2, ClosedCaption, Volume2, Play } from 'lucide-react';
+import { Settings as SettingsIcon, Key, Database, Download, Upload, AlertCircle, Check, User, Moon, Sun, Palette, Shield, Info, Trash2, CheckCircle, Cloud, Loader2, ClosedCaption, Volume2, Play, FileText, Zap, DollarSign } from 'lucide-react';
 import { exportAllData, importAllData, clearAllData, getStorageInfo, savePreferences, loadPreferences } from '../utils/storage';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { supabaseReady } from '../services/dataService';
 import { testAudioPlayback } from '../services/elevenLabsService';
 import { browserTTS, getPreferredVoice } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
+import { 
+  getOCRProviderInfo, 
+  getAvailableOCRProviders, 
+  configureOCRProvider,
+  detectDocumentCategoryFromName,
+  getDocumentRecommendations,
+  estimateOCRCost,
+  type OCRProvider,
+  type LegalDocumentCategory
+} from '../services/ocrService';
 
 interface CaptionSettings {
   enabled: boolean;

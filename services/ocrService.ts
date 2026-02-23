@@ -1,8 +1,16 @@
 import { createWorker, type Worker } from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
-import { OCRResult } from '../types';
+import { OCRResult, OCRProvider, OCROptions, EnhancedOCRResult, LegalDocumentCategory } from '../types';
+import {
+  ocrProviderFactory,
+  processDocument as multiProviderProcess,
+  selectProvider,
+  detectDocumentCategory,
+  estimateCost,
+  PROVIDER_INFO,
+  DOCUMENT_CATEGORY_RECOMMENDATIONS
+} from './ocr';
 
-// Set PDF.js worker source - use local bundled worker for reliability
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url
@@ -245,4 +253,59 @@ export const terminateOCR = async (): Promise<void> => {
     await tesseractWorker.terminate();
     tesseractWorker = null;
   }
+};
+
+export const performEnhancedOCR = async (
+  file: File,
+  options?: OCROptions
+): Promise<EnhancedOCRResult> => {
+  return multiProviderProcess(file, options);
+};
+
+export const configureOCRProvider = (
+  provider: OCRProvider,
+  config: {
+    apiKey?: string;
+    endpoint?: string;
+    region?: string;
+    processorId?: string;
+    enabled?: boolean;
+  }
+): void => {
+  ocrProviderFactory.configureProvider(provider, config);
+};
+
+export const getAvailableOCRProviders = (): OCRProvider[] => {
+  return ocrProviderFactory.getAvailableProviders();
+};
+
+export const getOCRProviderInfo = (provider?: OCRProvider) => {
+  if (provider) {
+    return PROVIDER_INFO[provider];
+  }
+  return PROVIDER_INFO;
+};
+
+export const detectDocumentCategoryFromName = (fileName: string): LegalDocumentCategory => {
+  return detectDocumentCategory(fileName);
+};
+
+export const getRecommendedProvider = (
+  documentCategory?: LegalDocumentCategory,
+  availableProviders?: OCRProvider[]
+): OCRProvider => {
+  return selectProvider({ documentCategory }, availableProviders);
+};
+
+export const estimateOCRCost = (pageCount: number, provider: OCRProvider): number => {
+  return estimateCost(pageCount, provider);
+};
+
+export const getDocumentRecommendations = (category: LegalDocumentCategory): OCRProvider[] => {
+  return DOCUMENT_CATEGORY_RECOMMENDATIONS[category] || [];
+};
+
+export {
+  PROVIDER_INFO,
+  DOCUMENT_CATEGORY_RECOMMENDATIONS
 };
