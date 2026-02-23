@@ -352,6 +352,103 @@ export interface OCRBoundingBox {
   confidence: number;
 }
 
+export type OCRProvider = 
+  | 'tesseract' 
+  | 'google-document-ai' 
+  | 'aws-textract' 
+  | 'azure-document-intelligence' 
+  | 'mathpix';
+
+export type LegalDocumentCategory = 
+  | 'general'
+  | 'deposition'
+  | 'contract'
+  | 'court-filing'
+  | 'financial-records'
+  | 'medical-records'
+  | 'handwritten-evidence'
+  | 'form'
+  | 'table-heavy';
+
+export interface OCRCapabilities {
+  printedTextAccuracy: number;
+  handwritingSupport: boolean;
+  tableExtraction: boolean;
+  multiColumnSupport: boolean;
+  lowQualitySupport: boolean;
+  formRecognition: boolean;
+  clientSide: boolean;
+}
+
+export interface OCRProviderConfig {
+  provider: OCRProvider;
+  enabled: boolean;
+  apiKey?: string;
+  region?: string;
+  endpoint?: string;
+  processorId?: string;
+  priority: number;
+  documentCategories: LegalDocumentCategory[];
+  capabilities: OCRCapabilities;
+  costPerPage: number;
+}
+
+export interface OCROptions {
+  provider?: OCRProvider;
+  documentCategory?: LegalDocumentCategory;
+  enableHandwriting?: boolean;
+  enableTableExtraction?: boolean;
+  enableFormRecognition?: boolean;
+  language?: string;
+  preserveLayout?: boolean;
+  onProgress?: (progress: number, status: string) => void;
+}
+
+export interface OCRTableData {
+  headers: string[];
+  rows: string[][];
+  confidence: number;
+  pageNumber?: number;
+}
+
+export interface OCRFormData {
+  fields: {
+    key: string;
+    value: string;
+    confidence: number;
+    boundingBox?: OCRBoundingBox;
+  }[];
+  checkboxes?: {
+    label: string;
+    checked: boolean;
+    confidence: number;
+  }[];
+  tables?: OCRTableData[];
+}
+
+export interface EnhancedOCRResult extends OCRResult {
+  provider: OCRProvider;
+  tables?: OCRTableData[];
+  forms?: OCRFormData;
+  entities?: {
+    text: string;
+    type: 'person' | 'organization' | 'date' | 'amount' | 'location' | 'other';
+    confidence: number;
+  }[];
+  layoutPreserved?: boolean;
+  rawResponse?: unknown;
+}
+
+export interface OCRProviderInfo {
+  id: OCRProvider;
+  name: string;
+  description: string;
+  capabilities: OCRCapabilities;
+  pricingInfo: string;
+  recommendedFor: LegalDocumentCategory[];
+  setupRequired: string[];
+}
+
 // Whisper Transcription Types
 export interface WhisperTranscriptionResult {
   text: string;
