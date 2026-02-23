@@ -13,10 +13,9 @@ import {
   configureOCRProvider,
   detectDocumentCategoryFromName,
   getDocumentRecommendations,
-  estimateOCRCost,
-  type OCRProvider,
-  type LegalDocumentCategory
+  estimateOCRCost
 } from '../services/ocrService';
+import type { OCRProvider, LegalDocumentCategory } from '../types';
 
 interface CaptionSettings {
   enabled: boolean;
@@ -508,6 +507,82 @@ const Settings = () => {
             </p>
           )}
         </div>
+      </div>
+
+      {/* OCR Provider Settings */}
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <FileText className="text-gold-500" size={24} />
+          <h2 className="text-xl font-semibold text-white">OCR Providers</h2>
+        </div>
+
+        <p className="text-sm text-slate-400 mb-4">
+          Configure OCR providers for document processing. Each provider has different strengths for legal document types.
+        </p>
+
+        <div className="space-y-3">
+          {Object.entries(getOCRProviderInfo()).map(([providerId, info]) => {
+            const isAvailable = getAvailableOCRProviders().includes(providerId as OCRProvider);
+            
+            return (
+              <div key={providerId} className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-200 font-medium">{info.name}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        isAvailable 
+                          ? 'bg-green-900/40 text-green-300 border border-green-700' 
+                          : 'bg-slate-700 text-slate-400 border border-slate-600'
+                      }`}>
+                        {isAvailable ? 'Configured' : 'Not Configured'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">{info.description}</p>
+                  </div>
+                  <span className="text-xs text-slate-500">{info.pricingInfo}</span>
+                </div>
+                
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {info.recommendedFor.map((category: LegalDocumentCategory) => (
+                    <span key={category} className="text-xs px-2 py-0.5 bg-slate-700 text-slate-300 rounded">
+                      {category.replace('-', ' ')}
+                    </span>
+                  ))}
+                </div>
+                
+                <div className="mt-3 pt-3 border-t border-slate-700">
+                  <div className="text-xs text-slate-400">
+                    <span className="text-slate-500">Accuracy:</span> ~{info.capabilities.printedTextAccuracy}% | 
+                    <span className="text-slate-500 ml-2">Handwriting:</span> {info.capabilities.handwritingSupport ? '✓' : '✗'} | 
+                    <span className="text-slate-500 ml-2">Tables:</span> {info.capabilities.tableExtraction ? '✓' : '✗'} | 
+                    <span className="text-slate-500 ml-2">Forms:</span> {info.capabilities.formRecognition ? '✓' : '✗'}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 p-4 bg-blue-900/20 border border-blue-700 rounded-lg">
+          <div className="flex items-start gap-3">
+            <Info className="text-blue-400 flex-shrink-0 mt-0.5" size={18} />
+            <div className="text-sm text-blue-300">
+              <p className="font-semibold mb-1">OCR Provider Recommendations:</p>
+              <ul className="text-xs text-blue-200 space-y-1">
+                <li><strong>Contracts:</strong> Azure Document Intelligence (prebuilt contract model)</li>
+                <li><strong>Financial/Medical Records:</strong> AWS Textract (best table extraction)</li>
+                <li><strong>Handwritten Evidence:</strong> Mathpix (99%+ handwriting accuracy)</li>
+                <li><strong>General Documents:</strong> Google Document AI or Tesseract.js</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-500 mt-4">
+          Configure provider API keys in your <code className="bg-slate-900/50 px-1 rounded">.env.local</code> file.
+          See documentation for required environment variables.
+        </p>
       </div>
 
       {/* API Configuration */}
