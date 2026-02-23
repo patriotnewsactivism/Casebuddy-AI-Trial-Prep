@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { GoogleGenAI, Type } from '@google/genai';
 
 export interface ProxyError {
   code: string;
@@ -95,6 +96,17 @@ let proxyHealth: 'unknown' | 'healthy' | 'unhealthy' = 'unknown';
 let lastHealthCheck = 0;
 const HEALTH_CHECK_INTERVAL = 60000;
 
+// Direct Gemini client for fallback
+let directGeminiClient: GoogleGenAI | null = null;
+const getDirectGeminiClient = (): GoogleGenAI | null => {
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  if (!directGeminiClient) {
+    directGeminiClient = new GoogleGenAI({ apiKey });
+  }
+  return directGeminiClient;
+};
+
 const getEdgeFunctionUrl = (functionName: string): string => {
   const supabaseUrl = process.env.SUPABASE_URL;
   if (!supabaseUrl) {
@@ -104,12 +116,16 @@ const getEdgeFunctionUrl = (functionName: string): string => {
 };
 
 const getAuthToken = async (): Promise<string | null> => {
-  const { data: { session }, error } = await supabase.auth.getSession();
-  if (error) {
-    console.error('[apiProxy] Error getting session:', error.message);
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error('[apiProxy] Error getting session:', error.message);
+      return null;
+    }
+    return session?.access_token ?? null;
+  } catch {
     return null;
   }
-  return session?.access_token ?? null;
 };
 
 const createProxyError = (code: string, message: string, status?: number, details?: unknown): ProxyError => ({
@@ -153,50 +169,99 @@ export const checkProxyHealth = async (): Promise<boolean> => {
   }
 };
 
-export const callGeminiProxy = async (
-  request: GeminiProxyRequest
-): Promise<GeminiProxyResponse> => {
-  if (!isSupabaseConfigured()) {
+// Direct Gemini API call (fallback when proxy fails)
+const callGeminiDirect = async (request: GeminiProxyRequest): Promise<GeminiProxyResponse> => {
+  const client = getDirectGeminiClient();
+  if (!client) {
     return {
       success: false,
       text: '',
       model: '',
-      error: createProxyError('NOT_CONFIGURED', 'Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.'),
+      error: createProxyError('NOT_CONFIGURED', 'Gemini API key not configured'),
     };
   }
 
   try {
-    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
-      body: request,
+    const model = request.model || 'gemini-2.5-flash';
+    
+    const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    
+    if (request.conversationHistory && request.conversationHistory.length > 0) {
+      contents.push(...request.conversationHistory);
+    }
+    
+    if (request.systemPrompt) {
+      contents.push({
+        role: 'user',
+        parts: [{ text: `System: ${request.systemPrompt}\n\nUser: ${request.prompt}` }],
+      });
+    } else {
+      contents.push({
+        role: 'user',
+        parts: [{ text: request.prompt }],
+      });
+    }
+
+    const config: any = {
+      temperature: request.options?.temperature ?? 0.7,
+      maxOutputTokens: request.options?.maxOutputTokens ?? 8192,
+      topP: request.options?.topP ?? 0.95,
+    };
+
+    if (request.options?.responseMimeType) {
+      config.responseMimeType = request.options.responseMimeType;
+    }
+    if (request.options?.responseSchema) {
+      config.responseSchema = request.options.responseSchema;
+    }
+
+    const response = await client.models.generateContent({
+      model,
+      contents,
+      config,
     });
 
-    if (error) {
-      return {
-        success: false,
-        text: '',
-        model: '',
-        error: createProxyError('FUNCTION_ERROR', error.message || 'Proxy request failed'),
-      };
-    }
+    const text = response.text || '';
 
-    if (!data?.success) {
-      return {
-        success: false,
-        text: '',
-        model: '',
-        error: createProxyError('FUNCTION_ERROR', data?.error || 'Proxy returned unsuccessful response'),
-      };
-    }
-
-    return data as GeminiProxyResponse;
-  } catch (err) {
+    return {
+      success: true,
+      text,
+      model,
+      usage: response.usageMetadata,
+    };
+  } catch (error: any) {
+    console.error('[apiProxy] Direct Gemini error:', error);
     return {
       success: false,
       text: '',
       model: '',
-      error: handleProxyError(err, 'callGeminiProxy'),
+      error: createProxyError('API_ERROR', error?.message || 'Gemini API error'),
     };
   }
+};
+
+export const callGeminiProxy = async (
+  request: GeminiProxyRequest
+): Promise<GeminiProxyResponse> => {
+  // Try proxy first if Supabase is configured
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+        body: request,
+      });
+
+      if (!error && data?.success) {
+        return data as GeminiProxyResponse;
+      }
+
+      console.warn('[apiProxy] Proxy failed, trying direct API:', error?.message || data?.error);
+    } catch (err) {
+      console.warn('[apiProxy] Proxy exception, trying direct API:', err);
+    }
+  }
+
+  // Fallback to direct Gemini API
+  return callGeminiDirect(request);
 };
 
 export const callOpenAIProxy = async (
@@ -485,5 +550,6 @@ export const callElevenLabsProxy = async (
 };
 
 export const isProxyReady = (): boolean => {
-  return isSupabaseConfigured() && proxyHealth !== 'unhealthy';
+  // Return true if either Supabase or direct Gemini is available
+  return isSupabaseConfigured() || !!getDirectGeminiClient();
 };
