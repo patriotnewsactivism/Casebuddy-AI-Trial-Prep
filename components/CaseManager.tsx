@@ -14,6 +14,7 @@ import { generateRealisticCase } from '../services/caseGenerationService';
 
 const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any }) => {
   const { cases, activeCase, setActiveCase, addCase, addEvidence, updateCase } = useContext(AppContext);
+  const { user, updateUsage } = useAuth();
   const [analyzing, setAnalyzing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(initialAnalysisResult || null);
@@ -34,6 +35,12 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
 
   const handleAiGenerate = async () => {
     if (!aiGenPrompt.trim()) return;
+    
+    if (user?.plan === 'free' && cases.length >= 1) {
+      toast.error('Free plan is limited to 1 case. Please upgrade to Pro for unlimited cases.');
+      return;
+    }
+
     setGenerating(true);
     try {
       const generated = await generateRealisticCase(aiGenPrompt);
@@ -221,6 +228,12 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
   const handleCreateCase = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (user?.plan === 'free' && cases.length >= 1) {
+      toast.error('Free plan is limited to 1 case. Please upgrade to Pro for unlimited cases.');
+      setShowNewCaseModal(false);
+      return;
+    }
+
     // Input validation
     if (!newCaseData.title?.trim()) {
       handleError(new Error('Missing title'), 'Please enter a case title', 'CaseManager');
@@ -252,6 +265,12 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
   };
 
   const handleLoadTemplate = async (template: Case) => {
+    if (user?.plan === 'free' && cases.length >= 1) {
+      toast.error('Free plan is limited to 1 case. Please upgrade to Pro for unlimited cases.');
+      setShowLibraryModal(false);
+      return;
+    }
+
     // Create a deep copy with a new ID to avoid conflicts if added multiple times
     const newCase = { ...template, id: Date.now().toString() };
     await addCase(newCase);

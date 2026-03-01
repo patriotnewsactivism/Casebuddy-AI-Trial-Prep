@@ -3,6 +3,7 @@ import React, {
 } from 'react';
 import { Link } from 'react-router-dom';
 import { AppContext } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { MOCK_OPPONENT } from '../constants';
 import {
   CoachingAnalysis, Message, TrialPhase, SimulationMode,
