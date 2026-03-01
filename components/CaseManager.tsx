@@ -1,6 +1,7 @@
 
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { Case, CaseStatus, CaseTask, DocumentType, EvidenceItem, PriorityLevel, TaskStatus } from '../types';
 import { FileText, Upload, Eye, AlertTriangle, CheckCircle, Search, BrainCircuit, Plus, X, BookOpen, Library, Save, Clock, Tag, ListChecks, File, Loader2 } from 'lucide-react';
 import { analyzeDocument, fileToGenerativePart, analyzePDFDocument, batchAnalyzeDocuments } from '../services/geminiService';

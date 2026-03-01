@@ -1,11 +1,22 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
+export type SubscriptionPlan = 'free' | 'pro' | 'firm';
+
+export interface UserUsage {
+  cases_created: number;
+  ai_generations_this_month: number;
+  trial_sessions_this_month: number;
+  last_reset_date: string;
+}
+
 interface User {
   id: string;
   email: string;
   fullName: string;
   firmName?: string;
   createdAt: string;
+  plan: SubscriptionPlan;
+  usage: UserUsage;
 }
 
 interface AuthContextType {
@@ -17,6 +28,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  updateUsage: (updates: Partial<UserUsage>) => Promise<void>;
   clearError: () => void;
 }
 
@@ -51,6 +63,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(false);
   }, []);
 
+  const updateUsage = async (updates: Partial<UserUsage>): Promise<void> => {
+    if (!user) return;
+    const newUser = {
+      ...user,
+      usage: { ...user.usage, ...updates }
+    };
+    setUser(newUser);
+    localStorage.setItem('casebuddy_user', JSON.stringify(newUser));
+    
+    // Also update in users list
+    const storedUsers = localStorage.getItem('casebuddy_users');
+    if (storedUsers) {
+      const users: User[] = JSON.parse(storedUsers);
+      const index = users.findIndex(u => u.id === user.id);
+      if (index !== -1) {
+        users[index] = newUser;
+        localStorage.setItem('casebuddy_users', JSON.stringify(users));
+      }
+    }
+  };
+
+  const DEFAULT_USAGE: UserUsage = {
+    cases_created: 0,
+    ai_generations_this_month: 0,
+    trial_sessions_this_month: 0,
+    last_reset_date: new Date().toISOString()
+  };
+
   const signIn = async (email: string, password: string): Promise<void> => {
     setLoading(true);
     setError(null);
@@ -81,6 +121,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           email,
           fullName: email.split('@')[0],
           createdAt: new Date().toISOString(),
+          plan: 'free',
+          usage: DEFAULT_USAGE
         };
         setUser(mockUser);
         localStorage.setItem('casebuddy_user', JSON.stringify(mockUser));
@@ -130,6 +172,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         fullName,
         firmName,
         createdAt: new Date().toISOString(),
+        plan: 'free',
+        usage: DEFAULT_USAGE
       };
       
       users.push(newUser);
@@ -208,6 +252,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signOut,
     resetPassword,
     updatePassword,
+    updateUsage,
     clearError,
   };
 

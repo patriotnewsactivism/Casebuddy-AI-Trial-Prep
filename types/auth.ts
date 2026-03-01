@@ -1,6 +1,14 @@
 import { User, Session } from '@supabase/supabase-js';
 
 export type UserRole = 'attorney' | 'paralegal' | 'admin' | 'user';
+export type SubscriptionPlan = 'free' | 'pro' | 'firm';
+
+export interface UserUsage {
+  cases_created: number;
+  ai_generations_this_month: number;
+  trial_sessions_this_month: number;
+  last_reset_date: string;
+}
 
 export interface Profile {
   id: string;
@@ -8,6 +16,8 @@ export interface Profile {
   full_name: string | null;
   firm_name: string | null;
   role: UserRole;
+  plan: SubscriptionPlan;
+  usage: UserUsage;
   preferences: UserPreferences | null;
   created_at: string;
   updated_at: string;
