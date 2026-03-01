@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -29,6 +29,8 @@ const DepositionOutlineGenerator = lazy(() => import('./components/DepositionOut
 const NegotiationSimulator = lazy(() => import('./components/NegotiationSimulator'));
 const EvidenceTimeline = lazy(() => import('./components/EvidenceTimeline'));
 const MockJury = lazy(() => import('./components/MockJury'));
+const PublicRecordsManager = lazy(() => import('./components/PublicRecordsManager'));
+const OfficerDatabase = lazy(() => import('./components/OfficerDatabase'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -112,6 +114,8 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
             <NavItem path="/app/case-law" icon={BookOpen} label="Case Law Research" />
             <NavItem path="/app/admissibility" icon={Target} label="Evidence Analyzer" />
             <NavItem path="/app/timeline" icon={Scale} label="Evidence Timeline" />
+            <NavItem path="/app/foia" icon={FileText} label="Public Records / FOIA" />
+            <NavItem path="/app/officers" icon={Shield} label="Officer Database" />
           </NavGroup>
 
           <NavItem path="/app/transcriber" icon={FileAudio} label="Transcriber" />
@@ -388,6 +392,8 @@ const App = () => {
               <Route path="/app/negotiation" element={<AuthenticatedLayout><NegotiationSimulator /></AuthenticatedLayout>} />
               <Route path="/app/timeline" element={<AuthenticatedLayout><EvidenceTimeline /></AuthenticatedLayout>} />
               <Route path="/app/mock-jury" element={<AuthenticatedLayout><MockJury /></AuthenticatedLayout>} />
+              <Route path="/app/foia" element={<AuthenticatedLayout><PublicRecordsManager /></AuthenticatedLayout>} />
+              <Route path="/app/officers" element={<AuthenticatedLayout><OfficerDatabase /></AuthenticatedLayout>} />
               
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

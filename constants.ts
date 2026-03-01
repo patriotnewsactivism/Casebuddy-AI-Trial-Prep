@@ -54,7 +54,27 @@ export const MOCK_CASE_TEMPLATES: { category: string, cases: Case[] }[] = [
         judge: 'Hon. R. Gellar',
         nextCourtDate: '2024-05-12',
         summary: 'Defending James Miller against Felony DUI charges causing bodily injury. Key issue: Accuracy of the field sobriety test and breathalyzer calibration. Defendant claims he was swerving to avoid a deer.',
-        winProbability: 45
+        winProbability: 45,
+        docketNumber: 'CR-2023-4412',
+        courtLocation: 'Harris County Superior Court',
+        jurisdiction: 'Texas',
+        clientType: 'defendant',
+        opposingParty: 'State of Texas',
+        legalTheory: 'Challenging the reliability of the Intoxilyzer 8000 results and the lack of probable cause for the initial stop.',
+        keyIssues: ['Breathalyzer calibration records', 'Bodycam footage of field sobriety test', 'Expert testimony on deer migration patterns in the area'],
+        evidence: [
+          {
+            id: 'e1',
+            caseId: 'temp_crim_1',
+            title: 'Maintenance Log - Intoxilyzer 8000',
+            type: DocumentType.EVIDENCE,
+            source: 'file',
+            summary: 'Records show the device missed its monthly calibration 2 months prior to the incident.',
+            keyEntities: ['Officer Thompson', 'Lab Tech Davis'],
+            risks: ['May be ruled admissible if technician testifies to general reliability'],
+            addedAt: new Date().toISOString()
+          }
+        ]
       },
       {
         id: 'temp_crim_2',
@@ -65,18 +85,27 @@ export const MOCK_CASE_TEMPLATES: { category: string, cases: Case[] }[] = [
         judge: 'Hon. L. Wright',
         nextCourtDate: '2024-06-01',
         summary: 'Armed robbery of a convenience store. Identification relies solely on grainy CCTV footage and one shaken eyewitness. Defendant has an alibi witness who is his girlfriend.',
-        winProbability: 60
-      },
-      {
-        id: 'temp_crim_3',
-        title: 'State v. Vance (First Degree Murder)',
-        client: 'Elias Vance',
-        status: CaseStatus.TRIAL,
-        opposingCounsel: 'D.A. Robert Stone',
-        judge: 'Hon. K. Moten',
-        nextCourtDate: '2024-07-15',
-        summary: 'High-profile murder case. Client accused of poisoning business partner. Circumstantial evidence is strong (motive, opportunity), but no direct forensic link to the poison.',
-        winProbability: 30
+        winProbability: 60,
+        docketNumber: '24-CF-0089',
+        courtLocation: 'Cook County Criminal Court',
+        jurisdiction: 'Illinois',
+        clientType: 'defendant',
+        opposingParty: 'People of the State of Illinois',
+        legalTheory: 'Mistaken identity and alibi defense.',
+        keyIssues: ['Reliability of eyewitness identification', 'CCTV quality and enhancement', 'Alibi corroboration'],
+        evidence: [
+          {
+            id: 'e2',
+            caseId: 'temp_crim_2',
+            title: 'Store CCTV Footage',
+            type: DocumentType.EVIDENCE,
+            source: 'file',
+            summary: 'Grainy 15fps video showing a figure in a dark hoodie. Height and build are similar to defendant, but face is obscured.',
+            keyEntities: ['Convenience Store', 'Robbery Suspect'],
+            risks: ['Jury may perceive build as unique enough for ID'],
+            addedAt: new Date().toISOString()
+          }
+        ]
       }
     ]
   },
@@ -92,72 +121,27 @@ export const MOCK_CASE_TEMPLATES: { category: string, cases: Case[] }[] = [
         judge: 'Hon. P. Anderson',
         nextCourtDate: '2024-04-20',
         summary: 'Plaintiff slipped on a wet floor with no signage. Sustained spinal injury. Defense claims contributory negligence (plaintiff was texting).',
-        winProbability: 70
-      },
-      {
-        id: 'temp_civ_2',
-        title: 'TechSol v. DevInc (Breach of Contract)',
-        client: 'TechSol Solutions',
-        status: CaseStatus.PRE_TRIAL,
-        opposingCounsel: 'H. Specter',
-        judge: 'Hon. B. Axelrod',
-        nextCourtDate: '2024-08-10',
-        summary: 'Complex commercial litigation. Defendant failed to deliver software module on agreed timeline, causing $2M in lost revenue. Defendant claims Force Majeure due to server farm fire.',
-        winProbability: 55
-      }
-    ]
-  },
-  {
-    category: "Civil Rights & Federal",
-    cases: [
-      {
-        id: 'temp_fed_1',
-        title: 'Williams v. Officer Smith (Section 1983)',
-        client: 'Marcus Williams',
-        status: CaseStatus.TRIAL,
-        opposingCounsel: 'City Attorney Davis',
-        judge: 'Hon. Fed. J. Marshall',
-        nextCourtDate: '2024-09-05',
-        summary: 'Federal civil rights claim for excessive force during a traffic stop. Police body cam footage is partial/corrupted. Qualified immunity defense raised.',
-        winProbability: 40
-      },
-      {
-        id: 'temp_fed_2',
-        title: 'Gov v. Mobius Syndicate (Civil RICO)',
-        client: 'The Mobius Group',
-        status: CaseStatus.DISCOVERY,
-        opposingCounsel: 'U.S. Attorney P. Chuck',
-        judge: 'Hon. S. Kim',
-        nextCourtDate: '2024-10-12',
-        summary: 'Defending against Racketeer Influenced and Corrupt Organizations Act charges alleging a pattern of wire fraud and money laundering. Complex financial trail.',
-        winProbability: 25
-      },
-      {
-        id: 'temp_fed_3',
-        title: 'Sterling v. The Alliance (Civil RICO)',
-        client: 'Elena Sterling (Journalist)',
-        status: CaseStatus.PRE_TRIAL,
-        opposingCounsel: 'Joint Defense Task Force',
-        judge: 'Hon. V. Stone',
-        nextCourtDate: '2024-11-15',
-        summary: 'Plaintiff, an investigative journalist, alleges a widespread conspiracy under RICO. She claims state and federal actors have coordinated over 5 years to silence her reporting through illegal surveillance, harassment, interference with employment, and intimidation tactics.',
-        winProbability: 35
-      }
-    ]
-  },
-  {
-    category: "Family Law",
-    cases: [
-      {
-        id: 'temp_fam_1',
-        title: 'Doe v. Doe (Custody Dispute)',
-        client: 'Jane Doe',
-        status: CaseStatus.PRE_TRIAL,
-        opposingCounsel: 'L. Gold',
-        judge: 'Hon. M. Judy',
-        nextCourtDate: '2024-05-01',
-        summary: 'Contentious custody battle. Father is seeking full custody alleging mother is unfit due to work schedule. Mother (client) has been primary caregiver for 5 years.',
-        winProbability: 65
+        winProbability: 70,
+        docketNumber: 'CIV-2023-9902',
+        courtLocation: 'Los Angeles County Superior Court',
+        jurisdiction: 'California',
+        clientType: 'plaintiff',
+        opposingParty: 'BigMart Inc.',
+        legalTheory: 'Premises liability based on failure to maintain safe environment and lack of required warning signs for a known hazard.',
+        keyIssues: ['Notice (constructive vs. actual)', 'Contributory negligence', 'Severity of spinal injuries'],
+        evidence: [
+          {
+            id: 'e3',
+            caseId: 'temp_civ_1',
+            title: 'Internal BigMart Spill Log',
+            type: DocumentType.EVIDENCE,
+            source: 'file',
+            summary: 'Spill was reported by an employee 22 minutes before the fall occurred, but no action was taken.',
+            keyEntities: ['Employee Smith', 'Manager Rodriguez'],
+            risks: ['Defense claims employee was on authorized break'],
+            addedAt: new Date().toISOString()
+          }
+        ]
       }
     ]
   }

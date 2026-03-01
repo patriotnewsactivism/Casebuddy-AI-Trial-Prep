@@ -2,15 +2,15 @@ import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
 import { CaseLawSearchResult, CaseLawCitation } from '../types';
 import { Search, BookOpen, ExternalLink, Save, History, Star, AlertTriangle, CheckCircle, XCircle, Link } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { callGeminiProxy } from '../services/apiProxy';
+import { Type } from "@google/genai";
 import { toast } from 'react-toastify';
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+import { handleError, handleSuccess } from '../utils/errorHandler';
 
 const CaseLawResearch = () => {
   const { activeCase } = useContext(AppContext);
   const [query, setQuery] = useState('');
+  const [jurisdiction, setJurisdiction] = useState(activeCase?.jurisdiction || 'federal');
   const [results, setResults] = useState<CaseLawSearchResult[]>([]);
   const [savedCitations, setSavedCitations] = useState<CaseLawCitation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,28 +27,28 @@ const CaseLawResearch = () => {
     setSearchHistory(prev => [query, ...prev.filter(q => q !== query)].slice(0, 10));
 
     try {
-      const prompt = `You are a legal research assistant. Find relevant case law for this query:
+      const prompt = `You are an expert legal research assistant. Find relevant, highly realistic case law for this query in the ${jurisdiction} jurisdiction.
 
 Query: ${query}
 ${activeCase ? `Case Context: ${activeCase.summary}` : ''}
 
 Return relevant cases with:
 - caseName: Full case name
-- citation: Standard citation format
-- court: Court that decided the case
+- citation: Standard citation format (e.g., 501 U.S. 442)
+- court: Court that decided the case (e.g., U.S. Supreme Court, 5th Circuit)
 - date: Date of decision
 - summary: Brief summary of facts and procedural history (2-3 sentences)
 - holding: The court's holding (1-2 sentences)
 - relevanceScore: 0-100 based on relevance to query
 - stillGoodLaw: boolean indicating if precedent is still valid
-- url: Placeholder for citation link (use https://casetext.com/case/[case-name-lowercase])
+- url: A realistic URL to the case text
 
 Return 5-8 relevant cases as JSON array.`;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        prompt,
+        options: {
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.ARRAY,
@@ -80,8 +80,7 @@ Return 5-8 relevant cases as JSON array.`;
         toast.info('No cases found. Try a different query.');
       }
     } catch (error) {
-      console.error('Search failed', error);
-      toast.error('Search failed. Check API key.');
+      handleError(error, 'Search failed. Check your configuration.', 'CaseLawResearch');
     } finally {
       setLoading(false);
     }
@@ -171,25 +170,45 @@ Return 5-8 relevant cases as JSON array.`;
       )}
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Search case law... (e.g., 'negligence proximate cause', 'fourth amendment warrant requirement')"
-              className="w-full pl-12 pr-4 py-4 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:border-gold-500 outline-none text-lg"
-            />
+        <div className="flex flex-col md:flex-row gap-3 mb-4">
+          <div className="md:w-48">
+            <label className="block text-xs text-slate-500 uppercase font-bold mb-1 ml-1">Jurisdiction</label>
+            <select 
+              value={jurisdiction}
+              onChange={(e) => setJurisdiction(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-4 text-white focus:border-gold-500 outline-none appearance-none cursor-pointer"
+            >
+              <option value="federal">Federal</option>
+              <option value="texas">Texas</option>
+              <option value="louisiana">Louisiana</option>
+              <option value="california">California</option>
+              <option value="florida">Florida</option>
+              <option value="new-york">New York</option>
+            </select>
           </div>
-          <button
-            onClick={handleSearch}
-            disabled={loading || !query.trim()}
-            className="bg-gold-500 hover:bg-gold-600 disabled:bg-slate-700 text-slate-900 font-bold px-8 py-4 rounded-lg transition-colors"
-          >
-            {loading ? 'Searching...' : 'Search'}
-          </button>
+          <div className="flex-1 relative">
+            <label className="block text-xs text-slate-500 uppercase font-bold mb-1 ml-1">Legal Query</label>
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="Search case law... (e.g., 'negligence proximate cause')"
+                className="w-full pl-12 pr-4 py-4 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:border-gold-500 outline-none text-lg"
+              />
+            </div>
+          </div>
+          <div className="md:pt-5">
+            <button
+              onClick={handleSearch}
+              disabled={loading || !query.trim()}
+              className="w-full bg-gold-500 hover:bg-gold-600 disabled:bg-slate-700 text-slate-900 font-bold px-8 py-4 rounded-lg transition-colors shadow-lg shadow-gold-500/10"
+            >
+              {loading ? 'Searching...' : 'Search'}
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">

@@ -107,6 +107,109 @@ const getDirectGeminiClient = (): GoogleGenAI | null => {
   return directGeminiClient;
 };
 
+// Direct OpenAI API call (fallback when proxy fails)
+const callOpenAIDirect = async (request: OpenAIProxyRequest): Promise<OpenAIProxyResponse> => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return {
+      success: false,
+      content: '',
+      error: createProxyError('NOT_CONFIGURED', 'OpenAI API key not configured'),
+    };
+  }
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: request.model || 'gpt-4o-mini',
+        messages: request.messages,
+        temperature: request.options?.temperature ?? 0.7,
+        max_tokens: request.options?.max_tokens ?? 1000,
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'OpenAI API error');
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      content: data.choices[0].message.content,
+    };
+  } catch (error: any) {
+    console.error('[apiProxy] Direct OpenAI error:', error);
+    return {
+      success: false,
+      content: '',
+      error: createProxyError('API_ERROR', error.message),
+    };
+  }
+};
+
+// Direct ElevenLabs API call (fallback when proxy fails)
+const callElevenLabsDirect = async (request: ElevenLabsProxyRequest): Promise<ElevenLabsProxyResponse> => {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    return {
+      success: false,
+      error: createProxyError('NOT_CONFIGURED', 'ElevenLabs API key not configured'),
+    };
+  }
+
+  try {
+    const voiceId = request.voiceId || '21m00Tcm4TlvDq8ikWAM';
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'xi-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        text: request.text,
+        model_id: request.modelId || 'eleven_turbo_v2_5',
+        voice_settings: {
+          stability: request.stability ?? 0.5,
+          similarity_boost: request.similarityBoost ?? 0.75,
+          style: request.style ?? 0,
+          use_speaker_boost: request.useSpeakerBoost ?? true,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail?.message || 'ElevenLabs API error');
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = btoa(
+      new Uint8Array(arrayBuffer).reduce(
+        (data, byte) => data + String.fromCharCode(byte),
+        ''
+      )
+    );
+
+    return {
+      success: true,
+      audioBase64: base64,
+    };
+  } catch (error: any) {
+    console.error('[apiProxy] Direct ElevenLabs error:', error);
+    return {
+      success: false,
+      error: createProxyError('API_ERROR', error.message),
+    };
+  }
+};
+
 const getEdgeFunctionUrl = (functionName: string): string => {
   const supabaseUrl = process.env.SUPABASE_URL;
   if (!supabaseUrl) {
@@ -273,6 +376,11 @@ export const callGeminiProxy = async (
 export const callOpenAIProxy = async (
   request: OpenAIProxyRequest
 ): Promise<OpenAIProxyResponse> => {
+  // Try direct API if we have a key (avoids CORS issues with proxy)
+  if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 20) {
+    return callOpenAIDirect(request);
+  }
+
   if (!isSupabaseConfigured()) {
     return {
       success: false,
@@ -287,11 +395,9 @@ export const callOpenAIProxy = async (
     });
 
     if (error) {
-      return {
-        success: false,
-        content: '',
-        error: createProxyError('FUNCTION_ERROR', error.message || 'OpenAI proxy request failed'),
-      };
+      console.warn('[apiProxy] OpenAI Proxy failed:', error.message);
+      // Last resort: try direct even if it might fail
+      return callOpenAIDirect(request);
     }
 
     if (!data?.success) {
@@ -307,11 +413,8 @@ export const callOpenAIProxy = async (
       content: data.text || data.content || '',
     };
   } catch (err) {
-    return {
-      success: false,
-      content: '',
-      error: handleProxyError(err, 'callOpenAIProxy'),
-    };
+    console.warn('[apiProxy] OpenAI Proxy exception:', err);
+    return callOpenAIDirect(request);
   }
 };
 
@@ -319,7 +422,14 @@ export async function* streamOpenAIProxy(
   request: OpenAIProxyRequest
 ): AsyncGenerator<string, void, unknown> {
   if (!isSupabaseConfigured()) {
-    throw createProxyError('NOT_CONFIGURED', 'Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.');
+    // If no proxy, we can't stream directly from client to OpenAI easily due to CORS
+    // but we can try to get a single response as a fallback
+    const direct = await callOpenAIDirect(request);
+    if (direct.success) {
+      yield direct.content;
+      return;
+    }
+    throw createProxyError('NOT_CONFIGURED', 'Supabase is not configured and direct streaming fallback failed.');
   }
 
   const url = getEdgeFunctionUrl('openai-proxy');
@@ -333,74 +443,67 @@ export async function* streamOpenAIProxy(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ ...request, stream: true }),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...request, stream: true }),
+    });
 
-  if (!response.ok) {
-    let errorDetails: string;
-    try {
-      const errorData = await response.json();
-      errorDetails = String(errorData.error ?? response.statusText);
-    } catch {
-      errorDetails = await response.text();
+    if (!response.ok) {
+      // Fallback to direct non-streaming if proxy fails
+      const direct = await callOpenAIDirect(request);
+      if (direct.success) {
+        yield direct.content;
+        return;
+      }
+      throw createProxyError('HTTP_ERROR', `Proxy failed and direct fallback failed`, response.status);
     }
-    throw createProxyError('HTTP_ERROR', errorDetails, response.status);
-  }
 
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw createProxyError('NO_BODY', 'Response body is null');
-  }
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw createProxyError('NO_BODY', 'Response body is null');
+    }
 
-  const decoder = new TextDecoder();
-  let buffer = '';
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
+    while (true) {
+      const { done, value } = await reader.read();
 
-    if (value) {
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line || !line.startsWith('data:')) continue;
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line || !line.startsWith('data:')) continue;
 
-        const data = line.slice(5).trim();
-        if (!data || data === '[DONE]') continue;
+          const data = line.slice(5).trim();
+          if (data === '[DONE]') continue;
 
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            yield content;
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              yield content;
+            }
+          } catch {
+            // Skip non-JSON lines
           }
-        } catch {
-          // Skip non-JSON lines
         }
       }
+
+      if (done) break;
     }
-
-    if (done) break;
-  }
-
-  const trailing = (buffer + decoder.decode()).trim();
-  if (trailing.startsWith('data:')) {
-    const data = trailing.slice(5).trim();
-    if (data && data !== '[DONE]') {
-      try {
-        const parsed = JSON.parse(data);
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) {
-          yield content;
-        }
-      } catch {
-        // Ignore trailing partial event
-      }
+  } catch (err) {
+    console.warn('[apiProxy] OpenAI Stream exception, falling back to direct:', err);
+    const direct = await callOpenAIDirect(request);
+    if (direct.success) {
+      yield direct.content;
+    } else {
+      throw err;
     }
   }
 }
@@ -480,6 +583,11 @@ export const callWhisperProxy = async (file: File): Promise<WhisperProxyResponse
 export const callElevenLabsProxy = async (
   request: ElevenLabsProxyRequest
 ): Promise<ElevenLabsProxyResponse> => {
+  // Try direct API if we have a key
+  if (process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_API_KEY.length > 20) {
+    return callElevenLabsDirect(request);
+  }
+
   if (!isSupabaseConfigured()) {
     return {
       success: false,
@@ -506,17 +614,8 @@ export const callElevenLabsProxy = async (
     });
 
     if (!response.ok) {
-      let errorDetails: string;
-      try {
-        const errorData = await response.json();
-        errorDetails = String(errorData.error ?? response.statusText);
-      } catch {
-        errorDetails = await response.text();
-      }
-      return {
-        success: false,
-        error: createProxyError('HTTP_ERROR', errorDetails, response.status),
-      };
+      console.warn('[apiProxy] ElevenLabs Proxy failed, falling back to direct:', response.statusText);
+      return callElevenLabsDirect(request);
     }
 
     const contentType = response.headers.get('content-type') || '';
@@ -548,10 +647,8 @@ export const callElevenLabsProxy = async (
       audioBase64: base64,
     };
   } catch (err) {
-    return {
-      success: false,
-      error: handleProxyError(err, 'callElevenLabsProxy'),
-    };
+    console.warn('[apiProxy] ElevenLabs Proxy exception, falling back to direct:', err);
+    return callElevenLabsDirect(request);
   }
 };
 

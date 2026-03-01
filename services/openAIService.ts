@@ -16,6 +16,11 @@ interface OpenAIResponse {
 }
 
 export const isOpenAIConfigured = (): boolean => {
+  // Check for direct client-side key first
+  const directKey = process.env.OPENAI_API_KEY || '';
+  if (directKey.length > 20) return true;
+  
+  // Otherwise check if proxy is ready (implies Edge Function setup)
   return isProxyReady();
 };
 

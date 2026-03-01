@@ -3,11 +3,10 @@ import React, { useState, useContext, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
 import { Juror, JuryDeliberation, JuryVerdict } from '../types';
 import { Users, Play, AlertCircle, TrendingUp, TrendingDown, Minus, CheckCircle, XCircle, MessageSquare, Loader2, Info, Brain, Scale } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { callGeminiProxy } from '../services/apiProxy';
+import { Type } from "@google/genai";
 import { Link } from 'react-router-dom';
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+import { handleError, handleSuccess } from '../utils/errorHandler';
 
 // Generate diverse jury pool
 const generateJuryPool = (): Juror[] => {
@@ -123,10 +122,10 @@ Return a JSON array of deliberation statements in this format:
 ]
 `;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        prompt,
+        options: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.ARRAY,
@@ -158,8 +157,7 @@ Return a JSON array of deliberation statements in this format:
       await generateVerdict(deliberationData);
 
     } catch (error) {
-      console.error('Deliberation failed', error);
-      alert('Failed to simulate jury deliberation. Check API key and try again.');
+      handleError(error, 'Deliberation failed. Check API key and try again.', 'MockJury');
       setIsDeliberating(false);
     }
   };
@@ -193,11 +191,10 @@ Return JSON with:
 - strengths: array of case strengths identified
 `;
 
-const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
         model: 'gemini-2.5-pro',
-        contents: prompt,
-        config: {
-          thinkingConfig: { thinkingBudget: 2048 },
+        prompt,
+        options: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -225,7 +222,7 @@ const response = await ai.models.generateContent({
       setIsDeliberating(false);
 
     } catch (error) {
-      console.error('Verdict generation failed', error);
+      handleError(error, 'Verdict generation failed', 'MockJury');
       setIsDeliberating(false);
     }
   };

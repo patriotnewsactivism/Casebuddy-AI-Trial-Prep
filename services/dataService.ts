@@ -18,7 +18,7 @@ const getFallbackCaseColumnStyle = (style: CaseColumnStyle): CaseColumnStyle => 
 // Map TypeScript camelCase to database columns.
 // Some deployments use snake_case columns, others use camelCase.
 function caseToRow(c: Case, style: CaseColumnStyle): Record<string, any> {
-  const base = {
+  const base: any = {
     id: c.id,
     title: c.title,
     client: c.client,
@@ -28,6 +28,7 @@ function caseToRow(c: Case, style: CaseColumnStyle): Record<string, any> {
     tags: c.tags || [],
     evidence: c.evidence || [],
     tasks: c.tasks || [],
+    witnesses: c.witnesses || [],
   };
 
   if (style === 'camel') {
@@ -36,6 +37,13 @@ function caseToRow(c: Case, style: CaseColumnStyle): Record<string, any> {
       opposingCounsel: c.opposingCounsel,
       nextCourtDate: c.nextCourtDate,
       winProbability: c.winProbability,
+      docketNumber: c.docketNumber,
+      courtLocation: c.courtLocation,
+      jurisdiction: c.jurisdiction,
+      clientType: c.clientType,
+      opposingParty: c.opposingParty,
+      legalTheory: c.legalTheory,
+      keyIssues: c.keyIssues,
     };
   }
 
@@ -44,6 +52,13 @@ function caseToRow(c: Case, style: CaseColumnStyle): Record<string, any> {
     opposing_counsel: c.opposingCounsel,
     next_court_date: c.nextCourtDate,
     win_probability: c.winProbability,
+    docket_number: c.docketNumber,
+    court_location: c.courtLocation,
+    jurisdiction: c.jurisdiction,
+    client_type: c.clientType,
+    opposing_party: c.opposingParty,
+    legal_theory: c.legalTheory,
+    key_issues: c.keyIssues,
   };
 }
 
@@ -59,9 +74,17 @@ function rowToCase(row: any): Case {
     nextCourtDate: row.next_court_date ?? row.nextcourtdate ?? row.nextCourtDate,
     summary: row.summary,
     winProbability: row.win_probability ?? row.winprobability ?? row.winProbability,
+    docketNumber: row.docket_number ?? row.docketnumber ?? row.docketNumber,
+    courtLocation: row.court_location ?? row.courtlocation ?? row.courtLocation,
+    jurisdiction: row.jurisdiction,
+    clientType: row.client_type ?? row.clienttype ?? row.clientType,
+    opposingParty: row.opposing_party ?? row.opposingparty ?? row.opposingParty,
+    legalTheory: row.legal_theory ?? row.legaltheory ?? row.legalTheory,
+    keyIssues: row.key_issues ?? row.keyissues ?? row.keyIssues,
     tags: row.tags || [],
     evidence: row.evidence || [],
     tasks: row.tasks || [],
+    witnesses: row.witnesses || [],
   };
 }
 

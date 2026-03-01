@@ -69,6 +69,18 @@ export interface Case {
   tags?: string[];
   evidence?: EvidenceItem[];
   tasks?: CaseTask[];
+  
+  // Realistic Legal Fields
+  docketNumber?: string;
+  courtLocation?: string;
+  jurisdiction?: Jurisdiction | string;
+  clientType?: 'plaintiff' | 'defendant' | 'prosecution';
+  opposingParty?: string;
+  legalTheory?: string;
+  keyIssues?: string[];
+  witnesses?: Witness[];
+  opposingProfile?: OpposingProfile;
+  lastUpdated?: string;
 }
 
 export interface Document {
