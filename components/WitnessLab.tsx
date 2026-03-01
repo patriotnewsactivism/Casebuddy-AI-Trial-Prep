@@ -27,6 +27,7 @@ const WitnessLab = () => {
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [liveMicTranscript, setLiveMicTranscript] = useState('');
+  const [micVolume, setMicVolume] = useState(0);
   
   const [captionText, setCaptionText] = useState<string>('');
   const [captionVisible, setCaptionVisible] = useState(false);
@@ -52,6 +53,7 @@ const WitnessLab = () => {
   const recordingMimeTypeRef = useRef<string>('audio/webm');
   const finalSpeechTranscriptRef = useRef('');
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const rafRef = useRef<number | null>(null);
   const handleAudioUploadRef = useRef<((audioBlob: Blob, preferredTranscript?: string) => Promise<void>) | undefined>(undefined);
 
   const getSessionId = (witnessId: string) => `witness-${witnessId}-${activeCase?.id || 'default'}`;
@@ -174,6 +176,28 @@ const WitnessLab = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordingStreamRef.current = stream;
+
+      // Real-time volume meter setup
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const updateVolume = () => {
+        if (!isRecordingRef.current) return;
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        setMicVolume(Math.min(100, average * 2.5));
+        rafRef.current = requestAnimationFrame(updateVolume);
+      };
+      rafRef.current = requestAnimationFrame(updateVolume);
+
       const supportedMimeTypes = [
         'audio/webm;codecs=opus',
         'audio/webm',
@@ -238,11 +262,20 @@ const WitnessLab = () => {
 
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
+        console.log('[WitnessLab] Starting SpeechRecognition...');
         const recognition = new SpeechRecognition();
-        recognition.continuous = false;
+        recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
         recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => {
+          console.log('[WitnessLab] SpeechRecognition started');
+        };
+
+        recognition.onspeechstart = () => {
+          console.log('[WitnessLab] User is speaking...');
+        };
 
         recognition.onresult = (event: any) => {
           let interimTranscript = '';
@@ -269,9 +302,13 @@ const WitnessLab = () => {
         };
 
         recognition.onerror = (event: any) => {
-          console.warn('[WitnessLab] Speech recognition error:', event?.error || event);
-          if (event?.error === 'aborted' || event?.error === 'no-speech') {
-            return;
+          console.error('[WitnessLab] Speech recognition error:', event?.error || event);
+          if (event?.error === 'not-allowed') {
+            toast.error('Microphone permission denied for speech recognition.');
+          } else if (event?.error === 'no-speech') {
+            // Ignore no-speech non-fatal error
+          } else if (event?.error !== 'aborted') {
+            toast.error(`Speech recognition error: ${event.error}`);
           }
         };
 
@@ -331,6 +368,12 @@ const WitnessLab = () => {
       recordingStreamRef.current.getTracks().forEach(track => track.stop());
       recordingStreamRef.current = null;
     }
+
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setMicVolume(0);
     
     setCaptionText('Processing...');
   }, []);
@@ -805,7 +848,17 @@ ${'='.repeat(50)}
           {(isRecording || liveMicTranscript) && (
             <div className="flex justify-end">
               <div className="max-w-[75%] bg-blue-950/40 border border-blue-700/50 rounded-2xl rounded-br-none px-5 py-3">
-                <p className="text-[10px] uppercase tracking-wide text-blue-300 mb-1">Live Transcript</p>
+                <div className="flex justify-between items-center mb-1">
+                  <p className="text-[10px] uppercase tracking-wide text-blue-300">Live Transcript</p>
+                  {isRecording && (
+                    <div className="w-24 h-1 bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-blue-400 transition-all duration-75"
+                        style={{ width: `${micVolume}%` }}
+                      ></div>
+                    </div>
+                  )}
+                </div>
                 <p className="text-sm text-blue-100 leading-relaxed">
                   {liveMicTranscript || 'Listening...'}
                 </p>

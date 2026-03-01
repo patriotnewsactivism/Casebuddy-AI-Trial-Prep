@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { getTrialSimSystemPrompt, isOpenAIConfigured, streamOpenAIResponse } from '../services/openAIService';
 import { generateProactiveCoaching } from '../services/geminiService';
+import { callGeminiProxy } from '../services/apiProxy';
+import { Type } from "@google/genai";
 import { ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured, synthesizeSpeech } from '../services/elevenLabsService';
 import { isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
@@ -311,6 +313,7 @@ const TrialSim: React.FC = () => {
   const recordedChunksRef   = useRef<Blob[]>([]);
   const playbackAudioRef    = useRef<HTMLAudioElement | null>(null);
   const abortControllerRef  = useRef<AbortController | null>(null);
+  const rafRef              = useRef<number | null>(null);
   const sessionStartTimeRef = useRef<number>(0);
   const metricsRef          = useRef<TrialSessionMetrics>({
     objectionsReceived: 0, fallaciesCommitted: 0,
@@ -513,6 +516,11 @@ const TrialSim: React.FC = () => {
     }
     mediaRecorderRef.current = null;
 
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
 
@@ -685,6 +693,28 @@ const TrialSim: React.FC = () => {
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
       streamRef.current = stream;
+
+      // Real-time volume meter setup
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const updateVolume = () => {
+        if (!isLiveRef.current) return;
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        dispatch({ type: 'SET_VOLUME', volume: Math.min(100, average * 2) });
+        rafRef.current = requestAnimationFrame(updateVolume);
+      };
+      rafRef.current = requestAnimationFrame(updateVolume);
+
     } catch (err) {
       console.error('[TrialSim] Microphone denied:', err);
       toast.error('Microphone access denied — allow it in browser settings and retry.');
@@ -707,11 +737,16 @@ const TrialSim: React.FC = () => {
     recognition.maxAlternatives = 1;
     recognitionRef.current = recognition;
 
+    recognition.onstart = () => {
+      console.log('[TrialSim] SpeechRecognition started');
+    };
+
     const MAX_RESTARTS = 10;
     let silenceTimer: ReturnType<typeof setTimeout> | null = null;
     let lastTranscriptTime = Date.now();
 
     recognition.onspeechstart = () => {
+      console.log('[TrialSim] User speaking...');
       dispatch({ type: 'SET_VOLUME', volume: 80 });
       lastTranscriptTime = Date.now();
     };
@@ -721,8 +756,12 @@ const TrialSim: React.FC = () => {
     };
 
     recognition.onresult = async (event: SpeechRecognitionEvent) => {
-      if (isAISpeakingRef.current) return;
+      if (isAISpeakingRef.current) {
+        console.log('[TrialSim] Ignoring speech result because AI is speaking');
+        return;
+      }
       
+      console.log('[TrialSim] Speech result received');
       lastTranscriptTime = Date.now();
       if (silenceTimer) {
         clearTimeout(silenceTimer);

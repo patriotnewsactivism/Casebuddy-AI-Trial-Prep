@@ -354,13 +354,7 @@ const callGeminiDirect = async (request: GeminiProxyRequest): Promise<GeminiProx
 export const callGeminiProxy = async (
   request: GeminiProxyRequest
 ): Promise<GeminiProxyResponse> => {
-  // Prefer direct API if we have a key (avoids CORS issues with proxy)
-  const directClient = getDirectGeminiClient();
-  if (directClient) {
-    return callGeminiDirect(request);
-  }
-
-  // Only try proxy if no direct key and Supabase is configured
+  // Try proxy first if Supabase is configured (preferred for CORS)
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase.functions.invoke('gemini-proxy', {
@@ -371,13 +365,13 @@ export const callGeminiProxy = async (
         return data as GeminiProxyResponse;
       }
 
-      console.warn('[apiProxy] Proxy failed:', error?.message || data?.error);
+      console.warn('[apiProxy] Proxy failed, falling back to direct:', error?.message || data?.error);
     } catch (err) {
-      console.warn('[apiProxy] Proxy exception:', err);
+      console.warn('[apiProxy] Proxy exception, falling back to direct:', err);
     }
   }
 
-  // Last resort: try direct API even without explicit key
+  // Fallback to direct client-side API
   return callGeminiDirect(request);
 };
 

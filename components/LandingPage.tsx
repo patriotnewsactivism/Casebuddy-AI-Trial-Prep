@@ -44,18 +44,19 @@ const LandingPage = () => {
       price: '$0',
       period: 'forever',
       features: [
-        '3 cases maximum',
-        '10 AI generations/month',
-        '5 trial sessions/month',
+        '1 case maximum',
+        '3 AI generations/month',
+        '1 trial session/month',
         'Basic analytics',
-        'Community support'
+        'Community support',
+        'No export features'
       ],
       cta: 'Get Started Free',
       highlight: false
     },
     {
       name: 'Pro',
-      price: '$49',
+      price: '$129',
       period: '/month',
       features: [
         'Unlimited cases',
@@ -72,7 +73,7 @@ const LandingPage = () => {
     },
     {
       name: 'Firm',
-      price: '$199',
+      price: '$299',
       period: '/month/attorney',
       features: [
         'Everything in Pro',
