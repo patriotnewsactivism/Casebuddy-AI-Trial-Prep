@@ -11,16 +11,57 @@ import { Message, Witness, TranscriptionProvider, CoachingSuggestion } from '../
 import { Send, Mic, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download, Lightbulb, Target, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import CaptionOverlay from './CaptionOverlay';
+import { useSavedSessions } from '../hooks/useSavedSessions';
 
 type WitnessVoicePreset = 'witness-hostile' | 'witness-nervous' | 'witness-cooperative';
 
 const WitnessLab = () => {
   const { activeCase } = useContext(AppContext);
   const { getKnowledgeContext } = useKnowledge();
+  const { addSession } = useSavedSessions(activeCase?.id);
   const [selectedWitness, setSelectedWitness] = useState<Witness>(MOCK_WITNESSES[0]);
   const [messages, setMessages] = useState<Message[]>([
     { id: '0', sender: 'system', text: 'Simulation initialized. You may begin your examination.', timestamp: Date.now() }
   ]);
+  const sessionStartTimeRef = useRef<number>(Date.now());
+
+  const saveCurrentSession = useCallback(async () => {
+    if (!activeCase || messages.length <= 1) return;
+
+    const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
+    
+    await addSession({
+      id: `witness-session-${Date.now()}`,
+      caseId: activeCase.id,
+      caseTitle: `${activeCase.title} - ${selectedWitness.name} Exam`,
+      phase: 'direct-examination', // Witness lab is usually examination
+      mode: 'practice',
+      date: new Date().toISOString(),
+      duration,
+      transcript: messages.map(m => ({
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        sender: m.sender,
+        text: m.text,
+        timestamp: m.timestamp,
+      })),
+      score: selectedWitness.credibilityScore,
+      feedback: `Examination of ${selectedWitness.name} (${selectedWitness.role})`,
+      metrics: {
+        objectionsReceived: 0,
+        fallaciesCommitted: 0,
+        avgRhetoricalScore: selectedWitness.credibilityScore,
+        wordCount: messages.reduce((acc, m) => acc + m.text.split(' ').length, 0),
+        fillerWordsCount: 0
+      }
+    });
+  }, [activeCase, messages, selectedWitness, addSession]);
+
+  useEffect(() => {
+    return () => {
+      // Auto-save on unmount if there's progress
+      void saveCurrentSession();
+    };
+  }, [saveCurrentSession]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isRecording, setIsRecording] = useState(false);

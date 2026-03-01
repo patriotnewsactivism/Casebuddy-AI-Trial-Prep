@@ -277,6 +277,22 @@ export const upsertSession = async (session: TrialSession): Promise<void> => {
   }
 };
 
+export const removeSession = async (sessionId: string, caseId: string): Promise<void> => {
+  const client = getSupabaseClient();
+  if (!client) {
+    const localSessions = JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]');
+    const updated = localSessions.filter((s: any) => s.id !== sessionId);
+    localStorage.setItem(`trial_sessions_${caseId}`, JSON.stringify(updated));
+    return;
+  }
+
+  const { error } = await client.from('trial_sessions').delete().eq('id', sessionId);
+  if (error) {
+    console.error('[Supabase] removeSession failed', error);
+    throw error;
+  }
+};
+
 export const resetLocalCache = () => {
   clearCases();
 };

@@ -488,6 +488,10 @@ const TrialSim: React.FC = () => {
       metrics: { ...metricsRef.current },
     });
 
+    if (user?.plan === 'free') {
+      void updateUsage({ trial_sessions_this_month: (user.usage?.trial_sessions_this_month || 0) + 1 });
+    }
+
     toast.success('Session saved!');
   }, [activeCase, phase, mode, messages, avgRhetoricalScore, addSession]);
 
@@ -678,6 +682,12 @@ const TrialSim: React.FC = () => {
       toast.error('Select a case, phase, and mode first.');
       return;
     }
+
+    if (user?.plan === 'free' && (user.usage?.trial_sessions_this_month || 0) >= 1) {
+      toast.error('Free plan is limited to 1 trial session per month. Please upgrade to Pro.');
+      return;
+    }
+
     if (!isOpenAIConfigured()) {
       toast.error('OpenAI API key not configured. Add OPENAI_API_KEY to .env.local');
       return;
