@@ -33,6 +33,11 @@ interface AIStructuredResponse {
   speak: string;
   action: 'response' | 'objection' | 'ruling' | 'question';
   objection: { grounds: string; explanation: string } | null;
+  ruling?: {
+    type: 'sustained' | 'overruled' | 'warning';
+    text: string;
+    judgeName: string;
+  } | null;
   coaching: {
     critique: string;
     suggestion: string;
@@ -149,7 +154,8 @@ function buildStructuredSystemPrompt(
   phase: TrialPhase,
   mode: SimulationMode,
   opponentName: string,
-  caseSummary: string
+  caseSummary: string,
+  judgeName: string = "Judge"
 ): string {
   const base = getTrialSimSystemPrompt(phase, mode, opponentName, caseSummary);
   return `${base}
@@ -161,6 +167,7 @@ You MUST respond ONLY with valid JSON (no markdown, no code fences) matching thi
   "speak": "<what you say aloud as opposing counsel or judge — stay in character>",
   "action": "response" | "objection" | "ruling" | "question",
   "objection": null | { "grounds": "<legal basis, e.g. Hearsay>", "explanation": "<1–2 sentence explanation>" },
+  "ruling": null | { "type": "sustained" | "overruled" | "warning", "text": "<The judge's ruling statement>", "judgeName": "${judgeName}" },
   "coaching": {
     "critique": "<constructive critique of the user's last statement — be specific>",
     "suggestion": "<concrete, actionable improvement>",
@@ -173,6 +180,7 @@ You MUST respond ONLY with valid JSON (no markdown, no code fences) matching thi
 Rules:
 • "speak" is the ONLY text said aloud. Keep it courtroom-realistic and appropriate to the phase.
 • "objection" is non-null ONLY when you raise a formal objection; otherwise null.
+• "ruling" is non-null ONLY if the judge intervenes or rules on an objection; otherwise null.
 • "coaching" is ALWAYS fully populated — it drives the private training HUD, never spoken.
 • "rhetoricalEffectiveness" reflects argument strength: 0=catastrophic, 50=average, 100=masterful.
 • Never break character in "speak". Coaching commentary stays in "coaching" only.
@@ -271,6 +279,7 @@ const TrialSim: React.FC = () => {
   const [messages, setMessages]             = useState<Message[]>([]);
   const [coachingTip, setCoachingTip]       = useState<CoachingAnalysis | null>(null);
   const [objectionAlert, setObjectionAlert] = useState<{ grounds: string; explanation: string } | null>(null);
+  const [judgeAlert, setJudgeAlert] = useState<{ type: string; text: string; judgeName: string } | null>(null);
   const [showCoaching, setShowCoaching]     = useState(false);
   const [showTeleprompter, setShowTeleprompter] = useState(true);
   const [showEvidencePanel, setShowEvidencePanel] = useState(false);
@@ -536,19 +545,76 @@ const TrialSim: React.FC = () => {
 
     try {
       abortControllerRef.current = new AbortController();
-      const systemPrompt = buildStructuredSystemPrompt(phase, mode, opponentName, activeCase.summary);
+      const systemPrompt = buildStructuredSystemPrompt(phase, mode, opponentName, activeCase.summary, activeCase.judge);
 
-      let rawResponse = '';
-      for await (const chunk of streamOpenAIResponse(systemPrompt, transcript, [])) {
-        rawResponse += chunk;
-        dispatch({ type: 'SET_OUTPUT_TRANSCRIPT', text: rawResponse });
-      }
+      const response = await callGeminiProxy({
+        prompt: transcript,
+        systemPrompt,
+        model: 'gemini-2.5-flash',
+        options: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              speak: { type: Type.STRING },
+              action: { type: Type.STRING },
+              objection: {
+                type: Type.OBJECT,
+                properties: {
+                  grounds: { type: Type.STRING },
+                  explanation: { type: Type.STRING }
+                },
+                required: ['grounds', 'explanation']
+              },
+              ruling: {
+                type: Type.OBJECT,
+                properties: {
+                  type: { type: Type.STRING },
+                  text: { type: Type.STRING },
+                  judgeName: { type: Type.STRING }
+                },
+                required: ['type', 'text', 'judgeName']
+              },
+              coaching: {
+                type: Type.OBJECT,
+                properties: {
+                  critique: { type: Type.STRING },
+                  suggestion: { type: Type.STRING },
+                  teleprompterScript: { type: Type.STRING },
+                  rhetoricalEffectiveness: { type: Type.NUMBER },
+                  fallaciesIdentified: { type: Type.ARRAY, items: { type: Type.STRING } }
+                }
+              }
+            }
+          }
+        },
+        conversationHistory: messages.map(m => ({
+          role: m.sender === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text }]
+        }))
+      });
 
-      const parsed = parseAIResponse(rawResponse);
+      const parsed = parseAIResponse(response.text);
+      dispatch({ type: 'SET_OUTPUT_TRANSCRIPT', text: parsed.speak });
 
       if (parsed.objection) {
         dispatch({ type: 'OBJECTION_DETECTED' });
         setObjectionAlert(parsed.objection);
+      }
+
+      if (parsed.ruling) {
+        setJudgeAlert({
+          type: parsed.ruling.type,
+          text: parsed.ruling.text,
+          judgeName: parsed.ruling.judgeName || activeCase.judge || "Judge"
+        });
+        
+        setMessages(prev => [...prev, {
+          id: `${Date.now()}-j`,
+          sender: 'system',
+          text: `[${parsed.ruling?.judgeName || 'Judge'}]: ${parsed.ruling?.text}`,
+          timestamp: Date.now(),
+        }]);
       }
 
       if (parsed.coaching) {
@@ -577,17 +643,23 @@ const TrialSim: React.FC = () => {
       }]);
 
       await speakText(parsed.speak);
+      
+      if (parsed.ruling) {
+        await new Promise(r => setTimeout(r, 500));
+        await speakText(parsed.ruling.text);
+        setTimeout(() => setJudgeAlert(null), 5000);
+      }
 
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
       console.error('[TrialSim] AI turn error:', err);
-      toast.error('Failed to get AI response — check console.');
+      toast.error('Failed to get AI response — check configuration.');
     } finally {
       dispatch({ type: 'SET_INPUT_TRANSCRIPT', text: '' });
       dispatch({ type: 'AI_SPEAKING_END' });
       isProcessingRef.current = false;
     }
-  }, [phase, mode, activeCase, opponentName, avgRhetoricalScore, speakText]);
+  }, [phase, mode, activeCase, opponentName, avgRhetoricalScore, speakText, messages]);
 
   // ── Start session ─────────────────────────────────────────────────────────
 
