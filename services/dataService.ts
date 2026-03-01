@@ -200,6 +200,83 @@ export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Pr
   }
 };
 
+export const fetchSessions = async (caseId: string): Promise<TrialSession[]> => {
+  const client = getSupabaseClient();
+  if (!client) {
+    try {
+      return JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  const { data, error } = await client
+    .from('trial_sessions')
+    .select('*')
+    .eq('case_id', caseId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[Supabase] fetchSessions failed', error);
+    try {
+      return JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  // Map database row to TrialSession interface
+  const mapped: TrialSession[] = (data || []).map(row => ({
+    id: row.id,
+    caseId: row.case_id,
+    caseTitle: row.session_name, // Mapping session_name to caseTitle for compatibility
+    phase: row.session_type || 'other',
+    mode: row.notes || 'practice', // Storing mode in notes for now
+    date: row.session_date || new Date().toISOString(),
+    duration: row.metadata?.duration || 0,
+    transcript: Array.isArray(row.key_events) ? row.key_events : [],
+    score: row.metadata?.score || 0,
+    feedback: row.outcomes || '',
+    metrics: row.ai_preparation || {},
+  }));
+
+  return mapped;
+};
+
+export const upsertSession = async (session: TrialSession): Promise<void> => {
+  const client = getSupabaseClient();
+  
+  // Always update local cache first
+  const localSessions = JSON.parse(localStorage.getItem(`trial_sessions_${session.caseId}`) ?? '[]');
+  const filtered = localSessions.filter((s: any) => s.id !== session.id);
+  localStorage.setItem(`trial_sessions_${session.caseId}`, JSON.stringify([session, ...filtered].slice(0, 20)));
+
+  if (!client) return;
+
+  const row = {
+    id: session.id.includes('-') ? session.id : undefined, // Only use if it looks like a UUID
+    case_id: session.caseId,
+    session_name: session.caseTitle,
+    session_date: new Date(session.date).toISOString().split('T')[0],
+    session_type: session.phase,
+    outcomes: session.feedback,
+    notes: session.mode,
+    ai_preparation: session.metrics,
+    key_events: session.transcript,
+    metadata: {
+      duration: session.duration,
+      score: session.score,
+      audioUrl: session.audioUrl
+    }
+  };
+
+  const { error } = await client.from('trial_sessions').upsert(row, { onConflict: 'id' });
+  if (error) {
+    console.error('[Supabase] upsertSession failed', error);
+    throw error;
+  }
+};
+
 export const resetLocalCache = () => {
   clearCases();
 };
