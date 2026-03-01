@@ -1,3 +1,5 @@
+import { extractAudio } from '../services/ffmpegService';
+
 export const fileToBase64 = (file: File | Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -78,12 +80,7 @@ export const encodeWAV = (samples: Float32Array, sampleRate: number = 16000, num
 };
 
 /**
- * Processes a large Audio or Video file.
- * 
- * UPDATE: Added `skipConversion` for Gemini.
- * Gemini natively supports video files. Converting video to audio in the browser
- * is extremely CPU intensive and slow for large files. Skipping this step
- * makes the process 10x faster.
+ * Processes a large Audio or Video file using FFmpeg (WASM) with AudioContext fallback.
  */
 export const processMediaFile = async (file: File, skipConversion: boolean = false): Promise<Blob> => {
     // SPEED PATH: If provider supports video (Gemini), return immediately.
@@ -96,15 +93,17 @@ export const processMediaFile = async (file: File, skipConversion: boolean = fal
         return file;
     }
 
-    // SAFETY LIMIT: Browser Memory Cap (~1.8 GB)
-    const MAX_SAFE_SIZE = 1.8 * 1024 * 1024 * 1024;
-    
-    if (file.size > MAX_SAFE_SIZE) {
-        console.warn(`File size exceeds browser memory safety limit. Uploading original file directly.`);
-        return file;
+    // 1. TRY FFmpeg (Best Quality & Reliability)
+    try {
+      console.log(`[audioUtils] Attempting FFmpeg conversion for ${file.name}`);
+      const audioBlob = await extractAudio(file);
+      console.log(`[audioUtils] FFmpeg conversion successful: ${audioBlob.size} bytes`);
+      return audioBlob;
+    } catch (ffmpegError) {
+      console.warn(`[audioUtils] FFmpeg conversion failed, falling back to AudioContext`, ffmpegError);
     }
 
-    // CONVERSION PATH: Extract audio from video/audio file
+    // 2. FALLBACK to AudioContext (Legacy Browser Path)
     try {
         const arrayBuffer = await file.arrayBuffer();
         const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -145,7 +144,7 @@ export const processMediaFile = async (file: File, skipConversion: boolean = fal
         return encodeWAV(finalSamples, targetRate, numChannels);
 
     } catch (e) {
-        console.warn("Client-side audio conversion failed. Falling back to original file upload.", e);
+        console.error("[audioUtils] All client-side audio conversion failed. Uploading original file.", e);
         return file; 
     }
 };
