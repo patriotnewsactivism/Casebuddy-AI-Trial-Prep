@@ -35,6 +35,22 @@ const formatTimestamp = (seconds: number) => {
     return `${min}:${sec.toString().padStart(2, '0')}`;
 };
 
+export const fileToGenerativePart = async (file: File | Blob): Promise<{ data: string; mimeType: string }> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64data = reader.result as string;
+      const base64Content = base64data.split(',')[1];
+      resolve({
+        data: base64Content,
+        mimeType: file.type || 'audio/mpeg',
+      });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 const transcribeWithGemini = async (
   file: Blob | File,
   settings: TranscriptionSettings,
@@ -43,19 +59,20 @@ const transcribeWithGemini = async (
   try {
     if (onProgress) onProgress(10);
     
-    // Convert blob to base64 for inlineData if small, or use proxy for larger files
-    // For now, let's try the direct proxy approach which is safer for larger files
-    // but the proxy needs to support file uploads. 
-    // If proxy fails, we'll try a simpler prompt with just the text if it's already extracted.
-    
-    const prompt = getPrompt(settings);
+    const { data, mimeType } = await fileToGenerativePart(file);
     
     if (onProgress) onProgress(30);
     
+    const prompt = getPrompt(settings);
+    
     const response = await callGeminiProxy({
-      prompt: "Transcribe the attached audio accurately following the provided rules.",
+      prompt: "Transcribe the attached audio accurately following the provided rules. Output only the JSON array.",
       systemPrompt: prompt,
       model: 'gemini-2.5-flash',
+      inlineData: {
+        data,
+        mimeType
+      },
       options: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -67,7 +84,8 @@ const transcribeWithGemini = async (
               end: { type: Type.NUMBER },
               speaker: { type: Type.STRING },
               text: { type: Type.STRING }
-            }
+            },
+            required: ['start', 'end', 'speaker', 'text']
           }
         }
       }
