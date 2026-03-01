@@ -12,6 +12,10 @@ export interface GeminiProxyRequest {
   prompt: string;
   systemPrompt?: string;
   model?: string;
+  inlineData?: {
+    mimeType: string;
+    data: string;
+  };
   options?: {
     temperature?: number;
     maxOutputTokens?: number;
@@ -287,23 +291,27 @@ const callGeminiDirect = async (request: GeminiProxyRequest): Promise<GeminiProx
   try {
     const model = request.model || 'gemini-2.5-flash';
     
-    const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    const contents: Array<{ role: string; parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }> = [];
     
     if (request.conversationHistory && request.conversationHistory.length > 0) {
       contents.push(...request.conversationHistory);
     }
     
+    const currentParts: any[] = [];
     if (request.systemPrompt) {
-      contents.push({
-        role: 'user',
-        parts: [{ text: `System: ${request.systemPrompt}\n\nUser: ${request.prompt}` }],
-      });
+      currentParts.push({ text: `System: ${request.systemPrompt}\n\nUser: ${request.prompt}` });
     } else {
-      contents.push({
-        role: 'user',
-        parts: [{ text: request.prompt }],
-      });
+      currentParts.push({ text: request.prompt });
     }
+
+    if (request.inlineData) {
+      currentParts.push({ inlineData: request.inlineData });
+    }
+
+    contents.push({
+      role: 'user',
+      parts: currentParts,
+    });
 
     const config: any = {
       temperature: request.options?.temperature ?? 0.7,

@@ -9,7 +9,11 @@ interface GeminiRequest {
   prompt: string;
   systemPrompt?: string;
   model?: string;
-  conversationHistory?: Array<{ role: string; parts: Array<{ text: string }> }>;
+  inlineData?: {
+    mimeType: string;
+    data: string;
+  };
+  conversationHistory?: Array<{ role: string; parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }>;
   options?: {
     temperature?: number;
     maxOutputTokens?: number;
@@ -25,7 +29,7 @@ const DEFAULT_MODEL = 'gemini-2.5-flash';
 export async function createGeminiPayload(request: GeminiRequest) {
   const contents: Array<{
     role: string;
-    parts: Array<{ text: string }>;
+    parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
   }> = [];
 
   // Add conversation history if provided
@@ -33,18 +37,23 @@ export async function createGeminiPayload(request: GeminiRequest) {
     contents.push(...request.conversationHistory);
   }
 
-  // Add current message
+  // Add current message parts
+  const currentParts: any[] = [];
   if (request.systemPrompt) {
-    contents.push({
-      role: 'user',
-      parts: [{ text: `System: ${request.systemPrompt}\n\nUser: ${request.prompt}` }],
-    });
+    currentParts.push({ text: `System: ${request.systemPrompt}\n\nUser: ${request.prompt}` });
   } else {
-    contents.push({
-      role: 'user',
-      parts: [{ text: request.prompt }],
-    });
+    currentParts.push({ text: request.prompt });
   }
+
+  // Add inline data (audio/image/etc)
+  if (request.inlineData) {
+    currentParts.push({ inlineData: request.inlineData });
+  }
+
+  contents.push({
+    role: 'user',
+    parts: currentParts,
+  });
 
   const payload: any = {
     contents,

@@ -12,13 +12,15 @@ const StrategyRoom = () => {
   const [insights, setInsights] = useState<StrategyInsight[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const opponent = activeCase?.opposingProfile || MOCK_OPPONENT;
+
   // Initial load
   useEffect(() => {
     if (activeCase && insights.length === 0) {
       handleGenerateStrategy();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCase]);
+  }, [activeCase?.id]);
 
   const handleGenerateStrategy = async () => {
     if (!activeCase) return;
@@ -26,7 +28,7 @@ const StrategyRoom = () => {
     const knowledgeContext = getKnowledgeContext(activeCase.id);
     const result = await predictStrategy(
       activeCase.summary,
-      JSON.stringify(MOCK_OPPONENT),
+      JSON.stringify(opponent),
       knowledgeContext
     );
     setInsights(result);
@@ -38,7 +40,7 @@ const StrategyRoom = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
             <h1 className="text-3xl font-bold font-serif text-white">War Room Strategy</h1>
-            <p className="text-slate-400 mt-1">Deep-thought analysis against {MOCK_OPPONENT.name}</p>
+            <p className="text-slate-400 mt-1">Deep-thought analysis against {opponent.name}</p>
         </div>
         <button 
           onClick={handleGenerateStrategy}
@@ -60,11 +62,11 @@ const StrategyRoom = () => {
            
            <div className="flex items-center gap-4 mb-6">
               <div className="w-16 h-16 bg-slate-700 rounded-full flex items-center justify-center text-2xl font-bold text-slate-400">
-                 {MOCK_OPPONENT.name.charAt(0)}
+                 {opponent.name.charAt(0)}
               </div>
               <div>
-                 <div className="font-bold text-white text-lg">{MOCK_OPPONENT.name}</div>
-                 <div className="text-sm text-slate-400">{MOCK_OPPONENT.firm}</div>
+                 <div className="font-bold text-white text-lg">{opponent.name}</div>
+                 <div className="text-sm text-slate-400">{opponent.firm}</div>
               </div>
            </div>
 
@@ -72,19 +74,19 @@ const StrategyRoom = () => {
               <div>
                  <div className="flex justify-between text-sm mb-1">
                     <span className="text-slate-400">Aggressiveness</span>
-                    <span className="text-white">{MOCK_OPPONENT.aggressiveness}%</span>
+                    <span className="text-white">{opponent.aggressiveness}%</span>
                  </div>
                  <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-red-500 rounded-full" style={{ width: `${MOCK_OPPONENT.aggressiveness}%` }}></div>
+                    <div className="h-full bg-red-500 rounded-full" style={{ width: `${opponent.aggressiveness}%` }}></div>
                  </div>
               </div>
               <div>
                  <div className="flex justify-between text-sm mb-1">
                     <span className="text-slate-400">Settlement Tendency</span>
-                    <span className="text-white">{MOCK_OPPONENT.settlementTendency}%</span>
+                    <span className="text-white">{opponent.settlementTendency}%</span>
                  </div>
                  <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${MOCK_OPPONENT.settlementTendency}%` }}></div>
+                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${opponent.settlementTendency}%` }}></div>
                  </div>
               </div>
            </div>
@@ -92,7 +94,7 @@ const StrategyRoom = () => {
            <div className="mt-6">
               <h4 className="text-sm font-semibold text-slate-300 mb-2">Known Tactics</h4>
               <ul className="space-y-2">
-                 {MOCK_OPPONENT.commonTactics.map((t, i) => (
+                 {opponent.commonTactics.map((t, i) => (
                     <li key={i} className="text-xs bg-slate-900/50 px-3 py-2 rounded border border-slate-700 text-slate-400">
                        {t}
                     </li>
