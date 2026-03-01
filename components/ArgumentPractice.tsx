@@ -258,6 +258,7 @@ const MODES = [
 
 const TrialSim: React.FC = () => {
   const { activeCase } = useContext(AppContext);
+  const { user, updateUsage } = useAuth();
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const [view, setView]     = useState<SimView>('setup');
