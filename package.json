@@ -11,6 +11,8 @@
     "setup:supabase": "npx tsx scripts/setup-supabase.ts"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@google/genai": "^1.30.0",
     "@ricky0123/vad-web": "^0.0.30",
     "@supabase/supabase-js": "^2.86.2",
