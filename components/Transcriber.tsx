@@ -110,7 +110,9 @@ const Transcriber = () => {
         const skipConversion = settings.provider === TranscriptionProvider.GEMINI;
         updateItem(itemId, { status: 'PROCESSING', stage: skipConversion ? 'Uploading Evidence...' : 'Optimizing Audio...', progress: 5 });
         
-        const fileToProcess = await processMediaFile(nextItem.file, skipConversion);
+        const fileToProcess = await processMediaFile(nextItem.file, skipConversion, (progress) => {
+          updateItem(itemId, { stage: `Optimizing Audio (${progress}%)`, progress: 5 + Math.round(progress * 0.1) });
+        });
         updateItem(itemId, { stage: 'Processing Evidence...', progress: 15 });
 
         const result = await transcribeAudio(fileToProcess, '', settings, (pct) => {

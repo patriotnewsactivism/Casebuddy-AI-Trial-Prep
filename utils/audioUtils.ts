@@ -82,7 +82,11 @@ export const encodeWAV = (samples: Float32Array, sampleRate: number = 16000, num
 /**
  * Processes a large Audio or Video file using FFmpeg (WASM) with AudioContext fallback.
  */
-export const processMediaFile = async (file: File, skipConversion: boolean = false): Promise<Blob> => {
+export const processMediaFile = async (
+  file: File, 
+  skipConversion: boolean = false,
+  onProgress?: (progress: number) => void
+): Promise<Blob> => {
     // SPEED PATH: If provider supports video (Gemini), return immediately.
     if (skipConversion) {
       return file;
@@ -96,7 +100,7 @@ export const processMediaFile = async (file: File, skipConversion: boolean = fal
     // 1. TRY FFmpeg (Best Quality & Reliability)
     try {
       console.log(`[audioUtils] Attempting FFmpeg conversion for ${file.name}`);
-      const audioBlob = await extractAudio(file);
+      const audioBlob = await extractAudio(file, onProgress);
       console.log(`[audioUtils] FFmpeg conversion successful: ${audioBlob.size} bytes`);
       return audioBlob;
     } catch (ffmpegError) {
