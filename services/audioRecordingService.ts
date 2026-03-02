@@ -21,7 +21,7 @@ export interface AudioRecordingResult {
 
 export class AudioRecordingService {
   private mediaRecorder: MediaRecorder | null = null;
-  private stream: MediaStream | null = null;
+  public stream: MediaStream | null = null;
   private chunks: Blob[] = [];
   private startTime: number = 0;
   private maxDurationTimer: number | null = null;

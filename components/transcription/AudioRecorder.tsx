@@ -136,28 +136,22 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete, stat
     }
     
     try {
-      // Get the stream for visualizer
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-        } 
-      });
-      streamRef.current = stream;
-      
-      // Start recording using the service
+      // Start recording using the service first
       await audioRecordingService.startRecording({
         onProgress: (status) => console.log('[AudioRecorder]', status),
         onError: (err) => {
           setError(err.message);
           stopVisualizer();
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-          }
         },
         maxDuration: 600, // 10 minutes max
       });
+
+      // Get the stream that the service is already using
+      const stream = audioRecordingService.stream;
+      if (stream) {
+        streamRef.current = stream;
+        startVisualizer(stream);
+      }
       
       setIsRecording(true);
       setRecordingTime(0);
@@ -166,9 +160,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete, stat
       timerIntervalRef.current = window.setInterval(() => {
         setRecordingTime(Math.floor(audioRecordingService.getCurrentDuration()));
       }, 1000);
-      
-      // Start visualizer
-      startVisualizer(stream);
       
     } catch (err) {
       console.error("Error starting recording:", err);

@@ -577,8 +577,7 @@ const TrialSim: React.FC = () => {
                 properties: {
                   grounds: { type: Type.STRING },
                   explanation: { type: Type.STRING }
-                },
-                required: ['grounds', 'explanation']
+                }
               },
               ruling: {
                 type: Type.OBJECT,
@@ -586,8 +585,7 @@ const TrialSim: React.FC = () => {
                   type: { type: Type.STRING },
                   text: { type: Type.STRING },
                   judgeName: { type: Type.STRING }
-                },
-                required: ['type', 'text', 'judgeName']
+                }
               },
               coaching: {
                 type: Type.OBJECT,
@@ -597,9 +595,11 @@ const TrialSim: React.FC = () => {
                   teleprompterScript: { type: Type.STRING },
                   rhetoricalEffectiveness: { type: Type.NUMBER },
                   fallaciesIdentified: { type: Type.ARRAY, items: { type: Type.STRING } }
-                }
+                },
+                required: ['critique', 'suggestion', 'teleprompterScript', 'rhetoricalEffectiveness']
               }
-            }
+            },
+            required: ['speak', 'action', 'coaching']
           }
         },
         conversationHistory: messages.map(m => ({
@@ -708,6 +708,9 @@ const TrialSim: React.FC = () => {
 
       // Real-time volume meter setup
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
