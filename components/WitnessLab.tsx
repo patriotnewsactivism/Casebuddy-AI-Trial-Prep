@@ -94,6 +94,8 @@ const WitnessLab = () => {
   const recordingMimeTypeRef = useRef<string>('audio/webm');
   const finalSpeechTranscriptRef = useRef('');
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const isAISpeakingRef = useRef(false);
+  const isProcessingRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const handleAudioUploadRef = useRef<((audioBlob: Blob, preferredTranscript?: string) => Promise<void>) | undefined>(undefined);
 
@@ -205,6 +207,7 @@ const WitnessLab = () => {
     }
     currentAudioSourceRef.current = null;
     setIsPlayingAudio(false);
+    isAISpeakingRef.current = false;
     setCaptionVisible(false);
     setCaptionText('');
   }, []);
@@ -321,7 +324,16 @@ const WitnessLab = () => {
           console.log('[WitnessLab] User is speaking...');
         };
 
+        let silenceTimer: any = null;
+
         recognition.onresult = (event: any) => {
+          if (isAISpeakingRef.current) {
+            console.log('[WitnessLab] Ignoring speech result because AI is speaking');
+            return;
+          }
+
+          if (silenceTimer) clearTimeout(silenceTimer);
+
           let interimTranscript = '';
           let finalTranscript = '';
 
@@ -343,6 +355,14 @@ const WitnessLab = () => {
           setCaptionText(liveTranscript || 'Listening...');
           setCaptionSpeaker('user');
           setCaptionVisible(true);
+
+          // Trigger auto-send after 2.5s of silence
+          silenceTimer = setTimeout(() => {
+            if (liveTranscript.trim() && isRecordingRef.current && !isAISpeakingRef.current && !isProcessingRef.current) {
+              console.log('[WitnessLab] Silence detected, auto-submitting...');
+              stopRecording();
+            }
+          }, 2500);
         };
 
         recognition.onerror = (event: any) => {
@@ -510,6 +530,7 @@ const WitnessLab = () => {
       }
       
       setIsPlayingAudio(true);
+      isAISpeakingRef.current = true;
       setCaptionText(text);
       setCaptionSpeaker('witness');
       setCaptionVisible(true);
@@ -566,6 +587,7 @@ const WitnessLab = () => {
 
           playbackAudioRef.current = null;
           setIsPlayingAudio(false);
+          isAISpeakingRef.current = false;
           setCaptionVisible(false);
           setCaptionText('');
           console.log('[WitnessLab TTS] ElevenLabs playback completed');
@@ -585,12 +607,14 @@ const WitnessLab = () => {
           onEnd: () => {
             console.log('[WitnessLab TTS] Browser TTS playback complete');
             setIsPlayingAudio(false);
+            isAISpeakingRef.current = false;
             setCaptionVisible(false);
             setCaptionText('');
           },
           onError: (error) => {
             console.error('[WitnessLab TTS] Browser TTS error:', error);
             setIsPlayingAudio(false);
+            isAISpeakingRef.current = false;
             setCaptionVisible(false);
             setCaptionText('');
           }
@@ -602,10 +626,8 @@ const WitnessLab = () => {
       console.error('[WitnessLab TTS] Error:', error);
       handleError(error, 'Text-to-speech failed', 'WitnessLab');
       setIsPlayingAudio(false);
+      isAISpeakingRef.current = false;
       setCaptionVisible(false);
-    } finally {
-      // NOTE: We don't set setIsPlayingAudio(false) here because streaming is async
-      // The individual handlers (onEnd, disconnect) will manage the state
     }
   };
 

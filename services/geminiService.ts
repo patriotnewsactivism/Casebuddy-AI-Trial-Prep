@@ -372,7 +372,7 @@ export const generateWitnessResponse = async (
         options: {
           temperature: 0.9,
         },
-        conversationHistory: session.history
+        conversationHistory: session.history.length > 0 ? session.history : undefined
       });
 
       session.history = updatedHistory;

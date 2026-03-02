@@ -796,7 +796,7 @@ const TrialSim: React.FC = () => {
             console.log('[TrialSim] Silence detected, processing interim transcript');
             await handleUserTranscript(interimTranscript.trim());
           }
-        }, 1500); // 1.5s of silence triggers it
+        }, 2500); // 2.5s of silence triggers it
       }
 
       if (latestFinalTranscript.trim() && !isProcessingRef.current) {
