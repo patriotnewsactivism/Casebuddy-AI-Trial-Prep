@@ -419,28 +419,20 @@ const TrialSim: React.FC = () => {
             audio.onerror = () => reject(new Error('ElevenLabs audio playback failed'));
             audio.play().catch(reject);
           });
-          return;
         } finally {
           URL.revokeObjectURL(audioUrl);
           playbackAudioRef.current = null;
         }
+      } else if (isBrowserTTSAvailable()) {
+        await speakWithFallback(text, { rate: 1, pitch: 1, volume: 1 });
+      } else {
+        toast.warn('Voice playback unavailable — response shown in transcript only.');
       }
     } catch (err) {
-      console.warn('[TrialSim] ElevenLabs playback failed, using browser TTS fallback:', err);
-      playbackAudioRef.current?.pause();
-      playbackAudioRef.current = null;
+      console.warn('[TrialSim] Speech playback error:', err);
+    } finally {
+      dispatch({ type: 'AI_SPEAKING_END' });
     }
-
-    if (isBrowserTTSAvailable()) {
-      try {
-        await speakWithFallback(text, { rate: 1, pitch: 1, volume: 1 });
-        return;
-      } catch (err) {
-        console.error('[TrialSim] Browser TTS also failed:', err);
-      }
-    }
-
-    toast.warn('Voice playback unavailable — response shown in transcript only.');
   }, [canUseElevenLabs, voiceConfig.voiceName, elevenLabsKey]);
 
   // ── Recording ─────────────────────────────────────────────────────────────
@@ -776,7 +768,6 @@ const TrialSim: React.FC = () => {
         return;
       }
       
-      console.log('[TrialSim] Speech result received');
       lastTranscriptTime = Date.now();
       if (silenceTimer) {
         clearTimeout(silenceTimer);
@@ -784,12 +775,12 @@ const TrialSim: React.FC = () => {
       }
 
       let interimTranscript = '';
-      let finalTranscript = '';
+      let latestFinalTranscript = '';
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const t = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += t;
+          latestFinalTranscript += t;
         } else {
           interimTranscript += t;
         }
@@ -797,11 +788,20 @@ const TrialSim: React.FC = () => {
 
       if (interimTranscript) {
         dispatch({ type: 'SET_INPUT_TRANSCRIPT', text: interimTranscript.trim() });
-        dispatch({ type: 'SET_VOLUME', volume: 50 + Math.random() * 30 });
+        dispatch({ type: 'SET_VOLUME', volume: 60 + Math.random() * 30 });
+        
+        // Start silence timer for interim results
+        silenceTimer = setTimeout(async () => {
+          if (interimTranscript.trim() && !isProcessingRef.current && !isAISpeakingRef.current) {
+            console.log('[TrialSim] Silence detected, processing interim transcript');
+            await handleUserTranscript(interimTranscript.trim());
+          }
+        }, 1500); // 1.5s of silence triggers it
       }
 
-      if (finalTranscript.trim() && !isProcessingRef.current) {
-        await handleUserTranscript(finalTranscript.trim());
+      if (latestFinalTranscript.trim() && !isProcessingRef.current) {
+        if (silenceTimer) clearTimeout(silenceTimer);
+        await handleUserTranscript(latestFinalTranscript.trim());
       }
     };
 
@@ -1402,19 +1402,19 @@ const TrialSim: React.FC = () => {
         )}
       </div>
 
-      <div className={`fixed md:relative bottom-16 md:bottom-0 left-0 right-0 z-40 transition-all duration-300 ${
-        showTeleprompter ? 'max-h-[50vh]' : 'max-h-14'
+      <div className={`fixed md:relative bottom-24 md:bottom-0 left-0 right-0 z-40 transition-all duration-300 ${
+        showTeleprompter ? 'max-h-[60vh]' : 'max-h-14'
       }`}>
-        <div className="bg-slate-800 border-t-2 border-gold-500">
+        <div className="bg-slate-800 border-t-2 border-gold-500 shadow-2xl">
           <button
             onClick={() => setShowTeleprompter(v => !v)}
-            className="w-full p-3 flex items-center justify-between"
+            className="w-full p-4 flex items-center justify-between"
           >
             <div className="flex items-center gap-2">
               <Lightbulb size={20} className="text-gold-400" />
               <span className="text-gold-300 text-sm font-bold tracking-wide">COACHING TELEPROMPTER</span>
               {coachingTip && (
-                <span className="text-xs bg-gold-500/20 text-gold-400 px-2 py-0.5 rounded-full">
+                <span className="text-[10px] bg-gold-500/20 text-gold-400 px-2 py-0.5 rounded-full font-mono uppercase">
                   {coachingTip.rhetoricalEffectiveness}% effective
                 </span>
               )}
@@ -1426,17 +1426,18 @@ const TrialSim: React.FC = () => {
           </button>
 
           {showTeleprompter && (
-            <div className="p-4 bg-slate-900 border-t border-gold-500/20 overflow-y-auto max-h-[38vh]">
+            <div className="p-5 bg-slate-900 border-t border-gold-500/20 overflow-y-auto max-h-[45vh] scrollbar-thin scrollbar-thumb-slate-700">
               {coachingTip?.teleprompterScript ? (
-                <div>
-                  <p className="text-[10px] text-gold-400 uppercase tracking-widest font-bold mb-2">Say This Next:</p>
-                  <p className="text-xl md:text-2xl text-white leading-relaxed font-light">
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <p className="text-[10px] text-gold-400/60 uppercase tracking-[0.2em] font-black mb-3">Your Next Script:</p>
+                  <p className="text-xl md:text-3xl text-white leading-relaxed font-light italic">
                     "{coachingTip.teleprompterScript}"
                   </p>
                 </div>
               ) : (
-                <div className="text-center py-6">
-                  <p className="text-slate-500 text-sm">Speak to receive real-time coaching suggestions…</p>
+                <div className="text-center py-10 opacity-50">
+                  <p className="text-slate-400 text-sm">Waiting for you to speak...</p>
+                  <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest">Real-time coaching will appear here</p>
                 </div>
               )}
 
