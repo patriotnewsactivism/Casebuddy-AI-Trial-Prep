@@ -79,32 +79,45 @@ export const encodeWAV = (samples: Float32Array, sampleRate: number = 16000, num
   return new Blob([view], { type: 'audio/wav' });
 };
 
-/**
- * Processes a large Audio or Video file using FFmpeg (WASM) with AudioContext fallback.
- */
 export const processMediaFile = async (
   file: File, 
   skipConversion: boolean = false,
   onProgress?: (progress: number) => void
 ): Promise<Blob> => {
-    // SPEED PATH: If provider supports video (Gemini), return immediately.
-    if (skipConversion) {
+    const isVideo = file.type.startsWith('video/');
+    const isAudio = file.type.startsWith('audio/');
+
+    // ALWAYS use FFmpeg for Video files - it's much faster to upload extracted audio 
+    // than raw video, even if the AI provider supports video.
+    if (isVideo) {
+      try {
+        console.log(`[audioUtils] Extracting audio from video: ${file.name}`);
+        return await extractAudio(file, onProgress);
+      } catch (ffmpegError) {
+        console.warn(`[audioUtils] FFmpeg video extraction failed, falling back to original`, ffmpegError);
+        return file;
+      }
+    }
+
+    // For Audio files:
+    // SPEED PATH: If provider supports direct audio (Gemini), and it's already an audio file, return immediately.
+    if (skipConversion && isAudio) {
       return file;
     }
 
-    // FAST PATH: Small audio files (< 10MB) don't need processing
-    if (file.type.startsWith('audio/') && file.size < 10 * 1024 * 1024) {
+    // FAST PATH: Small audio files (< 10MB) don't need optimization
+    if (isAudio && file.size < 10 * 1024 * 1024) {
         return file;
     }
 
     // 1. TRY FFmpeg (Best Quality & Reliability)
     try {
-      console.log(`[audioUtils] Attempting FFmpeg conversion for ${file.name}`);
+      console.log(`[audioUtils] Attempting FFmpeg optimization for ${file.name}`);
       const audioBlob = await extractAudio(file, onProgress);
-      console.log(`[audioUtils] FFmpeg conversion successful: ${audioBlob.size} bytes`);
+      console.log(`[audioUtils] FFmpeg optimization successful: ${audioBlob.size} bytes`);
       return audioBlob;
     } catch (ffmpegError) {
-      console.warn(`[audioUtils] FFmpeg conversion failed, falling back to AudioContext`, ffmpegError);
+      console.warn(`[audioUtils] FFmpeg optimization failed, falling back to AudioContext`, ffmpegError);
     }
 
     // 2. FALLBACK to AudioContext (Legacy Browser Path)

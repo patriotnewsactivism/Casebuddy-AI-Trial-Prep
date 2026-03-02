@@ -66,6 +66,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete, stat
     
     try {
       audioContextRef.current = new AudioContextClass();
+      if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
       sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 256;
