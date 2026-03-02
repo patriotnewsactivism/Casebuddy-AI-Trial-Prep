@@ -246,8 +246,8 @@ CREATE POLICY "document_templates_delete_own" ON storage.objects
   );
 
 -- ============================================================================
--- STORAGE BUCKET COMMENTS
+-- STORAGE BUCKET DOCUMENTATION (DISABLED DUE TO PERMISSIONS)
 -- ============================================================================
-COMMENT ON TABLE storage.buckets IS 'Storage buckets for file uploads with user-isolated access';
-COMMENT ON POLICY "case_files_upload_own" ON storage.objects IS 'Users can upload files to their own directory in case-files bucket';
-COMMENT ON POLICY "evidence_files_upload_own" ON storage.objects IS 'Users can upload files to their own directory in evidence-files bucket';
+-- COMMENT ON TABLE storage.buckets IS 'Storage buckets for file uploads with user-isolated access';
+-- COMMENT ON POLICY "case_files_upload_own" ON storage.objects IS 'Users can upload files to their own directory in case-files bucket';
+-- COMMENT ON POLICY "evidence_files_upload_own" ON storage.objects IS 'Users can upload files to their own directory in evidence-files bucket';

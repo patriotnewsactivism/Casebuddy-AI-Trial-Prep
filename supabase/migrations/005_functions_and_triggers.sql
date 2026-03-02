@@ -15,11 +15,12 @@ DECLARE
   tbl text;
 BEGIN
   FOR tbl IN 
-    SELECT table_name 
-    FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-    AND column_name = 'updated_at'
-    AND table_type = 'BASE TABLE'
+    SELECT c.table_name 
+    FROM information_schema.columns c
+    JOIN information_schema.tables t ON c.table_name = t.table_name AND c.table_schema = t.table_schema
+    WHERE c.table_schema = 'public' 
+    AND c.column_name = 'updated_at'
+    AND t.table_type = 'BASE TABLE'
   LOOP
     EXECUTE format(
       'DROP TRIGGER IF EXISTS update_%s_updated_at ON public.%s',
