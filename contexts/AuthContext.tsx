@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '../services/supabaseClient';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 export type SubscriptionPlan = 'free' | 'pro' | 'firm';
 
@@ -21,6 +23,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
+  supabaseUser: SupabaseUser | null;
   loading: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
@@ -47,42 +50,10 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem('casebuddy_user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        localStorage.removeItem('casebuddy_user');
-      }
-    }
-    setLoading(false);
-  }, []);
-
-  const updateUsage = async (updates: Partial<UserUsage>): Promise<void> => {
-    if (!user) return;
-    const newUser = {
-      ...user,
-      usage: { ...user.usage, ...updates }
-    };
-    setUser(newUser);
-    localStorage.setItem('casebuddy_user', JSON.stringify(newUser));
-    
-    // Also update in users list
-    const storedUsers = localStorage.getItem('casebuddy_users');
-    if (storedUsers) {
-      const users: User[] = JSON.parse(storedUsers);
-      const index = users.findIndex(u => u.id === user.id);
-      if (index !== -1) {
-        users[index] = newUser;
-        localStorage.setItem('casebuddy_users', JSON.stringify(users));
-      }
-    }
-  };
 
   const DEFAULT_USAGE: UserUsage = {
     cases_created: 0,
@@ -91,45 +62,126 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     last_reset_date: new Date().toISOString()
   };
 
+  useEffect(() => {
+    // Check active sessions and sets up the listener
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSupabaseUser(session?.user ?? null);
+      if (session?.user) {
+        await fetchProfile(session.user);
+      }
+      setLoading(false);
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSupabaseUser(session?.user ?? null);
+      if (session?.user) {
+        await fetchProfile(session.user);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const fetchProfile = async (sUser: SupabaseUser) => {
+    try {
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', sUser.id)
+        .single();
+
+      if (profileError) {
+        if (profileError.code === 'PGRST116') {
+          // Profile doesn't exist yet, create a default one
+          const newProfile = {
+            id: sUser.id,
+            email: sUser.email || '',
+            full_name: sUser.user_metadata?.full_name || sUser.email?.split('@')[0] || 'User',
+            firm_name: sUser.user_metadata?.firm_name || '',
+            preferences: { plan: 'free', usage: DEFAULT_USAGE }
+          };
+          
+          const { error: insertError } = await supabase.from('profiles').insert(newProfile);
+          if (insertError) throw insertError;
+          
+          setUser({
+            id: sUser.id,
+            email: sUser.email || '',
+            fullName: newProfile.full_name,
+            firmName: newProfile.firm_name,
+            createdAt: sUser.created_at,
+            plan: 'free',
+            usage: DEFAULT_USAGE
+          });
+        } else {
+          throw profileError;
+        }
+      } else {
+        setUser({
+          id: sUser.id,
+          email: sUser.email || '',
+          fullName: data.full_name,
+          firmName: data.firm_name,
+          createdAt: data.created_at,
+          plan: (data.preferences?.plan as SubscriptionPlan) || 'free',
+          usage: (data.preferences?.usage as UserUsage) || DEFAULT_USAGE
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching profile:', err);
+      // Fallback to minimal user info if profile fetch fails
+      setUser({
+        id: sUser.id,
+        email: sUser.email || '',
+        fullName: sUser.user_metadata?.full_name || sUser.email?.split('@')[0] || 'User',
+        createdAt: sUser.created_at,
+        plan: 'free',
+        usage: DEFAULT_USAGE
+      });
+    }
+  };
+
+  const updateUsage = async (updates: Partial<UserUsage>): Promise<void> => {
+    if (!user || !supabaseUser) return;
+    
+    const newUsage = { ...user.usage, ...updates };
+    const newPreferences = { plan: user.plan, usage: newUsage };
+    
+    try {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ preferences: newPreferences })
+        .eq('id', user.id);
+        
+      if (updateError) throw updateError;
+      
+      setUser({
+        ...user,
+        usage: newUsage
+      });
+    } catch (err) {
+      console.error('Failed to update usage:', err);
+      setError('Failed to update usage data');
+    }
+  };
+
   const signIn = async (email: string, password: string): Promise<void> => {
     setLoading(true);
     setError(null);
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      if (!email || !password) {
-        throw new Error('Email and password are required');
-      }
-      
-      if (password.length < 6) {
-        throw new Error('Invalid email or password');
-      }
-      
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        throw new Error('Please enter a valid email address');
-      }
-      
-      const storedUsers = localStorage.getItem('casebuddy_users');
-      const users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
-      const existingUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-      
-      if (!existingUser) {
-        const mockUser: User = {
-          id: crypto.randomUUID ? crypto.randomUUID() : `user_${Date.now()}`,
-          email,
-          fullName: email.split('@')[0],
-          createdAt: new Date().toISOString(),
-          plan: 'free',
-          usage: DEFAULT_USAGE
-        };
-        setUser(mockUser);
-        localStorage.setItem('casebuddy_user', JSON.stringify(mockUser));
-      } else {
-        setUser(existingUser);
-        localStorage.setItem('casebuddy_user', JSON.stringify(existingUser));
-      }
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) throw signInError;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to sign in';
       setError(message);
@@ -142,42 +194,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signUp = async (email: string, password: string, fullName: string, firmName?: string): Promise<void> => {
     setLoading(true);
     setError(null);
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      if (!email || !password || !fullName) {
-        throw new Error('All required fields must be filled');
-      }
-      
-      if (password.length < 8) {
-        throw new Error('Password must be at least 8 characters');
-      }
-      
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        throw new Error('Please enter a valid email address');
-      }
-      
-      const storedUsers = localStorage.getItem('casebuddy_users');
-      const users: User[] = storedUsers ? JSON.parse(storedUsers) : [];
-      
-      if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-        throw new Error('An account with this email already exists');
-      }
-      
-      const newUser: User = {
-        id: crypto.randomUUID ? crypto.randomUUID() : `user_${Date.now()}`,
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
-        fullName,
-        firmName,
-        createdAt: new Date().toISOString(),
-        plan: 'free',
-        usage: DEFAULT_USAGE
-      };
-      
-      users.push(newUser);
-      localStorage.setItem('casebuddy_users', JSON.stringify(users));
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            firm_name: firmName || '',
+          },
+        },
+      });
+      if (signUpError) throw signUpError;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create account';
       setError(message);
@@ -190,9 +218,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = async (): Promise<void> => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      localStorage.removeItem('casebuddy_user');
+      await supabase.auth.signOut();
       setUser(null);
+      setSupabaseUser(null);
+    } catch (err) {
+      console.error('Error signing out:', err);
     } finally {
       setLoading(false);
     }
@@ -201,18 +231,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const resetPassword = async (email: string): Promise<void> => {
     setLoading(true);
     setError(null);
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      if (!email) {
-        throw new Error('Email is required');
-      }
-      
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        throw new Error('Please enter a valid email address');
-      }
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+      if (resetError) throw resetError;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to send reset email';
       setError(message);
@@ -225,13 +246,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const updatePassword = async (newPassword: string): Promise<void> => {
     setLoading(true);
     setError(null);
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      if (!newPassword || newPassword.length < 8) {
-        throw new Error('Password must be at least 8 characters');
-      }
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+      if (updateError) throw updateError;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update password';
       setError(message);
@@ -245,6 +264,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const value: AuthContextType = {
     user,
+    supabaseUser,
     loading,
     error,
     signIn,

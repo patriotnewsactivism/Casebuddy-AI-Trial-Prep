@@ -45,7 +45,7 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
     try {
       const generated = await generateRealisticCase(aiGenPrompt);
       const newCase: Case = {
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         title: generated.title || 'Untitled Case',
         client: generated.client || 'Unknown',
         status: CaseStatus.PRE_TRIAL,
@@ -198,7 +198,7 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
         }
 
         const evidence: EvidenceItem = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: crypto.randomUUID(),
           caseId: activeCase.id,
           title: file.name,
           type: DocumentType.EVIDENCE,
@@ -249,7 +249,7 @@ const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any })
     }
 
     const newCase: Case = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       title: newCaseData.title.trim(),
       client: newCaseData.client.trim(),
       status: CaseStatus.PRE_TRIAL,

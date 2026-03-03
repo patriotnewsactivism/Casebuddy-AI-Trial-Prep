@@ -41,6 +41,7 @@ export interface EvidenceItem {
   keyEntities: string[];
   risks: string[];
   addedAt: string;
+  lastUpdated?: string;
   fileName?: string;
   notes?: string;
 }
@@ -58,6 +59,7 @@ export interface CaseTask {
 
 export interface Case {
   id: string;
+  user_id?: string; // Links case to a specific user in Supabase
   title: string;
   client: string;
   status: CaseStatus;

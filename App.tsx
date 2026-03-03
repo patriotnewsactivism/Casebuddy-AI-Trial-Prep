@@ -222,6 +222,12 @@ const App = () => {
     let cancelled = false;
 
     const hydrate = async () => {
+      // Wait for auth to initialize
+      if (!user) {
+        setHydrated(false);
+        return;
+      }
+
       try {
         const loaded = await fetchCases();
         const usingSupabase = supabaseReady();
@@ -251,7 +257,7 @@ const App = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const prefs = loadPreferences();
@@ -263,14 +269,14 @@ const App = () => {
   }, [theme]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !user) return;
     saveCases(cases);
-  }, [cases, hydrated]);
+  }, [cases, hydrated, user]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !user) return;
     saveActiveCaseId(activeCaseId);
-  }, [activeCaseId, hydrated]);
+  }, [activeCaseId, hydrated, user]);
 
   const activeCase = useMemo(
     () => cases.find(c => c.id === activeCaseId) || null,
@@ -289,6 +295,7 @@ const App = () => {
   const addCase = async (newCase: Case) => {
     const enrichedCase = {
       ...newCase,
+      user_id: user?.id,
       evidence: newCase.evidence || [],
       tasks: newCase.tasks || [],
       tags: newCase.tags || [],

@@ -31,7 +31,7 @@ const WitnessLab = () => {
     const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
     
     await addSession({
-      id: `witness-session-${Date.now()}`,
+      id: crypto.randomUUID(),
       caseId: activeCase.id,
       caseTitle: `${activeCase.title} - ${selectedWitness.name} Exam`,
       phase: 'direct-examination', // Witness lab is usually examination
@@ -39,7 +39,7 @@ const WitnessLab = () => {
       date: new Date().toISOString(),
       duration,
       transcript: messages.map(m => ({
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: crypto.randomUUID(),
         sender: m.sender,
         text: m.text,
         timestamp: m.timestamp,
