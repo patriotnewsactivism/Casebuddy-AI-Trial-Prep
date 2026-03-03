@@ -8,11 +8,11 @@ import { toast } from 'react-toastify';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 
 const CaseLawResearch = () => {
-  const { activeCase } = useContext(AppContext);
+  const { activeCase, updateCase } = useContext(AppContext);
   const [query, setQuery] = useState('');
   const [jurisdiction, setJurisdiction] = useState(activeCase?.jurisdiction || 'federal');
   const [results, setResults] = useState<CaseLawSearchResult[]>([]);
-  const [savedCitations, setSavedCitations] = useState<CaseLawCitation[]>([]);
+  const savedCitations = activeCase?.citations || [];
   const [loading, setLoading] = useState(false);
   const [selectedResult, setSelectedResult] = useState<CaseLawSearchResult | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
