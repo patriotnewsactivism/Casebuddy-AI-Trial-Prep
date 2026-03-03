@@ -86,7 +86,12 @@ Return 5-8 relevant cases as JSON array.`;
     }
   };
 
-  const saveCitation = (result: CaseLawSearchResult) => {
+  const saveCitation = async (result: CaseLawSearchResult) => {
+    if (!activeCase) {
+      toast.error('Select a case before saving citations');
+      return;
+    }
+
     const citation: CaseLawCitation = {
       caseName: result.caseName,
       citation: result.citation,
@@ -104,13 +109,16 @@ Return 5-8 relevant cases as JSON array.`;
       return;
     }
 
-    setSavedCitations([...savedCitations, citation]);
-    toast.success('Citation saved to case file');
+    const nextCitations = [...savedCitations, citation];
+    await updateCase(activeCase.id, { citations: nextCitations });
+    handleSuccess('Citation saved to case file');
   };
 
-  const removeCitation = (citation: string) => {
-    setSavedCitations(savedCitations.filter(c => c.citation !== citation));
-    toast.success('Citation removed');
+  const removeCitation = async (citation: string) => {
+    if (!activeCase) return;
+    const nextCitations = savedCitations.filter(c => c.citation !== citation);
+    await updateCase(activeCase.id, { citations: nextCitations });
+    handleSuccess('Citation removed');
   };
 
   const exportCitations = () => {
