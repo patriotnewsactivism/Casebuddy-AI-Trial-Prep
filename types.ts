@@ -83,6 +83,7 @@ export interface Case {
   witnesses?: Witness[];
   opposingProfile?: OpposingProfile;
   lastUpdated?: string;
+  citations?: CaseLawCitation[];
 }
 
 export interface Document {

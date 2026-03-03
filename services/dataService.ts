@@ -58,15 +58,15 @@ async function caseToRow(c: Case, style: CaseColumnStyle): Promise<Record<string
   return {
     ...base,
     opposing_counsel: c.opposingCounsel,
-    next_court_date: c.nextCourtDate,
+    next_court_date: c.next_court_date,
     win_probability: c.winProbability,
-    docket_number: c.docketNumber,
-    court_location: c.courtLocation,
+    docket_number: c.docket_number,
+    court_location: c.court_location,
     jurisdiction: c.jurisdiction,
-    client_type: c.clientType,
-    opposing_party: c.opposingParty,
-    legal_theory: c.legalTheory,
-    key_issues: c.keyIssues,
+    client_type: c.client_type,
+    opposing_party: c.opposing_party,
+    legal_theory: c.legal_theory,
+    key_issues: c.key_issues,
   };
 }
 
@@ -111,12 +111,17 @@ const cacheCases = (cases: Case[]) => {
 export const fetchCases = async (): Promise<Case[]> => {
   const client = getSupabaseClient();
   if (!client) {
+    console.log('[DataService] Supabase not configured, using local storage');
     return loadCases().map(hydrateCase);
   }
 
   const { data: { user } } = await client.auth.getUser();
-  if (!user) return loadCases().map(hydrateCase);
+  if (!user) {
+    console.log('[DataService] No authenticated user, using local storage');
+    return loadCases().map(hydrateCase);
+  }
 
+  console.log('[DataService] Fetching cases for user:', user.id);
   const { data, error } = await client
     .from('cases')
     .select('*')
@@ -128,17 +133,32 @@ export const fetchCases = async (): Promise<Case[]> => {
     return loadCases().map(hydrateCase);
   }
 
+  console.log(`[DataService] Successfully fetched ${data?.length || 0} cases from Supabase`);
   const cases = (data || []).map(rowToCase);
   cacheCases(cases);
   return cases;
 };
 
 export const upsertCase = async (caseRecord: Case): Promise<void> => {
+  console.log(`[DataService] Upserting case: ${caseRecord.title} (${caseRecord.id})`);
   const client = getSupabaseClient();
   if (!client) {
     const current = loadCases().filter(c => c.id !== caseRecord.id);
     cacheCases([...current, hydrateCase(caseRecord)]);
     return;
+  }
+
+  // Ensure user_id is present
+  if (!caseRecord.user_id) {
+    const { data: { user } } = await client.auth.getUser();
+    if (user) {
+        caseRecord.user_id = user.id;
+    } else {
+        console.warn('[DataService] Attempted to upsert case without authenticated user. Falling back to local.');
+        const current = loadCases().filter(c => c.id !== caseRecord.id);
+        cacheCases([...current, hydrateCase(caseRecord)]);
+        return;
+    }
   }
 
   const stylesToTry: CaseColumnStyle[] = detectedCaseColumnStyle
@@ -149,27 +169,24 @@ export const upsertCase = async (caseRecord: Case): Promise<void> => {
 
   for (const style of stylesToTry) {
     const row = await caseToRow(caseRecord, style);
+    console.log(`[DataService] Attempting upsert with ${style} style`);
     
-    // Ensure we have a user_id
-    if (!row.user_id) {
-        const { data: { user } } = await client.auth.getUser();
-        if (user) row.user_id = user.id;
-    }
-
     const { error } = await client.from('cases').upsert(row, { onConflict: 'id' });
 
     if (!error) {
+      console.log(`[DataService] Successfully upserted case with ${style} style`);
       detectedCaseColumnStyle = style;
       return;
     }
 
     lastError = error;
+    console.warn(`[DataService] Upsert failed with ${style} style:`, error.message);
     if (!isColumnMismatchError(error)) {
       break;
     }
   }
 
-  console.error('[Supabase] upsertCase failed', lastError);
+  console.error('[Supabase] upsertCase failed after all attempts', lastError);
   throw lastError;
 };
 
@@ -189,6 +206,7 @@ export const removeCase = async (caseId: string): Promise<void> => {
 };
 
 export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Promise<void> => {
+  console.log(`[DataService] Appending evidence to case ${caseId}: ${evidence.title}`);
   const client = getSupabaseClient();
   if (!client) {
     const updated = loadCases().map(c => c.id === caseId ? { ...c, evidence: [...(c.evidence || []), evidence] } : c);
@@ -196,8 +214,8 @@ export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Pr
     return;
   }
 
-  // Get current case to append evidence to JSON column
-  const { data, error } = await client.from('cases').select('evidence').eq('id', caseId).single();
+  // First, get the current case data to ensure we have the most up-to-date evidence array
+  const { data, error } = await client.from('cases').select('evidence, user_id').eq('id', caseId).single();
   
   if (error) {
     console.error('[Supabase] fetch evidence failed', error);
@@ -207,15 +225,20 @@ export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Pr
   const existingEvidence: EvidenceItem[] = Array.isArray(data?.evidence) ? data.evidence : [];
   const nextEvidence = [...existingEvidence, { ...evidence, lastUpdated: new Date().toISOString() }];
 
+  console.log(`[DataService] Updating case ${caseId} with ${nextEvidence.length} total evidence items`);
   const { error: updateError } = await client.from('cases').update({ evidence: nextEvidence }).eq('id', caseId);
+  
   if (updateError) {
     console.error('[Supabase] appendEvidence failed', updateError);
     throw updateError;
   }
+
+  console.log('[DataService] Successfully updated evidence JSON in cases table');
   
-  // Also try to insert into separate evidence table if it exists for "master classing" the case
+  // Also try to insert into separate evidence table for structured data
   try {
     const { error: tableError } = await client.from('evidence').insert({
+        id: evidence.id,
         case_id: caseId,
         name: evidence.title,
         description: evidence.summary,
@@ -230,9 +253,14 @@ export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Pr
         file_path: evidence.fileName,
         created_at: evidence.addedAt
     });
-    if (tableError) console.warn('[Supabase] Failed to insert into dedicated evidence table, but JSON update succeeded');
+    
+    if (tableError) {
+        console.warn('[Supabase] Failed to insert into dedicated evidence table:', tableError.message);
+    } else {
+        console.log('[DataService] Successfully inserted into dedicated evidence table');
+    }
   } catch (e) {
-    console.warn('[Supabase] Evidence table may not exist yet');
+    console.warn('[Supabase] Evidence table structured insert failed (might not exist)');
   }
 };
 
@@ -280,6 +308,7 @@ export const fetchSessions = async (caseId: string): Promise<TrialSession[]> => 
 };
 
 export const upsertSession = async (session: TrialSession): Promise<void> => {
+  console.log(`[DataService] Upserting session: ${session.id} for case ${session.caseId}`);
   const client = getSupabaseClient();
   
   // Always update local cache first
@@ -290,7 +319,7 @@ export const upsertSession = async (session: TrialSession): Promise<void> => {
   if (!client) return;
 
   const row = {
-    id: session.id.includes('-') ? session.id : undefined, // Only use if it looks like a UUID
+    id: session.id.length > 30 ? session.id : undefined, // Only use if it looks like a UUID
     case_id: session.caseId,
     session_name: session.caseTitle,
     session_date: new Date(session.date).toISOString().split('T')[0],
@@ -311,6 +340,7 @@ export const upsertSession = async (session: TrialSession): Promise<void> => {
     console.error('[Supabase] upsertSession failed', error);
     throw error;
   }
+  console.log('[DataService] Successfully upserted session to Supabase');
 };
 
 export const removeSession = async (sessionId: string, caseId: string): Promise<void> => {
