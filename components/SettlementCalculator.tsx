@@ -9,9 +9,10 @@ const apiKey = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
 
 const SettlementCalculator = () => {
-  const { activeCase } = useContext(AppContext);
+  const { activeCase, updateCase } = useContext(AppContext);
   const [loading, setLoading] = useState(false);
-  const [analysis, setAnalysis] = useState<SettlementAnalysis | null>(null);
+  const currentAnalyses = activeCase?.settlementAnalyses || [];
+  const [analysis, setAnalysis] = useState<SettlementAnalysis | null>(currentAnalyses[0] || null);
   const [showManual, setShowManual] = useState(false);
 
   const [economicDamages, setEconomicDamages] = useState<EconomicDamages>({
@@ -58,7 +59,7 @@ const SettlementCalculator = () => {
       nonEconomicDamages.lossOfConsortium, nonEconomicDamages.lossOfEnjoyment,
       nonEconomicDamages.disfigurement]);
 
-  const calculateSettlement = () => {
+  const calculateSettlement = async () => {
     if (!activeCase) return;
     if (economicDamages.total === 0 && nonEconomicDamages.total === 0) {
       toast.error('Please enter damages to calculate');
@@ -101,7 +102,7 @@ const SettlementCalculator = () => {
     }
 
     const result: SettlementAnalysis = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       caseId: activeCase.id,
       date: new Date().toISOString(),
       economicDamages,
@@ -114,6 +115,8 @@ const SettlementCalculator = () => {
       negotiationStrategy: `Start demand at $${Math.round(highRange).toLocaleString()}, expect counter around $${Math.round(lowRange * 1.1).toLocaleString()}. Be prepared to justify multiplier with medical evidence and testimony.`
     };
 
+    const nextAnalyses = [result, ...currentAnalyses].slice(0, 10);
+    await updateCase(activeCase.id, { settlementAnalyses: nextAnalyses });
     setAnalysis(result);
     toast.success('Settlement calculated successfully');
   };
@@ -192,8 +195,8 @@ Return JSON with: economicDamages, nonEconomicDamages (with multiplier), compara
       });
 
       const result = JSON.parse(response.text || '{}');
-      setAnalysis({
-        id: Date.now().toString(),
+      const newAnalysis: SettlementAnalysis = {
+        id: crypto.randomUUID(),
         caseId: activeCase.id,
         date: new Date().toISOString(),
         economicDamages: result.economicDamages || economicDamages,
@@ -204,7 +207,11 @@ Return JSON with: economicDamages, nonEconomicDamages (with multiplier), compara
         confidenceScore: result.confidenceScore || 50,
         factors: result.factors || [],
         negotiationStrategy: result.negotiationStrategy || ''
-      });
+      };
+      
+      const nextAnalyses = [newAnalysis, ...currentAnalyses].slice(0, 10);
+      await updateCase(activeCase.id, { settlementAnalyses: nextAnalyses });
+      setAnalysis(newAnalysis);
       
       if (result.economicDamages) {
         setEconomicDamages(result.economicDamages);

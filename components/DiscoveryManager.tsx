@@ -5,8 +5,8 @@ import { FileSearch, Plus, Calendar, Clock, AlertTriangle, CheckCircle, XCircle,
 import { toast } from 'react-toastify';
 
 const DiscoveryManager = () => {
-  const { activeCase } = useContext(AppContext);
-  const [requests, setRequests] = useState<DiscoveryRequest[]>([]);
+  const { activeCase, updateCase } = useContext(AppContext);
+  const requests = activeCase?.discoveryRequests || [];
   const [showAddModal, setShowAddModal] = useState(false);
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -21,29 +21,14 @@ const DiscoveryManager = () => {
   const [aiGeneratedRequests, setAiGeneratedRequests] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
 
-  useEffect(() => {
-    if (activeCase) {
-      const saved = localStorage.getItem(`discovery_${activeCase.id}`);
-      if (saved) {
-        setRequests(JSON.parse(saved));
-      }
-    }
-  }, [activeCase]);
-
-  useEffect(() => {
-    if (activeCase && requests.length > 0) {
-      localStorage.setItem(`discovery_${activeCase.id}`, JSON.stringify(requests));
-    }
-  }, [requests, activeCase]);
-
-  const handleAddRequest = () => {
+  const handleAddRequest = async () => {
     if (!newRequest.number || !newRequest.question) {
       toast.error('Please fill in all required fields');
       return;
     }
 
     const request: DiscoveryRequest = {
-      id: `disc-${Date.now()}`,
+      id: crypto.randomUUID(),
       caseId: activeCase!.id,
       type: newRequest.type as any,
       number: newRequest.number,
@@ -58,20 +43,23 @@ const DiscoveryManager = () => {
       notes: newRequest.notes
     };
 
-    setRequests([...requests, request]);
+    const nextRequests = [...requests, request];
+    await updateCase(activeCase!.id, { discoveryRequests: nextRequests });
     setNewRequest({ type: 'interrogatory', number: '', question: '', status: 'pending' });
     setShowAddModal(false);
     toast.success('Discovery request added');
   };
 
-  const updateRequestStatus = (id: string, status: DiscoveryRequest['status']) => {
-    setRequests(requests.map(r => r.id === id ? { ...r, status } : r));
+  const updateRequestStatus = async (id: string, status: DiscoveryRequest['status']) => {
+    const nextRequests = requests.map(r => r.id === id ? { ...r, status } : r);
+    await updateCase(activeCase!.id, { discoveryRequests: nextRequests });
     toast.success('Status updated');
   };
 
-  const deleteRequest = (id: string) => {
+  const deleteRequest = async (id: string) => {
     if (window.confirm('Delete this discovery request?')) {
-      setRequests(requests.filter(r => r.id !== id));
+      const nextRequests = requests.filter(r => r.id !== id);
+      await updateCase(activeCase!.id, { discoveryRequests: nextRequests });
       toast.success('Request deleted');
     }
   };
@@ -116,7 +104,7 @@ Return JSON array with objects containing: type (interrogatory/request-for-produ
 
       const generated = JSON.parse(response.text || '[]');
       const newRequests: DiscoveryRequest[] = generated.map((g: any, i: number) => ({
-        id: `disc-ai-${Date.now()}-${i}`,
+        id: crypto.randomUUID(),
         caseId: activeCase.id,
         type: g.type,
         number: g.number,
@@ -124,7 +112,8 @@ Return JSON array with objects containing: type (interrogatory/request-for-produ
         status: 'pending' as const
       }));
 
-      setRequests([...requests, ...newRequests]);
+      const nextRequests = [...requests, ...newRequests];
+      await updateCase(activeCase.id, { discoveryRequests: nextRequests });
       toast.success(`Generated ${newRequests.length} discovery requests`);
     } catch (error) {
       console.error('AI generation failed', error);

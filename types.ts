@@ -84,6 +84,8 @@ export interface Case {
   opposingProfile?: OpposingProfile;
   lastUpdated?: string;
   citations?: CaseLawCitation[];
+  discoveryRequests?: DiscoveryRequest[];
+  settlementAnalyses?: SettlementAnalysis[];
 }
 
 export interface Document {
