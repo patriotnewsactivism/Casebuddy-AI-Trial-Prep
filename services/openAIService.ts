@@ -39,7 +39,7 @@ export const generateOpenAIResponse = async (
     { role: 'user', content: userMessage }
   ];
 
-  return callOpenAIProxy({
+  const response = await callOpenAIProxy({
     messages,
     model: 'gpt-4o-mini',
     options: {
@@ -47,6 +47,12 @@ export const generateOpenAIResponse = async (
       max_tokens: 500,
     },
   });
+
+  if (!response.success) {
+    throw new Error(response.error?.message || 'Failed to generate response from OpenAI');
+  }
+
+  return response.content;
 };
 
 export async function* streamOpenAIResponse(
@@ -64,10 +70,13 @@ export async function* streamOpenAIResponse(
     { role: 'user', content: userMessage }
   ];
 
-  yield* streamOpenAIProxy(messages, {
+  yield* streamOpenAIProxy({
+    messages,
     model: 'gpt-4o-mini',
-    temperature: 0.7,
-    max_tokens: 500,
+    options: {
+      temperature: 0.7,
+      max_tokens: 500,
+    },
   });
 }
 

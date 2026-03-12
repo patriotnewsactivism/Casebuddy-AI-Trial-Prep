@@ -75,6 +75,7 @@ export interface WhisperProxyResponse {
     start: number;
     end: number;
     text: string;
+    speaker?: string;
   }>;
   error?: ProxyError;
 }

@@ -58,15 +58,15 @@ async function caseToRow(c: Case, style: CaseColumnStyle): Promise<Record<string
   return {
     ...base,
     opposing_counsel: c.opposingCounsel,
-    next_court_date: c.next_court_date,
+    next_court_date: c.nextCourtDate,
     win_probability: c.winProbability,
-    docket_number: c.docket_number,
-    court_location: c.court_location,
+    docket_number: c.docketNumber,
+    court_location: c.courtLocation,
     jurisdiction: c.jurisdiction,
-    client_type: c.client_type,
-    opposing_party: c.opposing_party,
-    legal_theory: c.legal_theory,
-    key_issues: c.key_issues,
+    client_type: c.clientType,
+    opposing_party: c.opposingParty,
+    legal_theory: c.legalTheory,
+    key_issues: c.keyIssues,
   };
 }
 

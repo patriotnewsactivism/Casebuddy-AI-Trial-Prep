@@ -597,8 +597,8 @@ const TrialSim: React.FC = () => {
         conversationHistory: messages.map(m => ({
           role: m.sender === 'user' ? 'user' : 'model',
           parts: [{ text: m.text }]
-        }
-        });
+        }))
+      });
 
         if (!response.success || !response.text) {
         throw new Error(response.error?.message || 'AI turn failed: No response text received');

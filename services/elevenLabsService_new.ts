@@ -217,4 +217,3 @@ const MODEL_FOR_PHASE: Record<TrialPhase, string> = {
   'defendant-testimony': 'eleven_turbo_v2_5',
 };
 
-c

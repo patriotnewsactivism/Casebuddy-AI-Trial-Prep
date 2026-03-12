@@ -1,5 +1,5 @@
 
-import { Case, CaseStatus, Witness, OpposingProfile } from './types';
+import { Case, CaseStatus, Witness, OpposingProfile, DocumentType } from './types';
 
 // Real case data should be entered by the user.
 export const MOCK_CASES: Case[] = [];
