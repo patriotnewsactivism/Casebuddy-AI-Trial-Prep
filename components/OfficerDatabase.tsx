@@ -235,7 +235,7 @@ const OfficerDatabase = () => {
                     type="text" 
                     className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white focus:border-gold-500 outline-none" 
                     placeholder="e.g. Metro PD"
-                    value={newRequest.agency} // reusing old state var name by mistake but it's ok for now
+                    value={newOfficer.agency}
                     onChange={e => setNewOfficer({...newOfficer, agency: e.target.value})}
                   />
                 </div>

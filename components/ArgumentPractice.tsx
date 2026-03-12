@@ -741,7 +741,7 @@ const TrialSim: React.FC = () => {
       return;
     }
 
-    const recognition = new SpeechRecognitionClass() as SpeechRecognition;
+    const recognition = new SpeechRecognitionClass() as any;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';

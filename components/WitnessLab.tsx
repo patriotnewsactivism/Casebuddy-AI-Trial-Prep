@@ -10,6 +10,7 @@ import { browserTTS, speakWithFallback, isBrowserTTSAvailable } from '../service
 import { Message, Witness, TranscriptionProvider, CoachingSuggestion } from '../types';
 import { Send, Mic, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download, Lightbulb, Target, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { handleError, handleSuccess } from '../utils/errorHandler';
+import { toast } from 'react-toastify';
 import CaptionOverlay from './CaptionOverlay';
 import { useSavedSessions } from '../hooks/useSavedSessions';
 
@@ -539,12 +540,12 @@ const WitnessLab = () => {
       const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
       
       console.log('[WitnessLab TTS] ElevenLabs API Key present:', !!elevenLabsKey);
-      console.log('[WitnessLab TTS] Selected voice preset:', selectedVoicePreset, 'Voice ID:', voiceConfig.voice);
+      console.log('[WitnessLab TTS] Selected voice preset:', selectedVoicePreset, 'Voice ID:', voiceConfig.voiceId);
       
       if (elevenLabsKey && elevenLabsKey.length > 10) {
         try {
           console.log('[WitnessLab TTS] Attempting ElevenLabs direct synthesis...');
-          const voiceId = ELEVENLABS_VOICES[voiceConfig.voice as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
+          const voiceId = ELEVENLABS_VOICES[voiceConfig.voiceId as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
           const audioData = await synthesizeSpeech(text, voiceId, {
             apiKey: elevenLabsKey,
             stability: 0.5,

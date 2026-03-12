@@ -10,6 +10,7 @@ import { MOCK_CASE_TEMPLATES } from '../constants';
 import { handleError, handleSuccess, getErrorMessage } from '../utils/errorHandler';
 import { validateFile } from '../utils/fileValidation';
 
+import { ToastContainer, toast } from 'react-toastify';
 import { generateRealisticCase } from '../services/caseGenerationService';
 
 const CaseManager = ({ initialAnalysisResult }: { initialAnalysisResult?: any }) => {
