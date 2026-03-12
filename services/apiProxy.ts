@@ -357,21 +357,29 @@ export const callGeminiProxy = async (
   // Try proxy first if Supabase is configured (preferred for CORS)
   if (isSupabaseConfigured()) {
     try {
+      console.log('[apiProxy] Attempting Gemini Edge Function proxy...');
       const { data, error } = await supabase.functions.invoke('gemini-proxy', {
         body: request,
       });
 
-      if (!error && data?.success) {
+      if (error) {
+        console.error('[apiProxy] Supabase function error:', error);
+        throw error;
+      }
+
+      if (data && data.success) {
         return data as GeminiProxyResponse;
       }
 
-      console.warn('[apiProxy] Proxy failed, falling back to direct:', error?.message || data?.error);
-    } catch (err) {
-      console.warn('[apiProxy] Proxy exception, falling back to direct:', err);
+      console.warn('[apiProxy] Proxy returned success=false:', data?.error || 'Unknown proxy error');
+    } catch (err: any) {
+      console.warn('[apiProxy] Proxy failure, falling back to direct:', err.message || err);
+      // If it's a CORS error or function not found, we fall back to direct
     }
   }
 
   // Fallback to direct client-side API
+  console.log('[apiProxy] Using direct Gemini API fallback (Client-side)');
   return callGeminiDirect(request);
 };
 

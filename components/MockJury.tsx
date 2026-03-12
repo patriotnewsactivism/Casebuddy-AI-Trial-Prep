@@ -140,7 +140,11 @@ Return a JSON array of deliberation statements in this format:
         }
       });
 
-      const deliberationData = JSON.parse(response.text || '[]');
+      if (!response.success || !response.text) {
+        throw new Error(response.error?.message || 'Deliberation failed: No response text received');
+      }
+
+      const deliberationData = JSON.parse(response.text);
 
       // Animate deliberations appearing one by one
       for (let i = 0; i < deliberationData.length; i++) {
@@ -216,7 +220,11 @@ Return JSON with:
         }
       });
 
-      const verdictData = JSON.parse(response.text || '{}');
+      if (!response.success || !response.text) {
+        throw new Error(response.error?.message || 'Verdict generation failed: No response text received');
+      }
+
+      const verdictData = JSON.parse(response.text);
       setVerdict(verdictData);
       setPhase('verdict');
       setIsDeliberating(false);

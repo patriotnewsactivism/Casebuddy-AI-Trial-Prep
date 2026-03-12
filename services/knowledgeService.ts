@@ -33,7 +33,11 @@ Return a JSON array of entities with their type and context.`;
       }
     });
 
-    const entities = JSON.parse(response.text || '[]');
+    if (!response.success || !response.text) {
+      throw new Error(response.error?.message || 'Entity extraction failed: No response text received');
+    }
+
+    const entities = JSON.parse(response.text);
     return entities.map((e: any) => ({
       ...e,
       source,
@@ -75,7 +79,11 @@ Return a JSON array of facts with their category and confidence.`;
       }
     });
 
-    const facts = JSON.parse(response.text || '[]');
+    if (!response.success || !response.text) {
+      throw new Error(response.error?.message || 'Fact extraction failed: No response text received');
+    }
+
+    const facts = JSON.parse(response.text);
     return facts.map((f: any, idx: number) => ({
       id: `fact-${Date.now()}-${idx}`,
       text: f.text,

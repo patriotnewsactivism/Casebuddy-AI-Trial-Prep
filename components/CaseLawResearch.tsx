@@ -70,7 +70,11 @@ Return 5-8 relevant cases as JSON array.`;
         }
       });
 
-      const data = JSON.parse(response.text || '[]');
+      if (!response.success || !response.text) {
+        throw new Error(response.error?.message || 'Search failed: No response text received');
+      }
+
+      const data = JSON.parse(response.text);
       setResults(data.map((r: any, i: number) => ({
         id: `case-${Date.now()}-${i}`,
         ...r

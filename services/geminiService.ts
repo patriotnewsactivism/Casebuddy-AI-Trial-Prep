@@ -233,7 +233,11 @@ Return JSON format.`;
         }
       });
 
-      const analysis = JSON.parse(response.text || '{}');
+      if (!response.success || !response.text) {
+        throw new Error(response.error?.message || 'Document analysis failed: No response text received');
+      }
+
+      const analysis = JSON.parse(response.text);
       
       return {
         text: extractedText,
@@ -321,7 +325,11 @@ Return JSON format.`;
       }
     });
 
-    return JSON.parse(response.text || '{}');
+    if (!response.success || !response.text) {
+      throw new Error(response.error?.message || 'Document analysis failed: No response text received');
+    }
+
+    return JSON.parse(response.text);
   });
 };
 
@@ -423,7 +431,11 @@ export const predictStrategy = async (
         }
       });
 
-      return JSON.parse(response.text || '[]');
+      if (!response.success || !response.text) {
+        throw new Error(response.error?.message || 'Strategy prediction failed: No response text received');
+      }
+
+      return JSON.parse(response.text);
     },
     async () => {
       const res = await generateOpenAIResponse("You are a legal strategy expert. Output ONLY valid JSON.", prompt);
@@ -501,7 +513,11 @@ Return JSON with suggestions, a general tip, and the strategic goal.`;
         }
       });
 
-      const parsed = JSON.parse(response.text || '{}');
+      if (!response.success || !response.text) {
+        throw new Error(response.error?.message || 'Coaching generation failed: No response text received');
+      }
+
+      const parsed = JSON.parse(response.text);
       return {
         suggestions: parsed.suggestions || [],
         generalTip: parsed.generalTip || 'Focus on building your case methodically.',

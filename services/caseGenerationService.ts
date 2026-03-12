@@ -36,6 +36,10 @@ export const generateRealisticCase = async (prompt: string): Promise<Partial<Cas
       }
     });
 
+    if (!response.success || !response.text) {
+      throw new Error(response.error?.message || 'Failed to generate case: Empty response from AI');
+    }
+
     const data = JSON.parse(response.text);
     return {
       ...data,

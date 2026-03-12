@@ -91,7 +91,11 @@ const transcribeWithGemini = async (
       }
     });
 
-    const segments = JSON.parse(response.text || '[]');
+    if (!response.success || !response.text) {
+      throw new Error(response.error?.message || 'Transcription failed: No response text received');
+    }
+
+    const segments = JSON.parse(response.text);
     const fullText = segments.map((s: any) => `[${formatTimestamp(s.start)}] [${s.speaker}] ${s.text}`).join('\n');
 
     if (onProgress) onProgress(100);

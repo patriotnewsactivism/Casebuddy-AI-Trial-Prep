@@ -597,11 +597,15 @@ const TrialSim: React.FC = () => {
         conversationHistory: messages.map(m => ({
           role: m.sender === 'user' ? 'user' : 'model',
           parts: [{ text: m.text }]
-        }))
-      });
+        }
+        });
 
-      const parsed = parseAIResponse(response.text);
-      dispatch({ type: 'SET_OUTPUT_TRANSCRIPT', text: parsed.speak });
+        if (!response.success || !response.text) {
+        throw new Error(response.error?.message || 'AI turn failed: No response text received');
+        }
+
+        const parsed = parseAIResponse(response.text);
+        dispatch({ type: 'SET_OUTPUT_TRANSCRIPT', text: parsed.speak });
 
       if (parsed.objection) {
         dispatch({ type: 'OBJECTION_DETECTED' });
