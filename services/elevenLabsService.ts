@@ -239,6 +239,7 @@ export interface SynthesizeSpeechOptions {
   similarityBoost?: number;
   style?: number;
   useSpeakerBoost?: boolean;
+  apiKey?: string;
 }
 
 export const synthesizeSpeech = async (
@@ -246,7 +247,8 @@ export const synthesizeSpeech = async (
   voiceId?: string,
   options?: SynthesizeSpeechOptions
 ): Promise<ArrayBuffer> => {
-  if (!isProxyReady()) {
+  // Check for proxy or direct key (if provided in options)
+  if (!isProxyReady() && !options?.apiKey) {
     throw new Error('ElevenLabs proxy is not configured. Please set up Supabase.');
   }
 
@@ -258,6 +260,7 @@ export const synthesizeSpeech = async (
     similarityBoost: options?.similarityBoost,
     style: options?.style,
     useSpeakerBoost: options?.useSpeakerBoost,
+    apiKey: options?.apiKey,
   });
 
   if (!response.success || !response.audioBase64) {

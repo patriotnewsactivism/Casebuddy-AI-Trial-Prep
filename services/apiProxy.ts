@@ -82,12 +82,13 @@ export interface WhisperProxyResponse {
 
 export interface ElevenLabsProxyRequest {
   text: string;
-  voiceId?: string;
+  voiceId: string;
   modelId?: string;
   stability?: number;
   similarityBoost?: number;
   style?: number;
   useSpeakerBoost?: boolean;
+  apiKey?: string;
 }
 
 export interface ElevenLabsProxyResponse {
