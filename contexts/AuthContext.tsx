@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, checkSupabaseHealth, getHealthStatus, translateAuthError } from '../services/supabaseClient';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
 export type SubscriptionPlan = 'free' | 'pro' | 'firm';
@@ -27,7 +27,7 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, firmName?: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, firmName?: string) => Promise<{ autoLoggedIn: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
@@ -78,6 +78,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setUser(null);
           return;
         }
+        // Pre-warm health check so we can detect paused/unreachable projects early
+        checkSupabaseHealth().catch(() => {});
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) {
           console.warn('[Auth] Failed to get session:', sessionError.message);
@@ -215,26 +217,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);
     try {
       requireSupabase();
+      if (getHealthStatus() === 'unknown') {
+        await checkSupabaseHealth();
+      }
+      if (getHealthStatus() === 'unreachable') {
+        throw new Error('Unable to connect to the authentication service. The server may be temporarily unavailable. Please try again later.');
+      }
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (signInError) throw signInError;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to sign in';
+      const rawMessage = err instanceof Error ? err.message : 'Failed to sign in';
+      const message = translateAuthError(rawMessage);
       setError(message);
-      throw err;
+      throw new Error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string, firmName?: string): Promise<void> => {
+  const signUp = async (email: string, password: string, fullName: string, firmName?: string): Promise<{ autoLoggedIn: boolean }> => {
     setLoading(true);
     setError(null);
     try {
       requireSupabase();
-      const { error: signUpError } = await supabase.auth.signUp({
+      if (getHealthStatus() === 'unknown') {
+        await checkSupabaseHealth();
+      }
+      if (getHealthStatus() === 'unreachable') {
+        throw new Error('Unable to connect to the authentication service. The server may be temporarily unavailable. Please try again later.');
+      }
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -245,10 +260,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         },
       });
       if (signUpError) throw signUpError;
+      return { autoLoggedIn: !!data?.session };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create account';
+      const rawMessage = err instanceof Error ? err.message : 'Failed to create account';
+      const message = translateAuthError(rawMessage);
       setError(message);
-      throw err;
+      throw new Error(message);
     } finally {
       setLoading(false);
     }

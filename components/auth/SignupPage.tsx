@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Building2, Loader2, Eye, EyeOff, Check } from 'lucide-react';
 import AuthLayout from './AuthLayout';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,6 +15,7 @@ const SignupPage: React.FC = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   
+  const navigate = useNavigate();
   const { signUp, loading, error, clearError } = useAuth();
 
   const getPasswordStrength = (pwd: string): { score: number; label: string; color: string } => {
@@ -50,8 +51,12 @@ const SignupPage: React.FC = () => {
     }
     
     try {
-      await signUp(email, password, fullName, firmName || undefined);
-      setSuccess(true);
+      const result = await signUp(email, password, fullName, firmName || undefined);
+      if (result.autoLoggedIn) {
+        navigate('/app');
+      } else {
+        setSuccess(true);
+      }
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to create account');
     }
