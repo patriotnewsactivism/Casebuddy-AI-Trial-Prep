@@ -955,3 +955,237 @@ export interface CaseKnowledge {
   documentSummaries: DocumentSummary[];
   lastUpdated: number;
 }
+
+// ============================================
+// PRODUCTION READINESS TYPES
+// ============================================
+
+// User Tier System
+export type UserTier = 'free' | 'pro' | 'enterprise';
+
+export interface UserTierConfig {
+  tier: UserTier;
+  startedAt: string;
+  expiresAt?: string;
+  stripeSubscriptionId?: string;
+}
+
+export interface TierLimits {
+  ocrPages: number | 'unlimited';
+  aiRequests: number | 'unlimited';
+  transcriptionMinutes: number | 'unlimited';
+  storageGb: number;
+  courtroomSessions: number | 'unlimited';
+}
+
+export const TIER_LIMITS: Record<UserTier, TierLimits> = {
+  free: {
+    ocrPages: 50,
+    aiRequests: 100,
+    transcriptionMinutes: 10,
+    storageGb: 1,
+    courtroomSessions: 5,
+  },
+  pro: {
+    ocrPages: 1000,
+    aiRequests: 1000,
+    transcriptionMinutes: 300,
+    storageGb: 50,
+    courtroomSessions: 100,
+  },
+  enterprise: {
+    ocrPages: 'unlimited',
+    aiRequests: 10000,
+    transcriptionMinutes: 3000,
+    storageGb: 500,
+    courtroomSessions: 'unlimited',
+  },
+};
+
+// AI Model Router Types
+export type AIProvider = 'gemini-flash' | 'gemini-pro' | 'openai';
+
+export interface AIModelConfig {
+  provider: AIProvider;
+  model: string;
+  costPer1kTokens: number;
+  maxTokens: number;
+  supportsStructuredOutput: boolean;
+  supportsThinking: boolean;
+}
+
+export interface AIRoutingDecision {
+  model: AIModelConfig;
+  reason: string;
+  estimatedCost: number;
+  complexity: number;
+}
+
+// Cache Types
+export interface CacheEntry {
+  id: string;
+  documentId?: string;
+  analysisType: string;
+  promptHash: string;
+  result: unknown;
+  modelUsed: string;
+  tokenCount?: number;
+  hitCount: number;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export type CacheLayer = 'memory' | 'database';
+
+export interface CacheResult {
+  hit: boolean;
+  layer?: CacheLayer;
+  data?: unknown;
+  cacheId?: string;
+}
+
+// Document Processing Queue Types
+export type QueueItemStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type ProcessingMethod = 'native_text' | 'ocr_tesseract' | 'ocr_google' | 'ocr_aws' | 'ocr_azure' | 'transcription';
+
+export interface DocumentQueueItem {
+  id: string;
+  userId: string;
+  caseId?: string;
+  fileName: string;
+  filePath?: string;
+  fileType: string;
+  fileSize?: number;
+  status: QueueItemStatus;
+  processingMethod?: ProcessingMethod;
+  priority: number;
+  result?: unknown;
+  errorMessage?: string;
+  retryCount: number;
+  maxRetries: number;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface DocumentQueueStats {
+  pending: number;
+  processing: number;
+  completed: number;
+  failed: number;
+  totalProcessed: number;
+}
+
+// Courtroom Simulation Types (Extended)
+export type CourtroomSessionType =
+  | 'mock_trial'
+  | 'deposition'
+  | 'cross_examination'
+  | 'direct_examination'
+  | 'opening_statement'
+  | 'closing_argument'
+  | 'voir_dire'
+  | 'sentencing';
+
+export type CourtroomSessionStatus = 'active' | 'paused' | 'completed' | 'abandoned';
+
+export interface CourtroomSession {
+  id: string;
+  caseId?: string;
+  userId: string;
+  sessionType: CourtroomSessionType;
+  difficulty: SimulationMode;
+  aiJudgeModel: string;
+  aiOpposingCounselModel: string;
+  aiWitnessModel: string;
+  caseContext?: string;
+  status: CourtroomSessionStatus;
+  durationSeconds: number;
+  overallScore?: number;
+  feedback?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface SimulationTranscriptEntry {
+  id: string;
+  sessionId: string;
+  speaker: string;
+  content: string;
+  audioUrl?: string;
+  analysis?: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface ObjectionRecord {
+  id: string;
+  sessionId: string;
+  objectionType: string;
+  raisedBy: 'user' | 'ai_opposing';
+  ruling: 'sustained' | 'overruled' | 'pending';
+  reasoning?: string;
+  legalBasis?: string;
+  wasCured: boolean;
+  timestamp: string;
+}
+
+export interface SimulationMetric {
+  id: string;
+  sessionId: string;
+  userId: string;
+  metricType: string;
+  score: number;
+  feedback?: string;
+  details?: Record<string, unknown>;
+  calculatedAt: string;
+}
+
+// Performance Scoring Types
+export interface PerformanceScorecard {
+  persuasiveness: number;
+  evidenceUsage: number;
+  objectionHandling: number;
+  legalAccuracy: number;
+  overallScore: number;
+  feedback: string;
+  strengths: string[];
+  areasForImprovement: string[];
+}
+
+export interface PerformanceSummaryData {
+  totalSessions: number;
+  totalDurationSeconds: number;
+  averageScore: number;
+  sessionsByType: Record<string, number>;
+  objectionStats: {
+    totalRaised: number;
+    sustained: number;
+    overruled: number;
+  };
+  recentScores: Array<{
+    date: string;
+    score: number;
+    type: string;
+  }>;
+}
+
+// Transcription Router Types
+export type TranscriptionService = 'browser' | 'whisper' | 'gemini';
+
+export interface TranscriptionRouterConfig {
+  service: TranscriptionService;
+  maxDurationSeconds: number;
+  accuracy: number;
+  costPerMinute: number;
+}
+
+export interface TranscriptionRouterResult {
+  service: TranscriptionService;
+  text: string;
+  segments?: TranscriptSegment[];
+  duration?: number;
+  language?: string;
+  confidence: number;
+  correctedText?: string;
+  corrections?: Array<{ original: string; corrected: string }>;
+}
