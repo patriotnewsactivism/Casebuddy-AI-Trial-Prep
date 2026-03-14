@@ -62,6 +62,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     last_reset_date: new Date().toISOString()
   };
 
+  const requireSupabase = () => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Authentication service is not configured. Please set up Supabase credentials in your environment.');
+    }
+  };
+
   useEffect(() => {
     // Check active sessions and sets up the listener
     const initAuth = async () => {
@@ -181,7 +187,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const updateUsage = async (updates: Partial<UserUsage>): Promise<void> => {
-    if (!user || !supabaseUser) return;
+    if (!user || !supabaseUser || !isSupabaseConfigured()) return;
     
     const newUsage = { ...user.usage, ...updates };
     const newPreferences = { plan: user.plan, usage: newUsage };
@@ -208,6 +214,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
+      requireSupabase();
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -226,6 +233,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
+      requireSupabase();
       const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -249,7 +257,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = async (): Promise<void> => {
     setLoading(true);
     try {
-      await supabase.auth.signOut();
+      if (isSupabaseConfigured()) {
+        await supabase.auth.signOut();
+      }
       setUser(null);
       setSupabaseUser(null);
     } catch (err) {
@@ -263,6 +273,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
+      requireSupabase();
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
       if (resetError) throw resetError;
     } catch (err) {
@@ -278,6 +289,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
+      requireSupabase();
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword
       });
