@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { getTrialSimSystemPrompt, isOpenAIConfigured, streamOpenAIResponse } from '../services/openAIService';
 import { generateProactiveCoaching } from '../services/geminiService';
-import { callGeminiProxy } from '../services/apiProxy';
+import { callGeminiProxy, isProxyReady } from '../services/apiProxy';
 import { Type } from "@google/genai";
 import { ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured, synthesizeSpeech } from '../services/elevenLabsService';
 import { isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
@@ -684,8 +684,8 @@ const TrialSim: React.FC = () => {
       return;
     }
 
-    if (!isOpenAIConfigured()) {
-      toast.error('OpenAI API key not configured. Add OPENAI_API_KEY to .env.local');
+    if (!isProxyReady()) {
+      toast.error('AI not configured. Set GEMINI_API_KEY in .env.local or configure Supabase proxy.');
       return;
     }
 
@@ -766,12 +766,14 @@ const TrialSim: React.FC = () => {
       dispatch({ type: 'SET_VOLUME', volume: 20 });
     };
 
+    // Accumulate all speech before sending to AI
+    let accumulatedTranscript = '';
+
     recognition.onresult = async (event: SpeechRecognitionEvent) => {
       if (isAISpeakingRef.current) {
-        console.log('[TrialSim] Ignoring speech result because AI is speaking');
         return;
       }
-      
+
       lastTranscriptTime = Date.now();
       if (silenceTimer) {
         clearTimeout(silenceTimer);
@@ -790,22 +792,33 @@ const TrialSim: React.FC = () => {
         }
       }
 
-      if (interimTranscript) {
-        dispatch({ type: 'SET_INPUT_TRANSCRIPT', text: interimTranscript.trim() });
-        dispatch({ type: 'SET_VOLUME', volume: 60 + Math.random() * 30 });
-        
-        // Start silence timer for interim results
-        silenceTimer = setTimeout(async () => {
-          if (interimTranscript.trim() && !isProcessingRef.current && !isAISpeakingRef.current) {
-            console.log('[TrialSim] Silence detected, processing interim transcript');
-            await handleUserTranscript(interimTranscript.trim());
-          }
-        }, 2500); // 2.5s of silence triggers it
+      // Accumulate final transcripts
+      if (latestFinalTranscript.trim()) {
+        accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + latestFinalTranscript.trim();
       }
 
-      if (latestFinalTranscript.trim() && !isProcessingRef.current) {
+      // Show what we're hearing (accumulated + current interim)
+      const displayText = (accumulatedTranscript + (interimTranscript ? ' ' + interimTranscript : '')).trim();
+      if (displayText) {
+        dispatch({ type: 'SET_INPUT_TRANSCRIPT', text: displayText });
+        dispatch({ type: 'SET_VOLUME', volume: 60 + Math.random() * 30 });
+      }
+
+      // Start silence timer - when user pauses, send everything accumulated
+      silenceTimer = setTimeout(async () => {
+        const textToSend = accumulatedTranscript.trim() || displayText;
+        if (textToSend && !isProcessingRef.current && !isAISpeakingRef.current) {
+          accumulatedTranscript = '';
+          await handleUserTranscript(textToSend);
+        }
+      }, 1800); // 1.8s of silence triggers processing (reduced from 2.5s for mobile responsiveness)
+
+      // If we have substantial final text (a full sentence), process it immediately
+      if (accumulatedTranscript.trim().length > 50 && !isProcessingRef.current) {
         if (silenceTimer) clearTimeout(silenceTimer);
-        await handleUserTranscript(latestFinalTranscript.trim());
+        const textToSend = accumulatedTranscript.trim();
+        accumulatedTranscript = '';
+        await handleUserTranscript(textToSend);
       }
     };
 
@@ -1433,15 +1446,33 @@ const TrialSim: React.FC = () => {
             <div className="p-5 bg-slate-900 border-t border-gold-500/20 overflow-y-auto max-h-[45vh] scrollbar-thin scrollbar-thumb-slate-700">
               {coachingTip?.teleprompterScript ? (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <p className="text-[10px] text-gold-400/60 uppercase tracking-[0.2em] font-black mb-3">Your Next Script:</p>
+                  <p className="text-[10px] text-gold-400/60 uppercase tracking-[0.2em] font-black mb-3">Say This Next:</p>
                   <p className="text-xl md:text-3xl text-white leading-relaxed font-light italic">
                     "{coachingTip.teleprompterScript}"
                   </p>
+                  <p className="text-[10px] text-slate-500 mt-3 uppercase">Read this aloud, or say something different — it's your call</p>
                 </div>
               ) : (
-                <div className="text-center py-10 opacity-50">
-                  <p className="text-slate-400 text-sm">Waiting for you to speak...</p>
-                  <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest">Real-time coaching will appear here</p>
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <p className="text-[10px] text-gold-400/60 uppercase tracking-[0.2em] font-black mb-3">Getting Started:</p>
+                  <p className="text-lg md:text-2xl text-white leading-relaxed font-light italic">
+                    {phase === 'opening-statement'
+                      ? `"May it please the court, ladies and gentlemen of the jury, my name is counsel for the ${activeCase?.clientType || 'plaintiff'}. Today we will show you..."`
+                      : phase === 'cross-examination'
+                      ? '"I\'d like to direct your attention to the events of that day. Isn\'t it true that..."'
+                      : phase === 'direct-examination'
+                      ? '"Could you please state your name and occupation for the record?"'
+                      : phase === 'closing-argument'
+                      ? `"Ladies and gentlemen, over the course of this trial, the evidence has shown beyond any doubt that..."`
+                      : phase === 'voir-dire'
+                      ? '"Good morning. Before we begin, I\'d like to ask you a few questions about your background..."'
+                      : phase === 'pre-trial-motions'
+                      ? '"Your Honor, we move to exclude the following evidence on the grounds that..."'
+                      : phase === 'sentencing'
+                      ? '"Your Honor, we respectfully ask the court to consider the following mitigating factors..."'
+                      : '"Your Honor, may it please the court..."'}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-3 uppercase">Read this to get started, or say something different</p>
                 </div>
               )}
 
