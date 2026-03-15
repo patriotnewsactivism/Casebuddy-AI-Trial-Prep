@@ -62,6 +62,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     last_reset_date: new Date().toISOString()
   };
 
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out. The authentication service may be unavailable. Please try again later.`)), ms)
+      ),
+    ]);
+  };
+
   const requireSupabase = () => {
     if (!isSupabaseConfigured()) {
       throw new Error('Authentication service is not configured. Please set up Supabase credentials in your environment.');
@@ -80,7 +89,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
         // Pre-warm health check so we can detect paused/unreachable projects early
         checkSupabaseHealth().catch(() => {});
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        const { data: { session }, error: sessionError } = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Session check timed out')), 8000)),
+        ]);
         if (sessionError) {
           console.warn('[Auth] Failed to get session:', sessionError.message);
         }
@@ -223,10 +235,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (getHealthStatus() === 'unreachable') {
         throw new Error('Unable to connect to the authentication service. The server may be temporarily unavailable. Please try again later.');
       }
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error: signInError } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        10000,
+        'Sign in'
+      );
       if (signInError) throw signInError;
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Failed to sign in';
@@ -249,16 +262,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (getHealthStatus() === 'unreachable') {
         throw new Error('Unable to connect to the authentication service. The server may be temporarily unavailable. Please try again later.');
       }
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            firm_name: firmName || '',
+      const { data, error: signUpError } = await withTimeout(
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+              firm_name: firmName || '',
+            },
           },
-        },
-      });
+        }),
+        10000,
+        'Sign up'
+      );
       if (signUpError) throw signUpError;
       return { autoLoggedIn: !!data?.session };
     } catch (err) {
