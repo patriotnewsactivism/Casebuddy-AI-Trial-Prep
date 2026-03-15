@@ -35,6 +35,28 @@ const formatTimestamp = (seconds: number) => {
     return `${min}:${sec.toString().padStart(2, '0')}`;
 };
 
+const parseSegmentsFromResponse = (rawText: string): TranscriptSegmentData[] => {
+  const normalized = rawText.trim();
+  const jsonPayload = normalized.startsWith('```')
+    ? normalized.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    : normalized;
+
+  const parsed = JSON.parse(jsonPayload);
+  if (!Array.isArray(parsed)) {
+    throw new Error('Transcription response was not a JSON array');
+  }
+
+  return parsed
+    .filter((segment): segment is { start: unknown; end: unknown; speaker: unknown; text: unknown } => !!segment)
+    .map((segment) => ({
+      start: Number(segment.start) || 0,
+      end: Number(segment.end) || 0,
+      speaker: String(segment.speaker || 'Speaker'),
+      text: String(segment.text || '').trim(),
+    }))
+    .filter((segment) => segment.text.length > 0);
+};
+
 export const fileToGenerativePart = async (file: File | Blob): Promise<{ data: string; mimeType: string }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -95,7 +117,10 @@ const transcribeWithGemini = async (
       throw new Error(response.error?.message || 'Transcription failed: No response text received');
     }
 
-    const segments = JSON.parse(response.text);
+    const segments = parseSegmentsFromResponse(response.text);
+    if (segments.length === 0) {
+      throw new Error('Transcription failed: Empty transcript returned');
+    }
     const fullText = segments.map((s: any) => `[${formatTimestamp(s.start)}] [${s.speaker}] ${s.text}`).join('\n');
 
     if (onProgress) onProgress(100);
