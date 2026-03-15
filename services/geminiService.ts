@@ -422,6 +422,10 @@ export const generateWitnessResponse = async (
         conversationHistory: session.history.length > 0 ? session.history : undefined
       });
 
+      if (!response.success || !response.text?.trim()) {
+        throw new Error(response.error?.message || 'Witness response failed: No response text received');
+      }
+
       session.history = updatedHistory;
       session.history.push({ role: 'model', parts: [{ text: response.text }] });
 
