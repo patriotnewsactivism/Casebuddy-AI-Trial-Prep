@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase, isSupabaseConfigured, checkSupabaseHealth, getHealthStatus, translateAuthError } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, checkSupabaseHealth, getHealthStatus, translateAuthError, directSignIn, directSignUp } from '../services/supabaseClient';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
 export type SubscriptionPlan = 'free' | 'pro' | 'firm';
@@ -229,18 +229,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);
     try {
       requireSupabase();
-      if (getHealthStatus() === 'unknown') {
-        await checkSupabaseHealth();
-      }
-      if (getHealthStatus() === 'unreachable') {
-        throw new Error('Unable to connect to the authentication service. The server may be temporarily unavailable. Please try again later.');
-      }
+      // Use direct fetch to bypass Supabase client's navigator.locks
+      // which can deadlock if getSession() is still holding the lock
       const { error: signInError } = await withTimeout(
-        supabase.auth.signInWithPassword({ email, password }),
+        directSignIn(email, password),
         10000,
         'Sign in'
       );
-      if (signInError) throw signInError;
+      if (signInError) throw new Error(signInError.message);
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Failed to sign in';
       const message = translateAuthError(rawMessage);
@@ -256,28 +252,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);
     try {
       requireSupabase();
-      if (getHealthStatus() === 'unknown') {
-        await checkSupabaseHealth();
-      }
-      if (getHealthStatus() === 'unreachable') {
-        throw new Error('Unable to connect to the authentication service. The server may be temporarily unavailable. Please try again later.');
-      }
+      // Use direct fetch to bypass Supabase client's navigator.locks
       const { data, error: signUpError } = await withTimeout(
-        supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: fullName,
-              firm_name: firmName || '',
-            },
-          },
+        directSignUp(email, password, {
+          full_name: fullName,
+          firm_name: firmName || '',
         }),
         10000,
         'Sign up'
       );
-      if (signUpError) throw signUpError;
-      return { autoLoggedIn: !!data?.session };
+      if (signUpError) throw new Error(signUpError.message);
+      return { autoLoggedIn: !!data?.access_token };
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Failed to create account';
       const message = translateAuthError(rawMessage);

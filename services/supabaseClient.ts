@@ -38,6 +38,70 @@ export const getSupabaseClient = (): SupabaseClient | null => {
 
 export const isSupabaseConfigured = (): boolean => isValidConfig;
 
+export const getSupabaseUrl = (): string => supabaseUrl;
+export const getSupabaseAnonKey = (): string => supabaseAnonKey;
+
+// Direct auth functions that bypass the Supabase client's internal lock mechanism.
+// The Supabase JS client uses navigator.locks to serialize auth operations.
+// If getSession() hangs during init, it holds the lock and blocks all subsequent
+// auth calls (signInWithPassword, signUp, etc.) indefinitely.
+
+export const directSignIn = async (email: string, password: string): Promise<{ data: any; error: any }> => {
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ email, password }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      return { data: null, error: { message: body.msg || body.error_description || body.message || 'Sign in failed', status: response.status } };
+    }
+    // Set the session on the Supabase client so subsequent operations work
+    if (body.access_token) {
+      await supabase.auth.setSession({
+        access_token: body.access_token,
+        refresh_token: body.refresh_token,
+      });
+    }
+    return { data: body, error: null };
+  } catch (err) {
+    return { data: null, error: { message: err instanceof Error ? err.message : 'Network error', status: 0 } };
+  }
+};
+
+export const directSignUp = async (email: string, password: string, metadata?: Record<string, string>): Promise<{ data: any; error: any }> => {
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ email, password, data: metadata || {} }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      return { data: null, error: { message: body.msg || body.error_description || body.message || 'Sign up failed', status: response.status } };
+    }
+    // Set the session if auto-confirmed
+    if (body.access_token) {
+      await supabase.auth.setSession({
+        access_token: body.access_token,
+        refresh_token: body.refresh_token,
+      });
+    }
+    return { data: body, error: null };
+  } catch (err) {
+    return { data: null, error: { message: err instanceof Error ? err.message : 'Network error', status: 0 } };
+  }
+};
+
 // Health check to detect unreachable/paused Supabase projects
 let healthStatus: 'unknown' | 'reachable' | 'unreachable' = 'unknown';
 
