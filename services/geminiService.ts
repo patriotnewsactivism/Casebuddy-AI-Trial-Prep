@@ -5,6 +5,9 @@ import { toast } from "react-toastify";
 import { performDocumentOCR } from "./ocrService";
 import { generateOpenAIResponse, isOpenAIConfigured } from "./openAIService";
 import { callGeminiProxy, callOpenAIProxy, isProxyReady, checkProxyHealth, GeminiProxyRequest } from "./apiProxy";
+import { getCachedResult, cacheResult } from "./cacheService";
+import { routeAIRequest, getModelString } from "./aiModelRouter";
+import { logAudit } from "./auditLogService";
 
 const apiKey = process.env.API_KEY || '';
 
@@ -291,8 +294,7 @@ export const batchAnalyzeDocuments = async (
 };
 
 export const analyzeDocument = async (text: string, filePart?: any) => {
-  return queueRequest(async () => {
-    const prompt = `You are a legal document analyst. Analyze the following document thoroughly.
+  const prompt = `You are a legal document analyst. Analyze the following document thoroughly.
 
 Extract and provide:
 1. A comprehensive summary (3-5 sentences for complex documents)
@@ -304,11 +306,27 @@ Extract and provide:
 
 Return JSON format.`;
 
-    const fullPrompt = prompt + "\n\n" + (text || "Analyze this uploaded document.");
+  const fullPrompt = prompt + "\n\n" + (text || "Analyze this uploaded document.");
+
+  // Check cache first (skip if file-based analysis with inline data)
+  if (!filePart) {
+    const cached = await getCachedResult(fullPrompt, 'document_analysis');
+    if (cached.hit) {
+      logAudit({ action: 'cache_hit', resource: 'document_analysis', success: true });
+      return cached.data;
+    }
+    logAudit({ action: 'cache_miss', resource: 'document_analysis', success: true });
+  }
+
+  // Route to optimal model
+  const routing = routeAIRequest(fullPrompt, { analysisType: 'document_analysis' });
+
+  return queueRequest(async () => {
+    const startTime = Date.now();
 
     const response = await callGeminiProxy({
       prompt: fullPrompt,
-      model: 'gemini-2.5-flash',
+      model: routing.model.model,
       options: {
         responseMimeType: 'application/json',
         responseSchema: {
@@ -326,10 +344,31 @@ Return JSON format.`;
     });
 
     if (!response.success || !response.text) {
+      logAudit({ action: 'ai_request', resource: 'document_analysis', modelUsed: routing.model.model, success: false, errorMessage: response.error?.message });
       throw new Error(response.error?.message || 'Document analysis failed: No response text received');
     }
 
-    return JSON.parse(response.text);
+    const result = JSON.parse(response.text);
+
+    logAudit({
+      action: 'ai_request',
+      resource: 'document_analysis',
+      modelUsed: routing.model.model,
+      tokenCount: response.usage?.totalTokenCount || undefined,
+      estimatedCost: routing.estimatedCost,
+      durationMs: Date.now() - startTime,
+      success: true,
+    });
+
+    // Cache the result
+    if (!filePart) {
+      await cacheResult(fullPrompt, 'document_analysis', result, {
+        modelUsed: routing.model.model,
+        tokenCount: response.usage?.totalTokenCount || undefined,
+      });
+    }
+
+    return result;
   });
 };
 
@@ -395,25 +434,38 @@ export const generateWitnessResponse = async (
 };
 
 export const predictStrategy = async (
-  caseSummary: string, 
+  caseSummary: string,
   opponentProfile: string,
   knowledgeContext?: string
 ): Promise<StrategyInsight[]> => {
-  const knowledgeSection = knowledgeContext 
+  const knowledgeSection = knowledgeContext
     ? `\n\nRELEVANT CASE KNOWLEDGE:\n${knowledgeContext}\n`
     : '';
-  
+
   const prompt = `Analyze this case and the opposing counsel profile.
       Case: ${caseSummary}${knowledgeSection}
       Opponent: ${opponentProfile}
 
       Provide 3 strategic insights (Risks, Opportunities, or Predictions). Return JSON array of objects with fields: title, description, confidence (number), type (risk|opportunity|prediction).`;
 
+  // Check cache
+  const cached = await getCachedResult(prompt, 'strategy');
+  if (cached.hit) {
+    logAudit({ action: 'cache_hit', resource: 'strategy', success: true });
+    return cached.data as StrategyInsight[];
+  }
+  logAudit({ action: 'cache_miss', resource: 'strategy', success: true });
+
+  // Route to optimal model (strategy uses pro for paid users)
+  const routing = routeAIRequest(prompt, { analysisType: 'strategy', requiresThinking: true });
+
   return queueRequest(
     async () => {
+      const startTime = Date.now();
+
       const response = await callGeminiProxy({
         prompt,
-        model: 'gemini-2.5-flash',
+        model: routing.model.model,
         options: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -432,10 +484,30 @@ export const predictStrategy = async (
       });
 
       if (!response.success || !response.text) {
+        logAudit({ action: 'ai_request', resource: 'strategy', modelUsed: routing.model.model, success: false, errorMessage: response.error?.message });
         throw new Error(response.error?.message || 'Strategy prediction failed: No response text received');
       }
 
-      return JSON.parse(response.text);
+      const result = JSON.parse(response.text);
+
+      logAudit({
+        action: 'ai_request',
+        resource: 'strategy',
+        modelUsed: routing.model.model,
+        tokenCount: response.usage?.totalTokenCount || undefined,
+        estimatedCost: routing.estimatedCost,
+        durationMs: Date.now() - startTime,
+        success: true,
+      });
+
+      // Cache strategy results (longer TTL since they're expensive)
+      await cacheResult(prompt, 'strategy', result, {
+        modelUsed: routing.model.model,
+        tokenCount: response.usage?.totalTokenCount || undefined,
+        ttlHours: 336, // 2 weeks
+      });
+
+      return result;
     },
     async () => {
       const res = await generateOpenAIResponse("You are a legal strategy expert. Output ONLY valid JSON.", prompt);

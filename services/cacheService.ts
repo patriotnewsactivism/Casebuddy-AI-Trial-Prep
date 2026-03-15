@@ -205,6 +205,7 @@ export async function getCachedResult(
   // L1: Memory cache
   const memResult = checkMemoryCache(promptHash, analysisType);
   if (memResult.hit) {
+    cacheHits++;
     console.log(`[CacheService] L1 HIT (memory) for ${analysisType}`);
     return memResult;
   }
@@ -212,10 +213,13 @@ export async function getCachedResult(
   // L2: Database cache
   const dbResult = await checkDatabaseCache(promptHash, analysisType);
   if (dbResult.hit) {
+    cacheHits++;
+    dbCacheHits++;
     console.log(`[CacheService] L2 HIT (database) for ${analysisType}`);
     return dbResult;
   }
 
+  cacheMisses++;
   console.log(`[CacheService] MISS for ${analysisType}`);
   return { hit: false };
 }
@@ -260,6 +264,11 @@ export async function invalidateDocumentCache(documentId: string): Promise<void>
   }
 }
 
+// Hit/miss tracking counters
+let cacheHits = 0;
+let cacheMisses = 0;
+let dbCacheHits = 0;
+
 /**
  * Get cache statistics.
  */
@@ -267,12 +276,31 @@ export function getCacheStats(): {
   memoryCacheSize: number;
   memoryCacheMaxSize: number;
   memoryCacheHitRate: string;
+  hits: number;
+  misses: number;
+  dbHits: number;
+  totalRequests: number;
 } {
+  const total = cacheHits + cacheMisses;
+  const hitRate = total > 0 ? ((cacheHits / total) * 100).toFixed(1) + '%' : '0%';
   return {
     memoryCacheSize: memoryCache.size,
     memoryCacheMaxSize: MEMORY_CACHE_MAX_SIZE,
-    memoryCacheHitRate: 'N/A', // Would need hit/miss counters for real tracking
+    memoryCacheHitRate: hitRate,
+    hits: cacheHits,
+    misses: cacheMisses,
+    dbHits: dbCacheHits,
+    totalRequests: total,
   };
+}
+
+/**
+ * Reset cache statistics counters.
+ */
+export function resetCacheStats(): void {
+  cacheHits = 0;
+  cacheMisses = 0;
+  dbCacheHits = 0;
 }
 
 /**
