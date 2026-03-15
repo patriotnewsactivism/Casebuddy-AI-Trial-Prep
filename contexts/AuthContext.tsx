@@ -143,11 +143,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const fetchProfile = async (sUser: SupabaseUser) => {
     try {
-      const { data, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', sUser.id)
-        .single();
+      const { data, error: profileError } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', sUser.id)
+          .single(),
+        5000,
+        'Profile fetch'
+      );
 
       if (profileError) {
         if (profileError.code === 'PGRST116') {
@@ -160,7 +164,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             preferences: { plan: 'free', usage: DEFAULT_USAGE }
           };
           
-          const { error: insertError } = await supabase.from('profiles').insert(newProfile);
+          const { error: insertError } = await withTimeout(
+            supabase.from('profiles').insert(newProfile),
+            5000,
+            'Profile creation'
+          );
           if (insertError) throw insertError;
           
           setUser({
@@ -239,10 +247,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (signInError) throw new Error(signInError.message);
       // If setSession was blocked by navigator.locks, onAuthStateChange won't fire.
       // Manually update React state from the token response so the user gets logged in.
-      if (data?.user && !supabaseUser) {
+      if (data?.user) {
         const sUser = data.user as SupabaseUser;
         setSupabaseUser(sUser);
-        await fetchProfile(sUser);
+        setUser({
+          id: sUser.id,
+          email: sUser.email || '',
+          fullName: sUser.user_metadata?.full_name || sUser.email?.split('@')[0] || 'User',
+          firmName: sUser.user_metadata?.firm_name || '',
+          createdAt: sUser.created_at,
+          plan: 'free',
+          usage: DEFAULT_USAGE
+        });
+
+        // Don't block login UX on profile network latency.
+        // Fire and forget so route navigation can complete immediately.
+        fetchProfile(sUser).catch((profileError) => {
+          console.warn('[Auth] Deferred profile fetch failed after sign in:', profileError);
+        });
       }
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Failed to sign in';
@@ -270,10 +292,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       );
       if (signUpError) throw new Error(signUpError.message);
       // Manually update state if setSession was blocked (same as signIn)
-      if (data?.access_token && data?.user && !supabaseUser) {
+      if (data?.access_token && data?.user) {
         const sUser = data.user as SupabaseUser;
         setSupabaseUser(sUser);
-        await fetchProfile(sUser);
+        setUser({
+          id: sUser.id,
+          email: sUser.email || '',
+          fullName: sUser.user_metadata?.full_name || fullName || sUser.email?.split('@')[0] || 'User',
+          firmName: sUser.user_metadata?.firm_name || firmName,
+          createdAt: sUser.created_at,
+          plan: 'free',
+          usage: DEFAULT_USAGE
+        });
+        fetchProfile(sUser).catch((profileError) => {
+          console.warn('[Auth] Deferred profile fetch failed after sign up:', profileError);
+        });
       }
       return { autoLoggedIn: !!data?.access_token };
     } catch (err) {
