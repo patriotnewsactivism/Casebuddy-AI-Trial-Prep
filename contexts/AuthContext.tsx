@@ -231,12 +231,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       requireSupabase();
       // Use direct fetch to bypass Supabase client's navigator.locks
       // which can deadlock if getSession() is still holding the lock
-      const { error: signInError } = await withTimeout(
+      const { data, error: signInError } = await withTimeout(
         directSignIn(email, password),
-        10000,
+        15000,
         'Sign in'
       );
       if (signInError) throw new Error(signInError.message);
+      // If setSession was blocked by navigator.locks, onAuthStateChange won't fire.
+      // Manually update React state from the token response so the user gets logged in.
+      if (data?.user && !supabaseUser) {
+        const sUser = data.user as SupabaseUser;
+        setSupabaseUser(sUser);
+        await fetchProfile(sUser);
+      }
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Failed to sign in';
       const message = translateAuthError(rawMessage);
@@ -258,10 +265,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           full_name: fullName,
           firm_name: firmName || '',
         }),
-        10000,
+        15000,
         'Sign up'
       );
       if (signUpError) throw new Error(signUpError.message);
+      // Manually update state if setSession was blocked (same as signIn)
+      if (data?.access_token && data?.user && !supabaseUser) {
+        const sUser = data.user as SupabaseUser;
+        setSupabaseUser(sUser);
+        await fetchProfile(sUser);
+      }
       return { autoLoggedIn: !!data?.access_token };
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Failed to create account';
