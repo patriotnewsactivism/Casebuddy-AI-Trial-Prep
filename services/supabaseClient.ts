@@ -41,6 +41,25 @@ export const isSupabaseConfigured = (): boolean => isValidConfig;
 export const getSupabaseUrl = (): string => supabaseUrl;
 export const getSupabaseAnonKey = (): string => supabaseAnonKey;
 
+// Store session directly to localStorage when supabase.auth.setSession() is blocked
+// by navigator.locks contention (e.g. getSession() from init still holding the lock).
+const storeSessionManually = (tokenResponse: any) => {
+  try {
+    const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+    const storageKey = `sb-${projectRef}-auth-token`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      access_token: tokenResponse.access_token,
+      refresh_token: tokenResponse.refresh_token,
+      token_type: tokenResponse.token_type || 'bearer',
+      expires_in: tokenResponse.expires_in,
+      expires_at: tokenResponse.expires_at,
+      user: tokenResponse.user,
+    }));
+  } catch (e) {
+    console.warn('[Auth] Failed to manually store session:', e);
+  }
+};
+
 // Direct auth functions that bypass the Supabase client's internal lock mechanism.
 // The Supabase JS client uses navigator.locks to serialize auth operations.
 // If getSession() hangs during init, it holds the lock and blocks all subsequent
@@ -56,20 +75,37 @@ export const directSignIn = async (email: string, password: string): Promise<{ d
         'Authorization': `Bearer ${supabaseAnonKey}`,
       },
       body: JSON.stringify({ email, password }),
+      signal: AbortSignal.timeout(8000),
     });
     const body = await response.json();
     if (!response.ok) {
       return { data: null, error: { message: body.msg || body.error_description || body.message || 'Sign in failed', status: response.status } };
     }
-    // Set the session on the Supabase client so subsequent operations work
+    // Try to set the session on the Supabase client so subsequent operations work.
+    // setSession uses navigator.locks internally — if getSession() from init is still
+    // holding the lock, this will deadlock. Use a short timeout and fall back to
+    // manual localStorage storage so the user isn't blocked.
     if (body.access_token) {
-      await supabase.auth.setSession({
-        access_token: body.access_token,
-        refresh_token: body.refresh_token,
-      });
+      try {
+        await Promise.race([
+          supabase.auth.setSession({
+            access_token: body.access_token,
+            refresh_token: body.refresh_token,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('setSession lock timeout')), 3000)
+          ),
+        ]);
+      } catch {
+        // navigator.locks blocked setSession — store session manually
+        storeSessionManually(body);
+      }
     }
     return { data: body, error: null };
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      return { data: null, error: { message: 'Network request timed out. Please check your connection and try again.', status: 0 } };
+    }
     return { data: null, error: { message: err instanceof Error ? err.message : 'Network error', status: 0 } };
   }
 };
@@ -84,20 +120,33 @@ export const directSignUp = async (email: string, password: string, metadata?: R
         'Authorization': `Bearer ${supabaseAnonKey}`,
       },
       body: JSON.stringify({ email, password, data: metadata || {} }),
+      signal: AbortSignal.timeout(8000),
     });
     const body = await response.json();
     if (!response.ok) {
       return { data: null, error: { message: body.msg || body.error_description || body.message || 'Sign up failed', status: response.status } };
     }
-    // Set the session if auto-confirmed
+    // Set the session if auto-confirmed (same lock-bypass logic as directSignIn)
     if (body.access_token) {
-      await supabase.auth.setSession({
-        access_token: body.access_token,
-        refresh_token: body.refresh_token,
-      });
+      try {
+        await Promise.race([
+          supabase.auth.setSession({
+            access_token: body.access_token,
+            refresh_token: body.refresh_token,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('setSession lock timeout')), 3000)
+          ),
+        ]);
+      } catch {
+        storeSessionManually(body);
+      }
     }
     return { data: body, error: null };
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      return { data: null, error: { message: 'Network request timed out. Please check your connection and try again.', status: 0 } };
+    }
     return { data: null, error: { message: err instanceof Error ? err.message : 'Network error', status: 0 } };
   }
 };
