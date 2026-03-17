@@ -8,6 +8,18 @@ export interface AzureOCRConfig {
 const CONFIG_KEY = 'lexsim_azure_ocr';
 
 export const loadAzureOCRConfig = (): AzureOCRConfig | null => {
+  // First, try loading from environment variables
+  const envEndpoint = process.env.AZURE_VISION_ENDPOINT;
+  const envKey = process.env.AZURE_VISION_KEY;
+
+  if (envEndpoint && envKey) {
+    return {
+      endpoint: envEndpoint,
+      apiKey: envKey,
+    };
+  }
+
+  // Fall back to localStorage
   try {
     const stored = localStorage.getItem(CONFIG_KEY);
     if (!stored) return null;

@@ -130,12 +130,18 @@ const Settings = () => {
     setCaptionSettings(loadCaptionSettings());
     setAudioSettings(loadAudioSettings());
     setAvailableVoices(browserTTS.getVoices());
-    // Load Azure OCR config
+
+    // Load Azure OCR config (from env vars or localStorage)
     const { loadAzureOCRConfig } = require('../services/azureOcrService');
     const azureConfig = loadAzureOCRConfig();
     if (azureConfig) {
       setAzureEndpoint(azureConfig.endpoint);
       setAzureApiKey(azureConfig.apiKey);
+      // If loaded from env, mark as OK
+      if (process.env.AZURE_VISION_ENDPOINT) {
+        setAzureStatus('ok');
+        setAzureMessage('Azure Computer Vision configured from environment');
+      }
     }
   }, []);
 

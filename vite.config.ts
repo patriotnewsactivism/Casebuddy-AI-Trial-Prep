@@ -26,6 +26,9 @@ export default defineConfig(({ mode }) => {
         // Supabase public keys - safe for client-side
         'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL || env.VITE_SUPABASE_URL || ''),
         'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || ''),
+        // Azure Computer Vision - for OCR
+        'process.env.AZURE_VISION_ENDPOINT': JSON.stringify(env.AZURE_VISION_ENDPOINT || ''),
+        'process.env.AZURE_VISION_KEY': JSON.stringify(env.AZURE_VISION_KEY || ''),
       },
       resolve: {
         alias: {
