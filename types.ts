@@ -71,7 +71,7 @@ export interface Case {
   tags?: string[];
   evidence?: EvidenceItem[];
   tasks?: CaseTask[];
-  
+
   // Realistic Legal Fields
   docketNumber?: string;
   courtLocation?: string;
@@ -86,6 +86,14 @@ export interface Case {
   citations?: CaseLawCitation[];
   discoveryRequests?: DiscoveryRequest[];
   settlementAnalyses?: SettlementAnalysis[];
+
+  // Case Management Full Suite
+  clientProfile?: ClientProfile;
+  budgetEntries?: BudgetEntry[];
+  motions?: FiledMotion[];
+  courtDates?: CourtDate[];
+  expertWitnesses?: ExpertWitness[];
+  timelineEvents?: TimelineEvent[];
 }
 
 export interface Document {
@@ -599,6 +607,83 @@ export interface JuryVerdictData {
   injuries: string;
   award: number;
   notes?: string;
+}
+
+// Case Management Full Suite Types
+export interface ClientProfile {
+  fullName: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  retainerAmount?: number;
+  retainerDate?: string;
+  billingRate?: number;
+  notes?: string;
+}
+
+export interface BudgetEntry {
+  id: string;
+  caseId: string;
+  type: 'time' | 'expense';
+  description: string;
+  date: string;
+  hours?: number;
+  rate?: number;
+  amount?: number;
+  category?: string;
+  phase?: CaseStatus;
+}
+
+export interface FiledMotion {
+  id: string;
+  caseId: string;
+  title: string;
+  type: 'motion' | 'pleading' | 'brief' | 'order' | 'stipulation';
+  filedDate?: string;
+  dueDate?: string;
+  status: 'drafting' | 'filed' | 'pending' | 'granted' | 'denied' | 'moot' | 'withdrawn';
+  hearingDate?: string;
+  judge?: string;
+  notes?: string;
+  outcome?: string;
+}
+
+export interface CourtDate {
+  id: string;
+  caseId: string;
+  title: string;
+  date: string;
+  time?: string;
+  type: 'hearing' | 'trial' | 'deposition' | 'mediation' | 'deadline' | 'other';
+  location?: string;
+  notes?: string;
+  completed?: boolean;
+}
+
+export interface ExpertWitness {
+  id: string;
+  caseId: string;
+  name: string;
+  title: string;
+  specialty: string;
+  firm?: string;
+  email?: string;
+  phone?: string;
+  fee?: number;
+  reportDue?: string;
+  reportReceived?: boolean;
+  depositionDate?: string;
+  credibilityNotes?: string;
+  side: 'ours' | 'opposing';
+}
+
+export interface AzureOCRResult {
+  text: string;
+  confidence: number;
+  pageCount: number;
+  language?: string;
+  wordCount: number;
+  error?: string;
 }
 
 // Discovery Types

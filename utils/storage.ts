@@ -111,6 +111,11 @@ const hydrateCase = (c: Case): Case => ({
   evidence: c.evidence || [],
   tasks: c.tasks || [],
   tags: c.tags || [],
+  budgetEntries: c.budgetEntries || [],
+  motions: c.motions || [],
+  courtDates: c.courtDates || [],
+  expertWitnesses: c.expertWitnesses || [],
+  timelineEvents: c.timelineEvents || [],
 });
 
 // Migration function for version updates
