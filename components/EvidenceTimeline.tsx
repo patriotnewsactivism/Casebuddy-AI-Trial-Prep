@@ -1,14 +1,19 @@
 
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
 import { DocumentType, Evidence, EvidenceStatus, TimelineEvent, TimelineEventImportance, TimelineEventType } from '../types';
 import { Calendar, Clock, Plus, Edit2, Trash2, AlertCircle, FileText, Filter, Download } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const EvidenceTimeline = () => {
-  const { activeCase } = useContext(AppContext);
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const { activeCase, updateCase } = useContext(AppContext);
+  const [events, setEvents] = useState<TimelineEvent[]>(activeCase?.timelineEvents || []);
   const [evidenceList, setEvidenceList] = useState<Evidence[]>([]);
+
+  // Sync timelineEvents from case on case change
+  useEffect(() => {
+    setEvents(activeCase?.timelineEvents || []);
+  }, [activeCase?.id]);
   const [showAddEvent, setShowAddEvent] = useState(false);
   const [showAddEvidence, setShowAddEvidence] = useState(false);
   const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
@@ -29,11 +34,11 @@ const EvidenceTimeline = () => {
     dateObtained: new Date().toISOString().split('T')[0]
   });
 
-  const handleAddEvent = () => {
-    if (!newEvent.title || !newEvent.date) return;
+  const handleAddEvent = async () => {
+    if (!newEvent.title || !newEvent.date || !activeCase) return;
 
     const event: TimelineEvent = {
-      id: `event-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: newEvent.title,
       date: newEvent.date,
       time: newEvent.time,
@@ -45,7 +50,9 @@ const EvidenceTimeline = () => {
       linkedWitnesses: newEvent.linkedWitnesses
     };
 
-    setEvents([...events, event].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+    const updated = [...events, event].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    setEvents(updated);
+    await updateCase(activeCase.id, { timelineEvents: updated });
     setNewEvent({
       type: 'incident',
       importance: 'medium',
@@ -79,9 +86,11 @@ const EvidenceTimeline = () => {
     setShowAddEvidence(false);
   };
 
-  const deleteEvent = (id: string) => {
-    if (window.confirm('Delete this timeline event?')) {
-      setEvents(events.filter(e => e.id !== id));
+  const deleteEvent = async (id: string) => {
+    if (window.confirm('Delete this timeline event?') && activeCase) {
+      const updated = events.filter(e => e.id !== id);
+      setEvents(updated);
+      await updateCase(activeCase.id, { timelineEvents: updated });
     }
   };
 

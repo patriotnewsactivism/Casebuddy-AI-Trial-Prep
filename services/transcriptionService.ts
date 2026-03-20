@@ -2,6 +2,13 @@ import { callGeminiProxy, callWhisperProxy } from './apiProxy';
 import { Type } from "@google/genai";
 import { TranscriptionProvider, TranscriptionSettings, TranscriptionResultData, TranscriptSegmentData } from "../types";
 
+type RawTranscriptSegment = {
+  start: number;
+  end: number;
+  speaker?: string;
+  text: string;
+};
+
 const vocabList = (settings: TranscriptionSettings) => settings.customVocabulary.length > 0
   ? `VOCABULARY/GLOSSARY (Prioritize these spellings): ${settings.customVocabulary.join(', ')}`
   : '';
@@ -64,6 +71,59 @@ export const parseSegmentsFromResponse = (rawText: string): TranscriptSegmentDat
       };
     })
     .filter((segment) => segment.text.length > 0);
+};
+
+const isTranscriptSegment = (value: unknown): value is RawTranscriptSegment => {
+  if (!value || typeof value !== 'object') return false;
+  const segment = value as Partial<RawTranscriptSegment>;
+  return (
+    typeof segment.start === 'number' &&
+    typeof segment.end === 'number' &&
+    typeof segment.text === 'string'
+  );
+};
+
+const extractTranscriptSegments = (rawText: string): TranscriptSegmentData[] => {
+  const parseCandidate = (candidate: string): unknown => {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      return null;
+    }
+  };
+
+  const jsonArrayMatch = rawText.match(/\[[\s\S]*\]/);
+  const parsed = parseCandidate(rawText) ?? (jsonArrayMatch ? parseCandidate(jsonArrayMatch[0]) : null);
+
+  let segmentsSource: unknown = parsed;
+  if (segmentsSource && typeof segmentsSource === 'object' && !Array.isArray(segmentsSource)) {
+    const record = segmentsSource as Record<string, unknown>;
+    if (Array.isArray(record.segments)) {
+      segmentsSource = record.segments;
+    }
+  }
+
+  if (!Array.isArray(segmentsSource)) {
+    throw new Error('Transcription failed: Model did not return segment array JSON');
+  }
+
+  const normalized = segmentsSource
+    .filter(isTranscriptSegment)
+    .map((segment, index) => ({
+      start: segment.start,
+      end: segment.end,
+      speaker: typeof segment.speaker === 'string' && segment.speaker.trim().length > 0
+        ? segment.speaker
+        : `Speaker ${index + 1}`,
+      text: segment.text.trim(),
+    }))
+    .filter((segment) => segment.text.length > 0);
+
+  if (normalized.length === 0) {
+    throw new Error('Transcription failed: No valid transcript segments returned');
+  }
+
+  return normalized;
 };
 
 export const fileToGenerativePart = async (file: File | Blob): Promise<{ data: string; mimeType: string }> => {

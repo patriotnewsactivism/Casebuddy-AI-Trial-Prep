@@ -19,13 +19,20 @@ export default defineConfig(({ mode }) => {
       plugins: [react()],
       define: {
         // API keys for direct access (fallback when Edge Functions unavailable)
-        'process.env.API_KEY': JSON.stringify(env.API_KEY || env.GEMINI_API_KEY || ''),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || ''),
+        'process.env.API_KEY': JSON.stringify(env.API_KEY || env.GEMINI_API_KEY || env.GOOGLE_AI_API_KEY || ''),
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || env.GOOGLE_AI_API_KEY || ''),
         'process.env.OPENAI_API_KEY': JSON.stringify(env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || ''),
         'process.env.ELEVENLABS_API_KEY': JSON.stringify(env.ELEVENLABS_API_KEY || env.VITE_ELEVENLABS_API_KEY || ''),
         // Supabase public keys - safe for client-side
         'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL || env.VITE_SUPABASE_URL || ''),
         'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || ''),
+        // Azure Computer Vision - for OCR
+        'process.env.AZURE_VISION_ENDPOINT': JSON.stringify(env.AZURE_VISION_ENDPOINT || env.AZURE_DOC_INTELLIGENCE_ENDPOINT || ''),
+        'process.env.AZURE_VISION_KEY': JSON.stringify(env.AZURE_VISION_KEY || env.AZURE_DOC_INTELLIGENCE_KEY || ''),
+        // Additional API keys
+        'process.env.ASSEMBLYAI_API_KEY': JSON.stringify(env.ASSEMBLYAI_API_KEY || ''),
+        'process.env.OCR_SPACE_API_KEY': JSON.stringify(env.OCR_SPACE_API_KEY || ''),
+        'process.env.DAILY_API_KEY': JSON.stringify(env.DAILY_API_KEY || ''),
       },
       resolve: {
         alias: {

@@ -14,7 +14,8 @@ import {
   Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle,
   BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText,
   Users, Scale, Clock, Volume2, ChevronUp, FolderOpen, ChevronDown,
-  Target, Loader2, ChevronRight
+  Target, Loader2, ChevronRight, NotebookPen, X, Plus, CheckCircle2,
+  BarChart3, MessageSquare
 } from 'lucide-react';
 import { getTrialSimSystemPrompt, isOpenAIConfigured, streamOpenAIResponse } from '../services/openAIService';
 import { generateProactiveCoaching } from '../services/geminiService';
@@ -48,7 +49,38 @@ interface AIStructuredResponse {
     rhetoricalEffectiveness: number;
     fallaciesIdentified: string[];
   };
+  notebookUpdate?: {
+    keyArgument?: string;
+    evidenceCited?: string;
+    timelineEvent?: string;
+  } | null;
 }
+
+// ─── Reactive Notebook ────────────────────────────────────────────────────────
+
+interface NotebookTimelineEntry {
+  time: string;
+  event: string;
+  type: 'user' | 'ai' | 'objection' | 'ruling' | 'note';
+}
+
+interface NotebookState {
+  currentPhase: string;
+  keyArguments: string[];
+  evidenceCited: string[];
+  objectionsRaised: Array<{ grounds: string; ruling: string; time: string }>;
+  sessionTimeline: NotebookTimelineEntry[];
+  trialNotes: string[];
+}
+
+const INITIAL_NOTEBOOK: NotebookState = {
+  currentPhase: 'Initializing...',
+  keyArguments: [],
+  evidenceCited: [],
+  objectionsRaised: [],
+  sessionTimeline: [],
+  trialNotes: [],
+};
 
 // Web Speech API types
 interface SpeechRecognitionEvent extends Event {
@@ -177,6 +209,11 @@ You MUST respond ONLY with valid JSON (no markdown, no code fences) matching thi
     "teleprompterScript": "<exactly what the user should say next — write it in first person>",
     "rhetoricalEffectiveness": <integer 0–100>,
     "fallaciesIdentified": [<string array of any logical fallacies — empty array if none>]
+  },
+  "notebookUpdate": null | {
+    "keyArgument": "<≤10 word summary of the user's legal argument, if any>",
+    "evidenceCited": "<name of evidence or exhibit mentioned, if any>",
+    "timelineEvent": "<≤8 word label of what just happened>"
   }
 }
 
@@ -186,6 +223,11 @@ Rules:
 • "ruling" is non-null ONLY if the judge intervenes or rules on an objection; otherwise null.
 • "coaching" is ALWAYS fully populated — it drives the private training HUD, never spoken.
 • "rhetoricalEffectiveness" reflects argument strength: 0=catastrophic, 50=average, 100=masterful.
+• "notebookUpdate" — populate whenever any of these are present in the exchange:
+  - "keyArgument": a concise (≤10 words) summary of the user's core legal argument if one was made.
+  - "evidenceCited": name of any evidence or exhibit mentioned by either party.
+  - "timelineEvent": short label (≤8 words) summarizing what just happened (e.g. "Hearsay objection raised", "Witness credibility attacked").
+  If none apply, set notebookUpdate to null.
 • Never break character in "speak". Coaching commentary stays in "coaching" only.
 • Output ONLY valid JSON. Non-JSON output breaks the simulator.`;
 }
@@ -298,6 +340,11 @@ const TrialSim: React.FC = () => {
   // ── Saved sessions ───────────────────────────────────────────────────────
   const { sessions: savedSessions, addSession, removeSession } = useSavedSessions(activeCase?.id);
 
+  // ── Reactive Notebook ─────────────────────────────────────────────────────
+  const [notebook, setNotebook] = useState<NotebookState>(INITIAL_NOTEBOOK);
+  const [showNotebook, setShowNotebook] = useState(false);
+  const [newNote, setNewNote] = useState('');
+
   // ── History playback ─────────────────────────────────────────────────────
   const [playingSessionId, setPlayingSessionId] = useState<string | null>(null);
   const historyAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -322,6 +369,10 @@ const TrialSim: React.FC = () => {
     avgRhetoricalScore: 50, wordCount: 0, fillerWordsCount: 0,
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const vizRafRef = useRef<number | null>(null);
+  const sessionStartRef = useRef<number>(0);
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const opponentName = activeCase?.opposingCounsel && activeCase.opposingCounsel !== 'Unknown'
@@ -519,6 +570,12 @@ const TrialSim: React.FC = () => {
       rafRef.current = null;
     }
 
+    if (vizRafRef.current) {
+      cancelAnimationFrame(vizRafRef.current);
+      vizRafRef.current = null;
+    }
+    analyserRef.current = null;
+
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
 
@@ -589,6 +646,14 @@ const TrialSim: React.FC = () => {
                   fallaciesIdentified: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
                 required: ['critique', 'suggestion', 'teleprompterScript', 'rhetoricalEffectiveness']
+              },
+              notebookUpdate: {
+                type: Type.OBJECT,
+                properties: {
+                  keyArgument: { type: Type.STRING },
+                  evidenceCited: { type: Type.STRING },
+                  timelineEvent: { type: Type.STRING },
+                }
               }
             },
             required: ['speak', 'action', 'coaching']
@@ -645,6 +710,53 @@ const TrialSim: React.FC = () => {
         }
       }
 
+      // ── Reactive notebook update ──────────────────────────────────────────
+      const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setNotebook(prev => {
+        const next = { ...prev };
+
+        if (parsed.notebookUpdate) {
+          const { keyArgument, evidenceCited, timelineEvent } = parsed.notebookUpdate;
+          if (keyArgument?.trim()) {
+            next.keyArguments = [...prev.keyArguments, keyArgument.trim()].slice(-8);
+          }
+          if (evidenceCited?.trim()) {
+            const alreadyIn = prev.evidenceCited.includes(evidenceCited.trim());
+            if (!alreadyIn) next.evidenceCited = [...prev.evidenceCited, evidenceCited.trim()];
+          }
+          if (timelineEvent?.trim()) {
+            next.sessionTimeline = [
+              ...prev.sessionTimeline,
+              { time: now, event: timelineEvent.trim(), type: 'ai' as const }
+            ].slice(-20);
+          }
+        }
+
+        if (parsed.objection) {
+          next.objectionsRaised = [
+            ...prev.objectionsRaised,
+            {
+              grounds: parsed.objection.grounds,
+              ruling: parsed.ruling ? parsed.ruling.type : 'pending',
+              time: now,
+            }
+          ];
+          next.sessionTimeline = [
+            ...next.sessionTimeline,
+            { time: now, event: `Objection: ${parsed.objection.grounds}`, type: 'objection' as const }
+          ].slice(-20);
+        }
+
+        if (parsed.ruling) {
+          next.sessionTimeline = [
+            ...next.sessionTimeline,
+            { time: now, event: `Ruling: ${parsed.ruling.type}`, type: 'ruling' as const }
+          ].slice(-20);
+        }
+
+        return next;
+      });
+
       setMessages(prev => [...prev, {
         id: `${Date.now()}-o`,
         sender: 'opponent',
@@ -694,6 +806,10 @@ const TrialSim: React.FC = () => {
     metricsRef.current = { objectionsReceived: 0, fallaciesCommitted: 0, avgRhetoricalScore: 50, wordCount: 0, fillerWordsCount: 0 };
     isProcessingRef.current = false;
     restartAttemptsRef.current = 0;
+    setNotebook({
+      ...INITIAL_NOTEBOOK,
+      currentPhase: phase?.replace(/-/g, ' ') || 'Unknown',
+    });
 
     let stream: MediaStream;
     try {
@@ -712,6 +828,40 @@ const TrialSim: React.FC = () => {
       analyser.fftSize = 256;
       source.connect(analyser);
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      analyserRef.current = analyser;
+      sessionStartRef.current = Date.now();
+
+      // Canvas audio visualizer
+      const drawVisualizer = () => {
+        if (!isLiveRef.current) return;
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            analyser.getByteFrequencyData(dataArray);
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+            const barCount = Math.min(32, dataArray.length);
+            const barWidth = w / barCount - 1;
+            for (let i = 0; i < barCount; i++) {
+              const barHeight = (dataArray[i] / 255) * h;
+              const hue = 40 + (dataArray[i] / 255) * 20; // gold tones
+              ctx.fillStyle = `hsla(${hue}, 80%, 55%, 0.85)`;
+              ctx.fillRect(i * (barWidth + 1), h - barHeight, barWidth, barHeight);
+            }
+          }
+        }
+
+        // Also update volume meter
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+        const average = sum / dataArray.length;
+        dispatch({ type: 'SET_VOLUME', volume: Math.min(100, average * 2) });
+        vizRafRef.current = requestAnimationFrame(drawVisualizer);
+      };
+      vizRafRef.current = requestAnimationFrame(drawVisualizer);
 
       const updateVolume = () => {
         if (!isLiveRef.current) return;
@@ -868,6 +1018,21 @@ const TrialSim: React.FC = () => {
     setObjectionAlert(null);
     handleUserTranscript(response);
   }, [handleUserTranscript]);
+
+  const addTrialNote = useCallback(() => {
+    const trimmed = newNote.trim();
+    if (!trimmed) return;
+    const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setNotebook(prev => ({
+      ...prev,
+      trialNotes: [...prev.trialNotes, trimmed],
+      sessionTimeline: [
+        ...prev.sessionTimeline,
+        { time: now, event: `Note: ${trimmed}`, type: 'note' as const }
+      ].slice(-20),
+    }));
+    setNewNote('');
+  }, [newNote]);
 
   const playHistorySession = useCallback((s: TrialSession) => {
     if (playingSessionId === s.id) {
@@ -1110,6 +1275,7 @@ const TrialSim: React.FC = () => {
               setMessages([]);
               setCoachingTip(null);
               setObjectionAlert(null);
+              setNotebook({ ...INITIAL_NOTEBOOK, currentPhase: phase?.replace(/-/g, ' ') || 'Unknown' });
               dispatch({ type: 'RESET_SESSION' });
               setView('active');
             }}
@@ -1175,6 +1341,118 @@ const TrialSim: React.FC = () => {
         />
       )}
 
+      {/* Mobile notebook overlay */}
+      {showNotebook && (
+        <div className="fixed inset-0 z-50 lg:hidden flex flex-col bg-slate-900 border-l border-slate-700 overflow-hidden">
+          <div className="flex items-center justify-between p-3 bg-slate-800 border-b border-slate-700">
+            <div className="flex items-center gap-2">
+              <NotebookPen size={16} className="text-gold-400" />
+              <span className="text-sm font-bold text-gold-400 uppercase tracking-wide">Live Notebook</span>
+            </div>
+            <button onClick={() => setShowNotebook(false)} className="text-slate-400 hover:text-white">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* Phase */}
+            <div className="p-2.5 bg-slate-800 rounded-lg">
+              <p className="text-[10px] font-bold text-gold-400 uppercase tracking-wide mb-1">Phase</p>
+              <p className="text-sm text-white capitalize">{notebook.currentPhase}</p>
+            </div>
+            {/* Timeline */}
+            {notebook.sessionTimeline.length > 0 && (
+              <div className="p-2.5 bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wide mb-2">Timeline</p>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {notebook.sessionTimeline.slice().reverse().map((entry, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="text-slate-500 shrink-0 font-mono text-[9px] mt-0.5">{entry.time}</span>
+                      <span className={`${
+                        entry.type === 'objection' ? 'text-red-300' :
+                        entry.type === 'ruling' ? 'text-yellow-300' :
+                        entry.type === 'note' ? 'text-emerald-300' :
+                        'text-slate-300'
+                      }`}>{entry.event}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Key Arguments */}
+            {notebook.keyArguments.length > 0 && (
+              <div className="p-2.5 bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-2">Key Arguments</p>
+                <ul className="space-y-1">
+                  {notebook.keyArguments.map((arg, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-xs text-slate-300">
+                      <CheckCircle2 size={10} className="text-emerald-500 mt-0.5 shrink-0" />
+                      {arg}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {/* Objections */}
+            {notebook.objectionsRaised.length > 0 && (
+              <div className="p-2.5 bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide mb-2">Objections</p>
+                <ul className="space-y-1">
+                  {notebook.objectionsRaised.map((obj, i) => (
+                    <li key={i} className="text-xs">
+                      <span className="text-red-300">{obj.grounds}</span>
+                      <span className="text-slate-500"> · {obj.ruling}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {/* Evidence Cited */}
+            {notebook.evidenceCited.length > 0 && (
+              <div className="p-2.5 bg-slate-800 rounded-lg">
+                <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wide mb-2">Evidence Cited</p>
+                <ul className="space-y-1">
+                  {notebook.evidenceCited.map((ev, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-xs text-slate-300">
+                      <BarChart3 size={10} className="text-purple-400 mt-0.5 shrink-0" />
+                      {ev}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {/* Trial Notes */}
+            <div className="p-2.5 bg-slate-800 rounded-lg">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Trial Notes</p>
+              {notebook.trialNotes.length > 0 && (
+                <ul className="space-y-1 mb-2">
+                  {notebook.trialNotes.map((note, i) => (
+                    <li key={i} className="text-xs text-slate-300 flex items-start gap-1.5">
+                      <MessageSquare size={10} className="text-slate-500 mt-0.5 shrink-0" />
+                      {note}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-1">
+                <input
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addTrialNote(); } }}
+                  placeholder="Add note... (Enter)"
+                  className="flex-1 text-xs bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white placeholder-slate-500 focus:outline-none focus:border-gold-500"
+                />
+                <button
+                  onClick={addTrialNote}
+                  className="px-2 py-1.5 bg-gold-500/20 hover:bg-gold-500/30 text-gold-400 rounded border border-gold-500/30 transition-colors"
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-slate-800 border-b border-slate-700 p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
@@ -1204,10 +1482,22 @@ const TrialSim: React.FC = () => {
               <span className="text-xs text-red-300 font-bold">REC</span>
             </div>
           )}
+          <button
+            onClick={() => setShowNotebook(v => !v)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-colors lg:hidden ${
+              showNotebook ? 'bg-gold-500/30 text-gold-300' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+            title="Toggle Live Notebook"
+          >
+            <NotebookPen size={12} />
+            <span className="text-xs font-medium">Notes</span>
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* ── Left: Simulation area ── */}
+        <div className="flex-1 flex flex-col">
         <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-900">
           <div className="flex items-center gap-4 md:gap-8 mb-6">
             <StatPill label="Score"      value={`${session.sessionScore}%`} color="gold" />
@@ -1219,9 +1509,22 @@ const TrialSim: React.FC = () => {
             <StatPill label="Words" value={metricsRef.current.wordCount} color="slate" className="hidden sm:block" />
           </div>
 
+          {/* Audio visualizer canvas */}
+          <div className="w-full max-w-xs mb-4">
+            <canvas
+              ref={canvasRef}
+              width={280}
+              height={48}
+              className={`w-full rounded-lg transition-opacity duration-300 ${
+                session.isLive ? 'opacity-100' : 'opacity-20'
+              }`}
+              style={{ background: 'rgba(15,23,42,0.8)' }}
+            />
+          </div>
+
           <div className={`w-32 h-32 rounded-full border-4 transition-all duration-200 ${
             session.isLive && session.liveVolume > 20
-              ? 'border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.4)]'
+              ? 'border-gold-500 scale-105 shadow-[0_0_20px_rgba(212,175,55,0.4)]'
               : 'border-slate-700'
           }`}>
             <img
@@ -1241,7 +1544,7 @@ const TrialSim: React.FC = () => {
             session.isAISpeaking ? 'text-emerald-400' :
             session.isLive       ? 'text-blue-400'    : 'text-slate-500'
           }`}>
-            {session.isConnecting ? 'Connecting…' :
+            {session.isConnecting ? '⟳ Connecting…' :
              session.isAISpeaking ? '● Speaking' :
              session.isLive       ? '● Listening' : 'Ready'}
           </p>
@@ -1337,74 +1640,139 @@ const TrialSim: React.FC = () => {
             );
           })}
         </div>
-      </div>
+        </div>{/* end left panel */}
 
-      <div className={`hidden lg:flex flex-col w-72 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden transition-all ${showProactivePanel ? 'opacity-100' : 'opacity-0'}`}>
-        <button
-          onClick={() => setShowProactivePanel(!showProactivePanel)}
-          className="flex items-center justify-between p-3 bg-gold-500/10 border-b border-gold-500/30 hover:bg-gold-500/20 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <Target size={16} className="text-gold-400" />
-            <span className="text-sm font-bold text-gold-400 uppercase tracking-wide">Coach's Suggestions</span>
+        {/* ── Right: Live Notebook Sidebar (desktop) ── */}
+        <div className="hidden lg:flex flex-col w-80 bg-slate-800 border-l border-slate-700 overflow-hidden">
+          <div className="flex items-center justify-between p-3 bg-gold-500/10 border-b border-gold-500/20">
+            <div className="flex items-center gap-2">
+              <NotebookPen size={14} className="text-gold-400" />
+              <span className="text-xs font-bold text-gold-400 uppercase tracking-wide">Live Notebook</span>
+              {session.isLive && (
+                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+              )}
+            </div>
+            <span className="text-[10px] text-slate-500 capitalize">{notebook.currentPhase}</span>
           </div>
-          {showProactivePanel ? <ChevronUp size={16} className="text-gold-400" /> : <ChevronDown size={16} className="text-gold-400" />}
-        </button>
-        
-        {showProactivePanel && (
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[60vh]">
-            {isLoadingProactive ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 size={20} className="animate-spin text-gold-400" />
-              </div>
-            ) : proactiveSuggestions.length > 0 ? (
+
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* Timeline */}
+            <div>
+              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <Clock size={9} /> Session Timeline
+              </p>
+              {notebook.sessionTimeline.length === 0 ? (
+                <p className="text-xs text-slate-600 italic">Events appear here as they happen…</p>
+              ) : (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
+                  {notebook.sessionTimeline.slice().reverse().map((entry, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="text-slate-600 shrink-0 font-mono text-[9px] mt-0.5 w-14">{entry.time}</span>
+                      <span className={`leading-snug ${
+                        entry.type === 'objection' ? 'text-red-300' :
+                        entry.type === 'ruling' ? 'text-yellow-300' :
+                        entry.type === 'note' ? 'text-emerald-300' :
+                        'text-slate-300'
+                      }`}>{entry.event}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="h-px bg-slate-700" />
+
+            {/* Key Arguments */}
+            <div>
+              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-2">Key Arguments</p>
+              {notebook.keyArguments.length === 0 ? (
+                <p className="text-xs text-slate-600 italic">Arguments will be tracked here…</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {notebook.keyArguments.map((arg, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-xs text-slate-300">
+                      <CheckCircle2 size={10} className="text-emerald-500 mt-0.5 shrink-0" />
+                      {arg}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Objections */}
+            {notebook.objectionsRaised.length > 0 && (
               <>
-                {proactiveSuggestions.map((suggestion, index) => (
-                  <div
-                    key={suggestion.id || index}
-                    className="w-full text-left p-3 bg-slate-700/50 rounded-lg"
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                        suggestion.type === 'question' ? 'bg-blue-500/20 text-blue-400' :
-                        suggestion.type === 'statement' ? 'bg-green-500/20 text-green-400' :
-                        suggestion.type === 'objection' ? 'bg-red-500/20 text-red-400' :
-                        'bg-slate-500/20 text-slate-400'
-                      }`}>
-                        {suggestion.type}
-                      </span>
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                        suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                        suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-slate-500/20 text-slate-400'
-                      }`}>
-                        {suggestion.priority}
-                      </span>
-                    </div>
-                    <p className="text-sm text-white mt-2 leading-relaxed">{suggestion.text}</p>
-                    <p className="text-[10px] text-slate-400 mt-1 italic">{suggestion.context}</p>
-                  </div>
-                ))}
-                
-                {proactiveTip && (
-                  <div className="mt-4 pt-4 border-t border-slate-700">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Lightbulb size={14} className="text-yellow-400" />
-                      <span className="text-[10px] font-bold text-yellow-400 uppercase">Tip</span>
-                    </div>
-                    <p className="text-xs text-slate-300 leading-relaxed">{proactiveTip}</p>
-                  </div>
-                )}
+                <div className="h-px bg-slate-700" />
+                <div>
+                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide mb-2">
+                    Objections ({notebook.objectionsRaised.length})
+                  </p>
+                  <ul className="space-y-1.5">
+                    {notebook.objectionsRaised.map((obj, i) => (
+                      <li key={i} className="text-xs">
+                        <span className="text-red-300 font-medium">{obj.grounds}</span>
+                        <span className="text-slate-500"> · {obj.ruling} · </span>
+                        <span className="text-slate-600 font-mono text-[9px]">{obj.time}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </>
-            ) : (
-              <div className="text-center py-8">
-                <Target size={32} className="mx-auto text-slate-600 mb-3" />
-                <p className="text-sm text-slate-400">Start speaking to receive coaching suggestions</p>
-              </div>
             )}
+
+            {/* Evidence Cited */}
+            {notebook.evidenceCited.length > 0 && (
+              <>
+                <div className="h-px bg-slate-700" />
+                <div>
+                  <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wide mb-2">Evidence Cited</p>
+                  <ul className="space-y-1">
+                    {notebook.evidenceCited.map((ev, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs text-slate-300">
+                        <BarChart3 size={10} className="text-purple-400 mt-0.5 shrink-0" />
+                        {ev}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
+
+            <div className="h-px bg-slate-700" />
+
+            {/* Trial Notes */}
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Trial Notes</p>
+              {notebook.trialNotes.length > 0 && (
+                <ul className="space-y-1.5 mb-2 max-h-24 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
+                  {notebook.trialNotes.map((note, i) => (
+                    <li key={i} className="text-xs text-slate-300 flex items-start gap-1.5">
+                      <MessageSquare size={10} className="text-slate-500 mt-0.5 shrink-0" />
+                      {note}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-1">
+                <input
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addTrialNote(); } }}
+                  placeholder="Add note… (Enter)"
+                  className="flex-1 text-xs bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white placeholder-slate-600 focus:outline-none focus:border-gold-500"
+                />
+                <button
+                  onClick={addTrialNote}
+                  className="px-2 py-1.5 bg-gold-500/20 hover:bg-gold-500/30 text-gold-400 rounded border border-gold-500/30 transition-colors"
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+              <p className="text-[9px] text-slate-600 mt-1">Ctrl+Enter to add note quickly</p>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      </div>{/* end flex-1 flex-row */}
 
       <div className={`fixed md:relative bottom-24 md:bottom-0 left-0 right-0 z-40 transition-all duration-300 ${
         showTeleprompter ? 'max-h-[60vh]' : 'max-h-14'

@@ -111,6 +111,11 @@ const Settings = () => {
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(DEFAULT_AUDIO_SETTINGS);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isTestingAudio, setIsTestingAudio] = useState(false);
+  const [azureEndpoint, setAzureEndpoint] = useState('');
+  const [azureApiKey, setAzureApiKey] = useState('');
+  const [azureStatus, setAzureStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
+  const [azureMessage, setAzureMessage] = useState<string | null>(null);
+  const [testingAzure, setTestingAzure] = useState(false);
 
   const currentApiKey = process.env.API_KEY || '';
   const isApiKeyConfigured = currentApiKey && currentApiKey !== '';
@@ -125,6 +130,19 @@ const Settings = () => {
     setCaptionSettings(loadCaptionSettings());
     setAudioSettings(loadAudioSettings());
     setAvailableVoices(browserTTS.getVoices());
+
+    // Load Azure OCR config (from env vars or localStorage)
+    const { loadAzureOCRConfig } = require('../services/azureOcrService');
+    const azureConfig = loadAzureOCRConfig();
+    if (azureConfig) {
+      setAzureEndpoint(azureConfig.endpoint);
+      setAzureApiKey(azureConfig.apiKey);
+      // If loaded from env, mark as OK
+      if (process.env.AZURE_VISION_ENDPOINT) {
+        setAzureStatus('ok');
+        setAzureMessage('Azure Computer Vision configured from environment');
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -211,6 +229,33 @@ const Settings = () => {
       toast.error(`Audio test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsTestingAudio(false);
+    }
+  };
+
+  const saveAzureConfig = () => {
+    const { saveAzureOCRConfig } = require('../services/azureOcrService');
+    saveAzureOCRConfig({ endpoint: azureEndpoint, apiKey: azureApiKey });
+  };
+
+  const handleTestAzure = async () => {
+    setTestingAzure(true);
+    setAzureStatus('testing');
+    setAzureMessage(null);
+    try {
+      const { testAzureOCRConnection } = require('../services/azureOcrService');
+      const result = await testAzureOCRConnection(azureEndpoint, azureApiKey);
+      if (result.ok) {
+        setAzureStatus('ok');
+        setAzureMessage(result.message);
+      } else {
+        setAzureStatus('error');
+        setAzureMessage(result.message);
+      }
+    } catch (error) {
+      setAzureStatus('error');
+      setAzureMessage(`Test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setTestingAzure(false);
     }
   };
 
@@ -744,6 +789,78 @@ const Settings = () => {
             <Trash2 size={18} />
             <span className="font-medium">Clear All Data</span>
           </button>
+        </div>
+      </div>
+
+      {/* Azure Computer Vision OCR */}
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Cloud className="text-gold-500" size={24} />
+          <h2 className="text-xl font-semibold text-white">Azure Computer Vision</h2>
+        </div>
+
+        <div className="space-y-4">
+          <p className="text-sm text-slate-400">Configure Azure Computer Vision for OCR processing of scanned documents and images.</p>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Endpoint URL</label>
+            <input
+              type="url"
+              placeholder="https://[region].api.cognitive.microsoft.com"
+              value={azureEndpoint}
+              onChange={(e) => setAzureEndpoint(e.target.value)}
+              onBlur={() => saveAzureConfig()}
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-gold-500"
+            />
+            <p className="text-xs text-slate-400 mt-1">Your Azure Computer Vision resource endpoint</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">API Key</label>
+            <input
+              type="password"
+              placeholder="Your API key"
+              value={azureApiKey}
+              onChange={(e) => setAzureApiKey(e.target.value)}
+              onBlur={() => saveAzureConfig()}
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-gold-500"
+            />
+            <p className="text-xs text-slate-400 mt-1">Your Azure Computer Vision API key (kept in browser localStorage only)</p>
+          </div>
+
+          <button
+            onClick={handleTestAzure}
+            disabled={testingAzure || !azureEndpoint || !azureApiKey}
+            className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              testingAzure
+                ? 'bg-slate-700 text-slate-400'
+                : azureStatus === 'ok'
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : azureStatus === 'error'
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-slate-700 hover:bg-slate-600 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed'
+            }`}
+          >
+            {testingAzure && <Loader2 size={18} className="animate-spin" />}
+            {testingAzure ? 'Testing...' : azureStatus === 'ok' ? 'Connected' : azureStatus === 'error' ? 'Failed' : 'Test Connection'}
+          </button>
+
+          {azureMessage && (
+            <div className={`flex items-start gap-2 p-3 rounded-lg ${
+              azureStatus === 'ok'
+                ? 'bg-green-900/30 border border-green-700'
+                : 'bg-red-900/30 border border-red-700'
+            }`}>
+              {azureStatus === 'ok' ? (
+                <Check className="text-green-500 flex-shrink-0 mt-0.5" size={18} />
+              ) : (
+                <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={18} />
+              )}
+              <p className={azureStatus === 'ok' ? 'text-green-400 text-sm' : 'text-red-400 text-sm'}>
+                {azureMessage}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
