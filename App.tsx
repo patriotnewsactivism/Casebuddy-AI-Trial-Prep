@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -31,6 +31,8 @@ const EvidenceTimeline = lazy(() => import('./components/EvidenceTimeline'));
 const MockJury = lazy(() => import('./components/MockJury'));
 const PublicRecordsManager = lazy(() => import('./components/PublicRecordsManager'));
 const OfficerDatabase = lazy(() => import('./components/OfficerDatabase'));
+const AICoCounsel = lazy(() => import('./components/AICoCounsel'));
+const DiscoveryLens = lazy(() => import('./components/DiscoveryLens'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -41,65 +43,98 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const location = useLocation();
   const [showTools, setShowTools] = useState(true);
   const [showPrep, setShowPrep] = useState(true);
-  
-  const isActive = (path: string) => location.pathname === path ? 'bg-slate-800 text-gold-500 border-r-4 border-gold-500' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white';
+
+  const isActive = (path: string) => location.pathname === path;
 
   const NavItem = ({ path, icon: Icon, label }: { path: string, icon: any, label: string }) => (
-    <Link 
-      to={path} 
+    <Link
+      to={path}
       onClick={() => setIsOpen(false)}
-      className={`flex items-center gap-3 px-6 py-3 transition-all duration-200 ${isActive(path)}`}
+      className={`flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg transition-all duration-150 text-sm
+        ${isActive(path)
+          ? 'bg-slate-800 text-gold-500 font-medium'
+          : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}`}
     >
-      <Icon size={18} />
-      <span className="font-medium text-sm">{label}</span>
+      <Icon size={15} className="shrink-0" />
+      <span>{label}</span>
     </Link>
   );
 
   const NavGroup = ({ title, icon: Icon, isOpen: open, toggle, children }: { title: string; icon: any; isOpen: boolean; toggle: () => void; children: React.ReactNode }) => (
-    <div className="border-b border-slate-800/50">
+    <div>
       <button
         onClick={toggle}
-        className="flex items-center justify-between w-full px-6 py-3 text-slate-300 hover:text-white transition-colors"
+        className="flex items-center justify-between w-full mx-2 px-3 py-2 text-slate-500 hover:text-slate-300 transition-colors rounded-lg"
+        style={{ width: 'calc(100% - 1rem)' }}
       >
         <div className="flex items-center gap-2">
-          <Icon size={16} />
+          <Icon size={13} />
           <span className="text-xs font-semibold uppercase tracking-wider">{title}</span>
         </div>
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </button>
-      {open && <div className="pb-2">{children}</div>}
+      {open && <div className="mt-0.5 space-y-0.5">{children}</div>}
     </div>
   );
 
   return (
     <>
       {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+        <div
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
-      
+
       <aside className={`
-        fixed top-0 left-0 z-50 h-full w-64 bg-slate-950 border-r border-slate-800 
+        fixed top-0 left-0 z-50 h-full w-64 bg-slate-950 border-r border-slate-800/80
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
       `}>
-        <div className="h-16 flex items-center px-4 border-b border-slate-800">
-          <Link to="/app" className="flex items-center gap-2 text-gold-500 hover:opacity-80 transition-opacity">
-            <Gavel size={24} />
-            <span className="text-lg font-serif font-bold text-white">CaseBuddy</span>
+        {/* Logo */}
+        <div className="h-14 flex items-center px-4 border-b border-slate-800">
+          <Link to="/app" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <div className="w-7 h-7 rounded-lg bg-gold-500/15 border border-gold-500/30 flex items-center justify-center">
+              <Gavel size={14} className="text-gold-500" />
+            </div>
+            <span className="text-base font-serif font-bold text-white">CaseBuddy</span>
           </Link>
-          <button className="ml-auto md:hidden text-slate-400" onClick={() => setIsOpen(false)}>
-            <X size={24} />
+          <button className="ml-auto md:hidden text-slate-400 hover:text-white" onClick={() => setIsOpen(false)}>
+            <X size={20} />
           </button>
         </div>
 
-        <nav className="mt-2 flex flex-col overflow-y-auto h-[calc(100vh-4rem)]">
+        <nav className="py-3 flex flex-col overflow-y-auto h-[calc(100vh-3.5rem)] space-y-0.5">
+          {/* AI Co-Counsel — featured */}
+          <div className="px-2 pb-2">
+            <Link
+              to="/app/ai-counsel"
+              onClick={() => setIsOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 border
+                ${isActive('/app/ai-counsel')
+                  ? 'bg-gold-500/10 border-gold-500/30 text-gold-400'
+                  : 'bg-slate-800/40 border-slate-700/50 text-slate-300 hover:bg-slate-800 hover:border-slate-600 hover:text-white'}`}
+            >
+              <div className={`p-1.5 rounded-lg ${isActive('/app/ai-counsel') ? 'bg-gold-500/20' : 'bg-slate-700'}`}>
+                <Scale size={14} className={isActive('/app/ai-counsel') ? 'text-gold-400' : 'text-slate-400'} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold leading-none">AI Co-Counsel</p>
+                <p className="text-xs text-slate-500 mt-0.5 truncate">Your AI law partner</p>
+              </div>
+              {isActive('/app/ai-counsel') && (
+                <div className="w-1.5 h-1.5 rounded-full bg-gold-500 animate-pulse shrink-0" />
+              )}
+            </Link>
+          </div>
+
+          <div className="border-t border-slate-800/60 pt-2" />
+
           <NavItem path="/app" icon={LayoutDashboard} label="Dashboard" />
           <NavItem path="/app/cases" icon={Gavel} label="Case Files" />
-          
-          <NavGroup title="Preparation" icon={FolderOpen} isOpen={showPrep} toggle={() => setShowPrep(!showPrep)}>
+
+          <div className="pt-1" />
+          <NavGroup title="Trial Preparation" icon={FolderOpen} isOpen={showPrep} toggle={() => setShowPrep(!showPrep)}>
             <NavItem path="/app/practice" icon={Mic} label="Trial Simulator" />
             <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
             <NavItem path="/app/mock-jury" icon={Scale} label="Mock Jury" />
@@ -107,9 +142,11 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
             <NavItem path="/app/performance" icon={BarChart2} label="Performance" />
           </NavGroup>
 
+          <div className="pt-1" />
           <NavGroup title="Tools" icon={BrainCircuit} isOpen={showTools} toggle={() => setShowTools(!showTools)}>
             <NavItem path="/app/strategy" icon={BrainCircuit} label="Strategy & AI" />
-            <NavItem path="/app/settlement" icon={Calculator} label="Settlement Calculator" />
+            <NavItem path="/app/discovery-lens" icon={ScanLine} label="DiscoveryLens" />
+            <NavItem path="/app/settlement" icon={Calculator} label="Settlement" />
             <NavItem path="/app/discovery" icon={FileSearch} label="Discovery Manager" />
             <NavItem path="/app/case-law" icon={BookOpen} label="Case Law Research" />
             <NavItem path="/app/admissibility" icon={Target} label="Evidence Analyzer" />
@@ -118,11 +155,12 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
             <NavItem path="/app/officers" icon={Shield} label="Officer Database" />
           </NavGroup>
 
+          <div className="pt-1" />
           <NavItem path="/app/transcriber" icon={FileAudio} label="Transcriber" />
           <NavItem path="/app/docs" icon={FileText} label="Drafting Assistant" />
           <NavItem path="/app/negotiation" icon={Handshake} label="Negotiation Sim" />
-          
-          <div className="mt-auto border-t border-slate-800 pt-2 mb-4">
+
+          <div className="mt-auto pt-2 border-t border-slate-800/60">
             <NavItem path="/app/settings" icon={SettingsIcon} label="Settings" />
           </div>
         </nav>
@@ -401,7 +439,9 @@ const App = () => {
               <Route path="/app/mock-jury" element={<AuthenticatedLayout><MockJury /></AuthenticatedLayout>} />
               <Route path="/app/foia" element={<AuthenticatedLayout><PublicRecordsManager /></AuthenticatedLayout>} />
               <Route path="/app/officers" element={<AuthenticatedLayout><OfficerDatabase /></AuthenticatedLayout>} />
-              
+              <Route path="/app/ai-counsel" element={<AuthenticatedLayout><AICoCounsel /></AuthenticatedLayout>} />
+              <Route path="/app/discovery-lens" element={<AuthenticatedLayout><DiscoveryLens /></AuthenticatedLayout>} />
+
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

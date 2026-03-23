@@ -193,6 +193,16 @@ export interface TimelineEvent {
 
 export type EvidenceStatus = 'pending' | 'admitted' | 'excluded' | 'challenged';
 
+export interface DocumentInsights {
+  timelineEvents: Omit<TimelineEvent, 'id'>[];
+  witnesses: Omit<Witness, 'id' | 'avatarUrl'>[];
+  evidenceItems: Omit<EvidenceItem, 'id' | 'caseId'>[];
+  tasks: Omit<CaseTask, 'id' | 'caseId'>[];
+  keyFacts: string[];
+  documentType: string;
+  summary: string;
+}
+
 export interface Evidence {
   id: string;
   name: string;

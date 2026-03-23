@@ -1,5 +1,5 @@
 import { Type } from "@google/genai";
-import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode, SimulatorSettings, CoachingSuggestion, ProactiveCoaching, Message } from "../types";
+import { DocumentType, StrategyInsight, CoachingAnalysis, TrialPhase, SimulationMode, SimulatorSettings, CoachingSuggestion, ProactiveCoaching, Message, DocumentInsights } from "../types";
 import { retryWithBackoff, withTimeout, isRateLimitError, getErrorMessage } from "../utils/errorHandler";
 import { toast } from "react-toastify";
 import { performDocumentOCR } from "./ocrService";
@@ -727,5 +727,120 @@ Provide the translation with the same structure as the original.`;
     });
 
     return response.text || 'Unable to translate transcript.';
+  });
+};
+
+export const extractDocumentInsights = async (
+  ocrText: string,
+  caseContext: string
+): Promise<DocumentInsights> => {
+  return queueRequest(async () => {
+    const prompt = `You are a legal AI paralegal. Analyze the following document text and extract structured information for a legal case management system.
+
+Case Context: ${caseContext.substring(0, 500)}
+
+Document Text:
+${ocrText.substring(0, 8000)}
+
+Extract ALL of the following:
+1. Timeline events (dates, incidents, filings, meetings mentioned)
+2. People mentioned who could be witnesses (names, roles/positions)
+3. Evidence items referenced (documents, exhibits, physical items)
+4. Action items / tasks that need to be done
+5. Key facts (5–10 most important facts from this document)
+
+Be thorough and precise. Use only information explicitly present in the document.`;
+
+    const response = await callGeminiProxy({
+      prompt,
+      model: 'gemini-2.5-flash',
+      options: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            timelineEvents: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  date: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  type: { type: Type.STRING },
+                  importance: { type: Type.STRING },
+                },
+                required: ['title', 'date', 'description', 'type', 'importance'],
+              },
+            },
+            witnesses: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  role: { type: Type.STRING },
+                  personality: { type: Type.STRING },
+                  credibilityScore: { type: Type.NUMBER },
+                },
+                required: ['name', 'role', 'personality', 'credibilityScore'],
+              },
+            },
+            evidenceItems: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  type: { type: Type.STRING },
+                  source: { type: Type.STRING },
+                  summary: { type: Type.STRING },
+                  keyEntities: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  addedAt: { type: Type.STRING },
+                },
+                required: ['title', 'type', 'source', 'summary', 'addedAt'],
+              },
+            },
+            tasks: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  status: { type: Type.STRING },
+                  priority: { type: Type.STRING },
+                },
+                required: ['title', 'status', 'priority'],
+              },
+            },
+            keyFacts: { type: Type.ARRAY, items: { type: Type.STRING } },
+            documentType: { type: Type.STRING },
+            summary: { type: Type.STRING },
+          },
+          required: ['timelineEvents', 'witnesses', 'evidenceItems', 'tasks', 'keyFacts', 'documentType', 'summary'],
+        },
+        temperature: 0.2,
+      },
+    });
+
+    if (!response.success || !response.text) {
+      throw new Error('Document insights extraction failed');
+    }
+
+    try {
+      const raw = response.text.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '').trim();
+      return JSON.parse(raw) as DocumentInsights;
+    } catch {
+      return {
+        timelineEvents: [],
+        witnesses: [],
+        evidenceItems: [],
+        tasks: [],
+        keyFacts: [],
+        documentType: 'Unknown',
+        summary: ocrText.substring(0, 200),
+      };
+    }
   });
 };
