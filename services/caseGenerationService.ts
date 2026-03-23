@@ -87,7 +87,8 @@ export const generateRealisticCase = async (prompt: string): Promise<Partial<Cas
       throw new Error(response.error?.message || 'Failed to generate case: Empty response from AI');
     }
 
-    const data = JSON.parse(response.text);
+    const cleaned = response.text.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+    const data = JSON.parse(cleaned);
 
     // Map initialCourtDates to courtDates with IDs
     const courtDates: CourtDate[] = (data.initialCourtDates || []).map((cd: any) => ({

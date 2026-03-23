@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles } from 'lucide-react';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -349,6 +349,7 @@ const App = () => {
       await upsertCase(enrichedCase);
     } catch (error) {
       console.error('Failed to sync case to Supabase', error);
+      toast.warn('Case saved locally — cloud sync failed. Check your connection.', { toastId: 'sync-fail-add' });
     }
   };
 
@@ -367,6 +368,7 @@ const App = () => {
       await upsertCase(updatedCase);
     } catch (error) {
       console.error('Failed to update case in Supabase', error);
+      toast.warn('Changes saved locally — cloud sync failed.', { toastId: 'sync-fail-update' });
     }
   };
 
@@ -384,6 +386,7 @@ const App = () => {
       await removeCase(caseId);
     } catch (error) {
       console.error('Failed to delete case in Supabase', error);
+      toast.warn('Case removed locally — cloud sync failed.', { toastId: 'sync-fail-delete' });
     }
   };
 
@@ -402,6 +405,7 @@ const App = () => {
       await appendEvidence(caseId, evidence);
     } catch (error) {
       console.error('Failed to append evidence in Supabase', error);
+      toast.warn('Evidence saved locally — cloud sync failed.', { toastId: 'sync-fail-evidence' });
     }
   };
 
