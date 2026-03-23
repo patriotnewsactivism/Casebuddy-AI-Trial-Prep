@@ -349,6 +349,10 @@ const TrialSim: React.FC = () => {
   const [playingSessionId, setPlayingSessionId] = useState<string | null>(null);
   const historyAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // ── Post-session panel ───────────────────────────────────────────────────
+  const [showPostSession, setShowPostSession] = useState(false);
+  const [lastSessionMetrics, setLastSessionMetrics] = useState<TrialSessionMetrics | null>(null);
+
   // ── Stable refs (prevent stale closure bugs) ─────────────────────────────
   const isLiveRef        = useRef(false);
   const isAISpeakingRef  = useRef(false);
@@ -542,6 +546,8 @@ const TrialSim: React.FC = () => {
 
   const stopSession = useCallback((silent = false) => {
     if (!silent && recordedChunksRef.current.length > 0) {
+      setLastSessionMetrics({ ...metricsRef.current });
+      setShowPostSession(true);
       saveSession();
     }
 
@@ -1122,51 +1128,73 @@ const TrialSim: React.FC = () => {
   if (view === 'setup') {
     return (
       <div className="min-h-screen pb-20">
-        <div className="sticky top-0 bg-slate-900 z-10 border-b border-slate-800 p-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white">Trial Simulator</h1>
-          <button onClick={() => setView('history')} className="flex items-center gap-2 text-gold-500 hover:text-gold-400">
-            <Clock size={18} />
-            History ({savedSessions.length})
-          </button>
+        {/* Header */}
+        <div className="relative overflow-hidden bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-slate-800 px-5 py-5">
+          <div className="absolute inset-0 bg-gradient-to-r from-gold-500/5 via-transparent to-gold-500/5 pointer-events-none" />
+          <div className="relative flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-gold-500/10 border border-gold-500/20">
+                <Gavel size={20} className="text-gold-500" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold font-serif text-white">Trial Simulator</h1>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  AI-powered courtroom practice with real-time coaching
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setView('history')}
+              className="flex items-center gap-2 text-sm text-slate-400 hover:text-gold-400 transition-colors px-3 py-2 rounded-lg hover:bg-slate-800"
+            >
+              <Clock size={15} />
+              History ({savedSessions.length})
+            </button>
+          </div>
         </div>
 
-        <div className="p-4 space-y-6">
+        <div className="p-5 space-y-6 max-w-2xl mx-auto">
           <section>
-            <h2 className="text-gold-500 font-semibold mb-3">Select Phase</h2>
+            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Select Trial Phase</h2>
             <div className="grid grid-cols-4 gap-2">
               {TRIAL_PHASES.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setPhase(id as TrialPhase)}
-                  className={`flex flex-col items-center p-3 rounded-lg transition-all ${
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all duration-150 ${
                     phase === id
-                      ? 'bg-gold-500 text-slate-900'
-                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      ? 'bg-gold-500/10 border-gold-500/40 text-gold-400'
+                      : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                   }`}
                 >
-                  <Icon size={20} />
-                  <span className="text-xs mt-1">{label}</span>
+                  <Icon size={18} />
+                  <span className="text-xs font-medium leading-tight text-center">{label}</span>
                 </button>
               ))}
             </div>
           </section>
 
           <section>
-            <h2 className="text-gold-500 font-semibold mb-3">Select Mode</h2>
+            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Select Difficulty</h2>
             <div className="space-y-2">
               {MODES.map(({ id, label, desc, icon: Icon, colorClass }) => (
                 <button
                   key={id}
                   onClick={() => setMode(id as SimulationMode)}
-                  className={`w-full p-4 rounded-lg text-left flex items-center gap-4 transition-all ${
-                    mode === id ? `${colorClass} text-white` : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  className={`w-full p-4 rounded-xl border text-left flex items-center gap-4 transition-all duration-150 ${
+                    mode === id
+                      ? `${colorClass} border-transparent text-white`
+                      : 'bg-slate-800/50 border-slate-700/50 text-slate-300 hover:bg-slate-800 hover:border-slate-600'
                   }`}
                 >
-                  <Icon size={24} />
+                  <div className={`p-2 rounded-lg ${mode === id ? 'bg-white/20' : 'bg-slate-700'}`}>
+                    <Icon size={18} />
+                  </div>
                   <div>
                     <p className="font-semibold">{label}</p>
-                    <p className="text-xs opacity-80">{desc}</p>
+                    <p className="text-xs opacity-70 mt-0.5">{desc}</p>
                   </div>
+                  {mode === id && <CheckCircle2 size={16} className="ml-auto opacity-80" />}
                 </button>
               ))}
             </div>
@@ -1275,17 +1303,20 @@ const TrialSim: React.FC = () => {
               setMessages([]);
               setCoachingTip(null);
               setObjectionAlert(null);
+              setShowPostSession(false);
+              setLastSessionMetrics(null);
               setNotebook({ ...INITIAL_NOTEBOOK, currentPhase: phase?.replace(/-/g, ' ') || 'Unknown' });
               dispatch({ type: 'RESET_SESSION' });
               setView('active');
             }}
-            className="w-full py-4 rounded-xl text-lg font-bold transition-all disabled:cursor-not-allowed
-              bg-gold-500 text-slate-900 hover:bg-gold-400
-              disabled:bg-slate-700 disabled:text-slate-500"
+            className="w-full py-4 rounded-xl text-base font-bold transition-all disabled:cursor-not-allowed
+              bg-gold-500 text-slate-900 hover:bg-gold-400 shadow-lg hover:shadow-gold-500/20
+              disabled:bg-slate-700 disabled:text-slate-500 flex items-center justify-center gap-2"
           >
+            <Gavel size={18} />
             {phase && mode
-              ? `Begin — ${phase.replace(/-/g, ' ')} · ${mode}`
-              : 'Select Phase & Mode'}
+              ? `Enter Courtroom — ${phase.replace(/-/g, ' ')} · ${mode}`
+              : 'Select Phase & Mode to Begin'}
           </button>
         </div>
       </div>
@@ -1325,6 +1356,78 @@ const TrialSim: React.FC = () => {
               ))}
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Post-session score panel ──────────────────────────────────────────────
+  if (showPostSession && lastSessionMetrics) {
+    const score = avgRhetoricalScore;
+    const grade = score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 55 ? 'C' : score >= 40 ? 'D' : 'F';
+    const gradeColor = score >= 85 ? 'text-green-400 bg-green-500/10 border-green-500/30' :
+                       score >= 70 ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' :
+                       score >= 55 ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' :
+                       'text-red-400 bg-red-500/10 border-red-500/30';
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-900">
+        <div className="w-full max-w-lg space-y-5">
+          {/* Score header */}
+          <div className="text-center">
+            <div className={`inline-flex items-center justify-center w-24 h-24 rounded-2xl border-2 text-5xl font-black mb-4 ${gradeColor}`}>
+              {grade}
+            </div>
+            <h2 className="text-2xl font-bold font-serif text-white">Session Complete</h2>
+            <p className="text-slate-400 text-sm mt-1 capitalize">{phase?.replace(/-/g, ' ')} · {mode} mode</p>
+          </div>
+
+          {/* Metrics grid */}
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Rhetorical Score', value: `${score}%`, color: 'text-gold-400' },
+              { label: 'Objections Received', value: lastSessionMetrics.objectionsReceived, color: 'text-red-400' },
+              { label: 'Fallacies Committed', value: lastSessionMetrics.fallaciesCommitted, color: 'text-amber-400' },
+              { label: 'Words Spoken', value: lastSessionMetrics.wordCount, color: 'text-blue-400' },
+              { label: 'Filler Words', value: lastSessionMetrics.fillerWordsCount, color: 'text-slate-400' },
+              { label: 'Key Arguments', value: notebook.keyArguments.length, color: 'text-green-400' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                <p className="text-xs text-slate-500 uppercase tracking-wider">{label}</p>
+                <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Key arguments */}
+          {notebook.keyArguments.length > 0 && (
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
+              <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">Arguments Made</p>
+              <ul className="space-y-1">
+                {notebook.keyArguments.slice(0, 4).map((arg, i) => (
+                  <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
+                    <CheckCircle2 size={10} className="text-emerald-400 mt-0.5 shrink-0" />
+                    {arg}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setShowPostSession(false); setView('setup'); }}
+              className="flex-1 py-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 font-semibold text-sm transition-colors"
+            >
+              Practice Again
+            </button>
+            <button
+              onClick={() => { setShowPostSession(false); setView('history'); }}
+              className="flex-1 py-3 rounded-xl bg-gold-500 text-slate-900 hover:bg-gold-400 font-bold text-sm transition-colors"
+            >
+              View Session
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1453,59 +1556,89 @@ const TrialSim: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-slate-800 border-b border-slate-700 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => { stopSession(); setView('setup'); }}
-            className="text-slate-400 hover:text-white transition-colors"
-            title="End session"
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <div>
-            <p className="font-bold text-white text-sm capitalize">{phase?.replace(/-/g, ' ')}</p>
-            <p className="text-xs text-slate-400">{mode} mode · {opponentName}</p>
-          </div>
-        </div>
+      {/* Courtroom Banner */}
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-gold-500/20 px-4 py-2.5 flex items-center gap-3">
+        <button
+          onClick={() => { stopSession(); setView('setup'); }}
+          className="text-slate-500 hover:text-white transition-colors p-1 rounded"
+          title="End session"
+        >
+          <ArrowLeft size={18} />
+        </button>
         <div className="flex items-center gap-2">
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-slate-700 rounded-full">
-            <AlertTriangle size={12} className="text-red-400" />
-            <span className="text-xs text-slate-300">{session.objectionCount} obj</span>
+          <Gavel size={14} className="text-gold-500" />
+          <span className="text-gold-500 text-xs font-bold uppercase tracking-widest">
+            Court in Session
+          </span>
+          <span className="text-slate-600 text-xs">·</span>
+          <span className="text-slate-300 text-xs capitalize">{phase?.replace(/-/g, ' ')}</span>
+          <span className="text-slate-600 text-xs">·</span>
+          <span className="text-slate-400 text-xs">{mode}</span>
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-800 rounded-full border border-slate-700">
+            <AlertTriangle size={10} className="text-red-400" />
+            <span className="text-xs text-slate-300">{session.objectionCount}</span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-700 rounded-full">
-            <Volume2 size={12} className="text-gold-500" />
-            <span className="text-xs text-slate-300">{voiceConfig.voiceName}</span>
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800 rounded-full border border-slate-700">
+            <span className="text-xs text-slate-300">Score: <span className="text-gold-400 font-bold">{session.sessionScore}%</span></span>
           </div>
           {session.isLive && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-900/60 rounded-full">
-              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              <span className="text-xs text-red-300 font-bold">REC</span>
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/40 rounded-full border border-red-800/50">
+              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              <span className="text-xs text-red-300 font-bold">LIVE</span>
             </div>
           )}
           <button
             onClick={() => setShowNotebook(v => !v)}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-colors lg:hidden ${
-              showNotebook ? 'bg-gold-500/30 text-gold-300' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              showNotebook ? 'bg-gold-500/30 text-gold-300' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'
             }`}
             title="Toggle Live Notebook"
           >
-            <NotebookPen size={12} />
+            <NotebookPen size={11} />
             <span className="text-xs font-medium">Notes</span>
           </button>
         </div>
       </div>
 
+      {/* Judge Alert */}
+      {judgeAlert && (
+        <div className={`mx-4 mt-3 flex items-start gap-3 px-4 py-3 rounded-xl border animate-slideInLeft ${
+          judgeAlert.type === 'sustained' ? 'bg-red-500/10 border-red-500/30' :
+          judgeAlert.type === 'overruled' ? 'bg-green-500/10 border-green-500/30' :
+          'bg-amber-500/10 border-amber-500/30'
+        }`}>
+          <Gavel size={16} className={
+            judgeAlert.type === 'sustained' ? 'text-red-400 shrink-0 mt-0.5' :
+            judgeAlert.type === 'overruled' ? 'text-green-400 shrink-0 mt-0.5' :
+            'text-amber-400 shrink-0 mt-0.5'
+          } />
+          <div className="flex-1 min-w-0">
+            <span className={`text-xs font-bold uppercase tracking-wider ${
+              judgeAlert.type === 'sustained' ? 'text-red-400' :
+              judgeAlert.type === 'overruled' ? 'text-green-400' : 'text-amber-400'
+            }`}>{judgeAlert.type}</span>
+            <p className="text-sm text-white mt-0.5">&ldquo;{judgeAlert.text}&rdquo;</p>
+          </div>
+          <button onClick={() => setJudgeAlert(null)} className="text-slate-500 hover:text-white shrink-0">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* ── Left: Simulation area ── */}
         <div className="flex-1 flex flex-col">
         <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-900">
-          <div className="flex items-center gap-4 md:gap-8 mb-6">
+          {/* Stats row */}
+          <div className="flex items-center gap-4 md:gap-6 mb-5">
             <StatPill label="Score"      value={`${session.sessionScore}%`} color="gold" />
-            <div className="w-px h-6 bg-slate-700" />
+            <div className="w-px h-5 bg-slate-700" />
             <StatPill label="Avg"        value={`${avgRhetoricalScore}%`}   color="slate" />
-            <div className="w-px h-6 bg-slate-700" />
+            <div className="w-px h-5 bg-slate-700" />
             <StatPill label="Objections" value={session.objectionCount}     color="red" />
-            <div className="w-px h-6 bg-slate-700 hidden sm:block" />
+            <div className="w-px h-5 bg-slate-700 hidden sm:block" />
             <StatPill label="Words" value={metricsRef.current.wordCount} color="slate" className="hidden sm:block" />
           </div>
 
@@ -1514,43 +1647,46 @@ const TrialSim: React.FC = () => {
             <canvas
               ref={canvasRef}
               width={280}
-              height={48}
-              className={`w-full rounded-lg transition-opacity duration-300 ${
+              height={56}
+              className={`w-full rounded-xl transition-opacity duration-300 ${
                 session.isLive ? 'opacity-100' : 'opacity-20'
               }`}
-              style={{ background: 'rgba(15,23,42,0.8)' }}
+              style={{ background: 'rgba(15,23,42,0.9)', border: '1px solid rgba(212,175,55,0.1)' }}
             />
           </div>
 
-          <div className={`w-32 h-32 rounded-full border-4 transition-all duration-200 ${
-            session.isLive && session.liveVolume > 20
-              ? 'border-gold-500 scale-105 shadow-[0_0_20px_rgba(212,175,55,0.4)]'
-              : 'border-slate-700'
+          {/* Opponent avatar */}
+          <div className={`relative w-28 h-28 rounded-2xl border-2 transition-all duration-300 ${
+            session.isAISpeaking
+              ? 'border-emerald-500 shadow-[0_0_24px_rgba(16,185,129,0.3)]'
+              : session.isLive && session.liveVolume > 20
+                ? 'border-gold-500/60 shadow-[0_0_16px_rgba(212,175,55,0.2)]'
+                : 'border-slate-700'
           }`}>
-            <img
-              src={phase === 'defendant-testimony'
-                ? 'https://picsum.photos/id/1005/200/200'
-                : 'https://picsum.photos/id/1025/200/200'}
-              alt="Opposing Counsel"
-              className="w-full h-full rounded-full object-cover opacity-80"
-            />
+            <div className="w-full h-full rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
+              <Gavel size={40} className="text-slate-600" />
+            </div>
+            {session.isAISpeaking && (
+              <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/30 animate-pulse" />
+            )}
           </div>
 
           <p className="mt-3 text-white font-semibold text-center">
             {phase === 'defendant-testimony' ? 'Prosecutor' : opponentName}
           </p>
           <p className={`text-sm mt-1 font-medium transition-colors ${
-            session.isConnecting ? 'text-yellow-400' :
+            session.isConnecting ? 'text-amber-400' :
             session.isAISpeaking ? 'text-emerald-400' :
-            session.isLive       ? 'text-blue-400'    : 'text-slate-500'
+            session.isLive       ? 'text-blue-400'   : 'text-slate-500'
           }`}>
             {session.isConnecting ? '⟳ Connecting…' :
              session.isAISpeaking ? '● Speaking' :
              session.isLive       ? '● Listening' : 'Ready'}
           </p>
 
+          {/* Volume bar */}
           {session.isLive && (
-            <div className="w-full max-w-xs mt-4 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div className="w-full max-w-[200px] mt-3 h-1 bg-slate-800 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gold-500 rounded-full transition-all duration-75"
                 style={{ width: `${Math.min(100, session.liveVolume * 1.2)}%` }}
@@ -1558,18 +1694,44 @@ const TrialSim: React.FC = () => {
             </div>
           )}
 
+          {/* ── Live Caption Bar ── */}
           {session.isLive && (
             <div className="w-full max-w-2xl mt-5 space-y-2">
-              <TranscriptBubble
-                label="Hearing You"
-                text={session.inputTranscript || 'Speak now — your words appear here…'}
-                color="blue"
-              />
-              <TranscriptBubble
-                label={session.isAISpeaking ? 'Speaking Back…' : 'Response'}
-                text={session.outputTranscript || 'Waiting for AI response…'}
-                color="emerald"
-              />
+              {/* User speaking caption */}
+              <div className={`px-4 py-3 rounded-xl border transition-all duration-200 ${
+                session.inputTranscript
+                  ? 'bg-blue-500/10 border-blue-500/30'
+                  : 'bg-slate-800/50 border-slate-700/50'
+              }`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">You</span>
+                  {session.inputTranscript && (
+                    <span className="flex gap-0.5">
+                      <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </span>
+                  )}
+                </div>
+                <p className={`text-sm leading-relaxed ${session.inputTranscript ? 'text-white italic' : 'text-slate-500'}`}>
+                  {session.inputTranscript || 'Speak now — your words appear here in real time…'}
+                </p>
+              </div>
+              {/* AI response caption */}
+              <div className={`px-4 py-3 rounded-xl border transition-all duration-200 ${
+                session.outputTranscript
+                  ? 'bg-emerald-500/10 border-emerald-500/30'
+                  : 'bg-slate-800/50 border-slate-700/50'
+              }`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    {session.isAISpeaking ? 'Speaking…' : 'Response'}
+                  </span>
+                </div>
+                <p className={`text-sm leading-relaxed ${session.outputTranscript ? 'text-white' : 'text-slate-500'}`}>
+                  {session.outputTranscript || 'Waiting for AI response…'}
+                </p>
+              </div>
             </div>
           )}
 
@@ -1774,115 +1936,95 @@ const TrialSim: React.FC = () => {
         </div>
       </div>{/* end flex-1 flex-row */}
 
-      <div className={`fixed md:relative bottom-24 md:bottom-0 left-0 right-0 z-40 transition-all duration-300 ${
-        showTeleprompter ? 'max-h-[60vh]' : 'max-h-14'
-      }`}>
-        <div className="bg-slate-800 border-t-2 border-gold-500 shadow-2xl">
-          <button
-            onClick={() => setShowTeleprompter(v => !v)}
-            className="w-full p-4 flex items-center justify-between"
-          >
-            <div className="flex items-center gap-2">
-              <Lightbulb size={20} className="text-gold-400" />
-              <span className="text-gold-300 text-sm font-bold tracking-wide">COACHING TELEPROMPTER</span>
-              {coachingTip && (
-                <span className="text-[10px] bg-gold-500/20 text-gold-400 px-2 py-0.5 rounded-full font-mono uppercase">
-                  {coachingTip.rhetoricalEffectiveness}% effective
+      {/* ── Floating Teleprompter Card ── */}
+      {coachingTip?.teleprompterScript && session.isLive && (
+        <div className="fixed bottom-28 left-4 max-w-sm w-full sm:w-80 z-40 animate-slideInLeft">
+          <div className="bg-slate-900/95 backdrop-blur-sm border border-gold-500/30 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lightbulb size={13} className="text-gold-500" />
+                <span className="text-xs font-bold text-gold-500 uppercase tracking-wider">Next Line</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  coachingTip.rhetoricalEffectiveness >= 70 ? 'bg-green-500/20 text-green-400' :
+                  coachingTip.rhetoricalEffectiveness >= 40 ? 'bg-amber-500/20 text-amber-400' :
+                  'bg-red-500/20 text-red-400'
+                }`}>
+                  {coachingTip.rhetoricalEffectiveness}%
                 </span>
-              )}
+              </div>
+              <button
+                onClick={() => setShowCoaching(v => !v)}
+                className="text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <BookOpen size={12} />
+              </button>
             </div>
-            <ChevronDown
-              size={20}
-              className={`text-gold-400 transition-transform duration-200 ${showTeleprompter ? 'rotate-180' : ''}`}
-            />
-          </button>
-
-          {showTeleprompter && (
-            <div className="p-5 bg-slate-900 border-t border-gold-500/20 overflow-y-auto max-h-[45vh] scrollbar-thin scrollbar-thumb-slate-700">
-              {coachingTip?.teleprompterScript ? (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <p className="text-[10px] text-gold-400/60 uppercase tracking-[0.2em] font-black mb-3">Your Next Script:</p>
-                  <p className="text-xl md:text-3xl text-white leading-relaxed font-light italic">
-                    "{coachingTip.teleprompterScript}"
+            <div className="px-4 py-3">
+              <p className="text-white text-sm leading-relaxed italic">
+                &ldquo;{coachingTip.teleprompterScript}&rdquo;
+              </p>
+            </div>
+            {showCoaching && coachingTip && (
+              <div className="px-4 pb-3 pt-1 border-t border-slate-800 space-y-1.5">
+                <p className="text-xs text-slate-400"><span className="text-slate-500">Critique: </span>{coachingTip.critique}</p>
+                <p className="text-xs text-gold-300"><span className="text-gold-500">Tip: </span>{coachingTip.suggestion}</p>
+                {(coachingTip.fallaciesIdentified ?? []).length > 0 && (
+                  <p className="text-xs text-red-300">
+                    <span className="text-red-400">Fallacies: </span>
+                    {coachingTip.fallaciesIdentified!.join(', ')}
                   </p>
-                </div>
-              ) : (
-                <div className="text-center py-10 opacity-50">
-                  <p className="text-slate-400 text-sm">Waiting for you to speak...</p>
-                  <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest">Real-time coaching will appear here</p>
-                </div>
-              )}
-
-              {coachingTip && (
-                <div className="mt-4 pt-4 border-t border-slate-700">
-                  <button
-                    onClick={() => setShowCoaching(v => !v)}
-                    className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    <BookOpen size={14} />
-                    {showCoaching ? 'Hide' : 'Show'} detailed feedback
-                    <ChevronDown
-                      size={13}
-                      className={`transition-transform duration-150 ${showCoaching ? 'rotate-180' : ''}`}
-                    />
-                  </button>
-
-                  {showCoaching && (
-                    <div className="mt-3 space-y-2 text-sm">
-                      <p className="text-slate-300">
-                        <span className="font-semibold text-slate-400">Critique: </span>
-                        {coachingTip.critique}
-                      </p>
-                      <p className="text-gold-300">
-                        <span className="font-semibold text-gold-400">Tip: </span>
-                        {coachingTip.suggestion}
-                      </p>
-                      {(coachingTip.fallaciesIdentified ?? []).length > 0 && (
-                        <p className="text-red-300">
-                          <span className="font-semibold text-red-400">Fallacies: </span>
-                          {coachingTip.fallaciesIdentified!.join(', ')}
-                        </p>
-                      )}
-                      <p className="text-slate-400">
-                        <span className="font-semibold">Effectiveness: </span>
-                        {coachingTip.rhetoricalEffectiveness}%
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="fixed md:relative bottom-0 left-0 right-0 z-50 bg-slate-800 border-t border-slate-700 p-4">
-        <div className="flex items-center justify-center">
+      {/* ── Mic Control Bar ── */}
+      <div className="fixed md:relative bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 px-6 py-4">
+        <div className="flex items-center justify-center gap-6">
           {!session.isLive ? (
             <button
               onClick={startSession}
               disabled={session.isConnecting}
-              className="flex flex-col items-center group"
+              className="flex flex-col items-center group disabled:cursor-not-allowed"
             >
-              <div className="w-20 h-20 rounded-full bg-gold-500 disabled:bg-slate-700 flex items-center justify-center text-slate-900 shadow-xl transition-transform group-hover:scale-105 group-active:scale-95">
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center shadow-xl transition-all duration-200
+                ${session.isConnecting
+                  ? 'bg-slate-700 cursor-not-allowed'
+                  : 'bg-gold-500 text-slate-900 group-hover:bg-gold-400 group-hover:scale-105 group-active:scale-95 shadow-gold-500/30'}`}>
                 {session.isConnecting
-                  ? <Activity className="animate-spin" size={32} />
-                  : <Mic size={32} />}
+                  ? <Activity className="animate-spin text-slate-400" size={30} />
+                  : <Mic size={30} />}
               </div>
-              <span className="text-xs text-gold-500 mt-2 font-bold">
-                {session.isConnecting ? 'Connecting…' : 'Start'}
+              <span className="text-xs text-gold-500 mt-2 font-bold tracking-wide uppercase">
+                {session.isConnecting ? 'Connecting…' : 'Go Live'}
               </span>
             </button>
           ) : (
-            <button
-              onClick={() => stopSession()}
-              className="flex flex-col items-center group"
-            >
-              <div className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center text-white shadow-xl animate-pulse group-hover:animate-none group-hover:bg-red-700 transition-colors">
-                <MicOff size={32} />
+            <div className="flex items-center gap-6">
+              <div className="flex flex-col items-center opacity-60">
+                <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+                  <Activity size={16} className="text-gold-400 animate-pulse" />
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1">Active</span>
               </div>
-              <span className="text-xs text-red-400 mt-2 font-bold">Stop & Save</span>
-            </button>
+              <button
+                onClick={() => stopSession()}
+                className="flex flex-col items-center group"
+              >
+                <div className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-xl shadow-red-500/20 transition-all group-hover:scale-105 group-active:scale-95">
+                  <MicOff size={30} />
+                </div>
+                <span className="text-xs text-red-400 mt-2 font-bold tracking-wide uppercase">Stop & Save</span>
+              </button>
+              <div className="flex flex-col items-center opacity-60">
+                <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+                  <span className="text-xs font-bold text-white">{metricsRef.current.wordCount}</span>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1">Words</span>
+              </div>
+            </div>
           )}
         </div>
       </div>

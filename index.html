@@ -53,6 +53,7 @@
                 950: '#020617',
               },
               gold: {
+                400: '#e8c84a',
                 500: '#d4af37',
                 600: '#b4941f',
               }
@@ -78,20 +79,63 @@
         background-color: #0f172a;
         color: #f8fafc;
       }
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+
+      /* ── Scrollbar ── */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #1e293b; }
+      ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+      /* ── Animations ── */
+      @keyframes slideInLeft {
+        from { transform: translateX(-16px); opacity: 0; }
+        to   { transform: translateX(0);     opacity: 1; }
       }
-      ::-webkit-scrollbar-track {
-        background: #1e293b; 
+      @keyframes slideInUp {
+        from { transform: translateY(12px); opacity: 0; }
+        to   { transform: translateY(0);    opacity: 1; }
       }
-      ::-webkit-scrollbar-thumb {
-        background: #475569; 
-        border-radius: 4px;
+      @keyframes pulseGold {
+        0%, 100% { box-shadow: 0 0 0 0   rgba(212,175,55,0.35); }
+        50%       { box-shadow: 0 0 0 10px rgba(212,175,55,0);    }
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #64748b; 
+      @keyframes shimmer {
+        0%   { background-position: -200% center; }
+        100% { background-position:  200% center; }
       }
+
+      .animate-slideInLeft  { animation: slideInLeft  0.3s ease-out forwards; }
+      .animate-slideInUp    { animation: slideInUp    0.25s ease-out forwards; }
+      .animate-pulseGold    { animation: pulseGold    2s ease-in-out infinite; }
+
+      /* ── Glassmorphism card ── */
+      .glass-card {
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(212,175,55,0.12);
+      }
+
+      /* ── Gold gradient text ── */
+      .text-gradient-gold {
+        background: linear-gradient(135deg, #d4af37, #f0d060, #d4af37);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      /* ── Subtle glow on hover for interactive elements ── */
+      .hover-glow:hover {
+        box-shadow: 0 0 0 1px rgba(212,175,55,0.3), 0 4px 20px rgba(212,175,55,0.08);
+      }
+
+      /* ── Court session live indicator ── */
+      @keyframes courtPulse {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: 0.4; }
+      }
+      .animate-courtPulse { animation: courtPulse 1.5s ease-in-out infinite; }
     </style>
     
     <!-- Import Map -->
