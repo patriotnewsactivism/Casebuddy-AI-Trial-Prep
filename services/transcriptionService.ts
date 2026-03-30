@@ -1,4 +1,4 @@
-import { callGeminiProxy, callOpenAIProxy, callWhisperProxy } from './apiProxy';
+import { callGeminiProxy, callWhisperProxy } from './apiProxy';
 import { Type } from "@google/genai";
 import { TranscriptionProvider, TranscriptionSettings, TranscriptionResultData, TranscriptSegmentData } from "../types";
 
@@ -37,9 +37,40 @@ RULES:
 `;
 
 const formatTimestamp = (seconds: number) => {
-    const min = Math.floor(seconds / 60);
-    const sec = Math.floor(seconds % 60);
-    return `${min}:${sec.toString().padStart(2, '0')}`;
+  const min = Math.floor(seconds / 60);
+  const sec = Math.floor(seconds % 60);
+  return `${min}:${sec.toString().padStart(2, '0')}`;
+};
+
+interface RawTranscriptSegment {
+  start?: unknown;
+  end?: unknown;
+  speaker?: unknown;
+  text?: unknown;
+}
+
+export const parseSegmentsFromResponse = (rawText: string): TranscriptSegmentData[] => {
+  const normalized = rawText.trim();
+  const jsonPayload = normalized.startsWith('```')
+    ? normalized.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    : normalized;
+
+  const parsed: unknown = JSON.parse(jsonPayload);
+  if (!Array.isArray(parsed)) {
+    throw new Error('Transcription response was not a JSON array');
+  }
+
+  return parsed
+    .map((segment) => {
+      const safeSegment = segment as RawTranscriptSegment;
+      return {
+        start: Number(safeSegment.start) || 0,
+        end: Number(safeSegment.end) || 0,
+        speaker: String(safeSegment.speaker || 'Speaker'),
+        text: String(safeSegment.text || '').trim(),
+      };
+    })
+    .filter((segment) => segment.text.length > 0);
 };
 
 const isTranscriptSegment = (value: unknown): value is RawTranscriptSegment => {
@@ -118,13 +149,13 @@ const transcribeWithGemini = async (
 ): Promise<TranscriptionResultData> => {
   try {
     if (onProgress) onProgress(10);
-    
+
     const { data, mimeType } = await fileToGenerativePart(file);
-    
+
     if (onProgress) onProgress(30);
-    
+
     const prompt = getPrompt(settings);
-    
+
     const response = await callGeminiProxy({
       prompt: "Transcribe the attached audio accurately following the provided rules. Output only the JSON array.",
       systemPrompt: prompt,
@@ -155,8 +186,14 @@ const transcribeWithGemini = async (
       throw new Error(response.error?.message || 'Transcription failed: No response text received');
     }
 
-    const segments = extractTranscriptSegments(response.text);
-    const fullText = segments.map((segment) => `[${formatTimestamp(segment.start)}] [${segment.speaker}] ${segment.text}`).join('\n');
+    const segments = parseSegmentsFromResponse(response.text);
+    if (segments.length === 0) {
+      throw new Error('Transcription failed: Empty transcript returned');
+    }
+
+    const fullText = segments
+      .map((segment) => `[${formatTimestamp(segment.start)}] [${segment.speaker}] ${segment.text}`)
+      .join('\n');
 
     if (onProgress) onProgress(100);
 
@@ -173,12 +210,12 @@ const transcribeWithGemini = async (
 
 const transcribeWithOpenAI = async (
   audioFile: Blob | File,
-  settings: TranscriptionSettings
+  _settings: TranscriptionSettings
 ): Promise<TranscriptionResultData> => {
   const file = audioFile instanceof File ? audioFile : new File([audioFile], "audio.wav", { type: audioFile.type });
-  
+
   const response = await callWhisperProxy(file);
-  
+
   if (!response.success) {
     throw new Error(response.error?.message || "OpenAI Whisper transcription failed");
   }
