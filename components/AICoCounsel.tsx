@@ -92,8 +92,9 @@ Judge: ${activeCase.judge || 'TBD'}
 Opposing Counsel: ${activeCase.opposingCounsel || 'Unknown'}
 Next Court Date: ${activeCase.nextCourtDate || 'TBD'}
 Win Probability: ${activeCase.winProbability}%
-Evidence items: ${activeCase.evidence?.length || 0}
-Witnesses: ${activeCase.witnesses?.length || 0}
+Evidence (${activeCase.evidence?.length || 0} items):
+${(activeCase.evidence || []).slice(0, 10).map((e: any, i: number) => `  ${i + 1}. ${e.title || e.fileName || 'Untitled'} — ${e.summary || 'No summary available'}`).join('\n') || '  None uploaded yet'}
+Witnesses (${activeCase.witnesses?.length || 0}):
 Key Issues: ${activeCase.keyIssues?.join(', ') || 'None listed'}`
       : 'No active case selected. Provide general legal strategy advice.';
 

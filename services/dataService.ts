@@ -359,6 +359,19 @@ export const removeSession = async (sessionId: string, caseId: string): Promise<
   }
 };
 
+export const upsertPreferences = async (prefs: Record<string, any>): Promise<void> => {
+  const client = getSupabaseClient();
+  if (!client) return;
+  const { data: { user } } = await client.auth.getUser();
+  if (!user) return;
+  const { error } = await client.from('profiles').update({ preferences: prefs }).eq('id', user.id);
+  if (error) {
+    console.error('[Supabase] upsertPreferences failed', error);
+    throw error;
+  }
+  console.log('[DataService] Successfully synced preferences to cloud');
+};
+
 export const resetLocalCache = () => {
   clearCases();
 };

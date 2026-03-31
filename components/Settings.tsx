@@ -3,7 +3,7 @@ import { AppContext } from '../App';
 import { Settings as SettingsIcon, Key, Database, Download, Upload, AlertCircle, Check, User, Moon, Sun, Palette, Shield, Info, Trash2, CheckCircle, Cloud, Loader2, ClosedCaption, Volume2, Play, FileText, Zap, DollarSign } from 'lucide-react';
 import { exportAllData, importAllData, clearAllData, getStorageInfo, savePreferences, loadPreferences } from '../utils/storage';
 import { getSupabaseClient } from '../services/supabaseClient';
-import { supabaseReady } from '../services/dataService';
+import { supabaseReady, upsertPreferences } from '../services/dataService';
 import { testAudioPlayback } from '../services/elevenLabsService';
 import { browserTTS, getPreferredVoice } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
@@ -167,14 +167,16 @@ const Settings = () => {
     setStorageInfo(getStorageInfo());
   };
 
-  const handleSavePreferences = () => {
-    savePreferences({
-      displayName,
-      title,
-      autoSave: autoSaveEnabled,
-      theme
-    });
-    setSaveMessage('Preferences saved successfully!');
+  const handleSavePreferences = async () => {
+    const prefs = { displayName, title, autoSave: autoSaveEnabled, theme };
+    savePreferences(prefs);
+    try {
+      await upsertPreferences(prefs);
+      setSaveMessage('Preferences saved to cloud!');
+    } catch {
+      toast.error('Preferences saved locally but cloud sync failed.');
+      setSaveMessage('Preferences saved locally.');
+    }
     setTimeout(() => setSaveMessage(null), 3000);
   };
 
