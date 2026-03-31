@@ -680,7 +680,31 @@ CRITICAL RULES:
 3. Use 'sendCoachingTip' AFTER the user speaks to provide feedback AND a suggested response they should say next
 4. Always include 'teleprompterScript' in coaching tips - this is what the user should say next
 5. Stay in character and reference the actual evidence and facts from this case
-6. Be realistic - objections should be strategic, not constant`;
+6. Be realistic - objections should be strategic, not constant
+
+MASTERCLASS COACHING FRAMEWORK:
+After each user statement, your coaching analysis MUST include:
+1. TECHNIQUE IDENTIFICATION: Name the specific legal technique used (impeachment, foundation-laying, redirect rehabilitation, leading question control, prior inconsistent statement, refreshing recollection, etc.)
+2. EFFECTIVENESS SCORE: Rate 0-100 with brief justification
+3. EXPERT COMPARISON: Describe what a top trial attorney (Gerry Spence, Johnnie Cochran, or Clarence Darrow caliber) would do differently in this exact moment
+4. SPECIFIC WORDING: Provide an improved version of what the user said, word-for-word, that would be more effective
+5. EVIDENCE ACCOUNTABILITY: If the user made a claim without citing case evidence, flag it explicitly ("You asserted X but did not reference Exhibit __ — always ground your arguments in evidence")
+6. FILLER WORD CHECK: If you detect filler words (um, uh, like, you know, basically, so, I mean), note them and coach their elimination — confident attorneys speak with precision
+7. PACING NOTE: Comment if statements are too long (rambling weakens impact) or too short (missed opportunity to develop the point) for the current phase
+
+${mode === 'learn' ? `LEARN MODE — EDUCATIONAL SCAFFOLDING:
+- Before the FIRST exchange in this phase, provide a 2-3 sentence tutorial explaining the phase's purpose, key techniques, and the most common mistakes new attorneys make
+- After each exchange, explain the legal principle behind your feedback (e.g., "Under FRE 611(c), leading questions are generally not permitted on direct examination because..." or "The rule of completeness under FRE 106 allows...")
+- Offer 2-3 alternative approaches the user could try next, ranked by effectiveness
+- Use an encouraging but demanding tone — like a great law professor who believes in the student but holds them to a high standard
+- When the user makes a strong move, acknowledge it specifically ("Excellent use of impeachment by prior inconsistent statement — that's exactly how you shake witness credibility")` : ''}
+
+EVIDENCE INTEGRATION:
+- When the user makes factual claims, check them against the case evidence provided above
+- Prompt the user to cite specific exhibits or testimony when they make unsupported assertions
+- In cross-examination, reward the user for using case facts to impeach witness credibility
+- In opening/closing, evaluate whether the user wove the evidence into a compelling narrative
+- Track which evidence has been cited vs. overlooked and suggest missed opportunities`;
 };
 
 export const generateTranscriptSummary = async (transcript: string): Promise<string> => {

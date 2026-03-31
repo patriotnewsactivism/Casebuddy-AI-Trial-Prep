@@ -1,7 +1,7 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles } from 'lucide-react';
-import { ToastContainer } from 'react-toastify';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -39,7 +39,7 @@ import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePre
 import { appendEvidence, fetchCases, removeCase, supabaseReady, upsertCase } from './services/dataService';
 import ErrorBoundary from './components/ErrorBoundary';
 
-const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolean) => void }) => {
+const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean, setIsOpen: (v: boolean) => void, syncStatus: 'synced' | 'syncing' | 'error', retrySync: () => void }) => {
   const location = useLocation();
   const [showTools, setShowTools] = useState(true);
   const [showPrep, setShowPrep] = useState(true);
@@ -161,6 +161,18 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
           <NavItem path="/app/negotiation" icon={Handshake} label="Negotiation Sim" />
 
           <div className="mt-auto pt-2 border-t border-slate-800/60">
+            {/* Cloud sync status indicator */}
+            <button
+              onClick={syncStatus === 'error' ? retrySync : undefined}
+              className={`flex items-center gap-2 mx-2 px-3 py-2 rounded-lg text-xs w-[calc(100%-1rem)] transition-colors ${syncStatus === 'error' ? 'hover:bg-red-500/10 cursor-pointer' : 'cursor-default'}`}
+            >
+              {syncStatus === 'synced' && <Cloud size={14} className="text-emerald-400 shrink-0" />}
+              {syncStatus === 'syncing' && <Loader2 size={14} className="text-amber-400 animate-spin shrink-0" />}
+              {syncStatus === 'error' && <CloudOff size={14} className="text-red-400 shrink-0" />}
+              <span className={syncStatus === 'error' ? 'text-red-400' : syncStatus === 'syncing' ? 'text-amber-400' : 'text-slate-500'}>
+                {syncStatus === 'synced' ? 'Cloud synced' : syncStatus === 'syncing' ? 'Syncing...' : 'Sync failed \u2013 tap to retry'}
+              </span>
+            </button>
             <NavItem path="/app/settings" icon={SettingsIcon} label="Settings" />
           </div>
         </nav>
@@ -172,6 +184,7 @@ const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
 const Layout = ({ children }: { children?: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { user, signOut } = useAuth();
+  const { syncStatus, retrySync } = React.useContext(AppContext);
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -185,7 +198,7 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
-      <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} syncStatus={syncStatus} retrySync={retrySync} />
       
       <div className="md:ml-64 min-h-screen flex flex-col">
         <header className="h-14 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-4 flex items-center justify-between">
@@ -225,6 +238,8 @@ const AuthenticatedLayout = ({ children }: { children?: React.ReactNode }) => (
   </ProtectedRoute>
 );
 
+export type SyncStatus = 'synced' | 'syncing' | 'error';
+
 export const AppContext = React.createContext<{
     cases: Case[];
     activeCase: Case | null;
@@ -236,6 +251,8 @@ export const AppContext = React.createContext<{
     theme: 'dark' | 'light';
     setTheme: (t: 'dark' | 'light') => void;
     user: { id: string; email: string; fullName: string; firmName?: string } | null;
+    syncStatus: SyncStatus;
+    retrySync: () => void;
   }>({
     cases: [],
     activeCase: null,
@@ -247,6 +264,8 @@ export const AppContext = React.createContext<{
     theme: 'dark',
     setTheme: () => {},
     user: null,
+    syncStatus: 'synced',
+    retrySync: () => {},
   });
 
 const App = () => {
@@ -254,7 +273,51 @@ const App = () => {
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [theme, setThemeState] = useState<'dark' | 'light'>('dark');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
+  const syncQueueRef = useRef<Array<{ fn: () => Promise<void>; label: string }>>([]);
   const { user } = useAuth();
+
+  const cloudSync = useCallback(async (label: string, fn: () => Promise<void>) => {
+    setSyncStatus('syncing');
+    try {
+      await fn();
+      setSyncStatus(syncQueueRef.current.length === 0 ? 'synced' : 'error');
+      toast.success('Saved to cloud', { autoClose: 1500, toastId: 'sync-ok' });
+    } catch (error) {
+      setSyncStatus('error');
+      syncQueueRef.current.push({ fn, label });
+      toast.error(`Cloud sync failed: ${label}. Will retry automatically.`, { toastId: `sync-fail-${Date.now()}` });
+      console.error(`[CloudSync] ${label} failed:`, error);
+    }
+  }, []);
+
+  const retrySync = useCallback(async () => {
+    if (syncQueueRef.current.length === 0) return;
+    setSyncStatus('syncing');
+    const queue = [...syncQueueRef.current];
+    syncQueueRef.current = [];
+    for (const item of queue) {
+      try {
+        await item.fn();
+      } catch {
+        syncQueueRef.current.push(item);
+      }
+    }
+    setSyncStatus(syncQueueRef.current.length === 0 ? 'synced' : 'error');
+    if (syncQueueRef.current.length === 0) {
+      toast.success('All data synced to cloud', { autoClose: 2000, toastId: 'retry-ok' });
+    }
+  }, []);
+
+  // Auto-retry failed syncs every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (syncQueueRef.current.length > 0) {
+        retrySync();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [retrySync]);
 
   useEffect(() => {
     let cancelled = false;
@@ -345,11 +408,7 @@ const App = () => {
     });
     setActiveCaseId(enrichedCase.id);
 
-    try {
-      await upsertCase(enrichedCase);
-    } catch (error) {
-      console.error('Failed to sync case to Supabase', error);
-    }
+    await cloudSync('Save case', () => upsertCase(enrichedCase));
   };
 
   const updateCase = async (caseId: string, data: Partial<Case>) => {
@@ -363,11 +422,7 @@ const App = () => {
       return next;
     });
 
-    try {
-      await upsertCase(updatedCase);
-    } catch (error) {
-      console.error('Failed to update case in Supabase', error);
-    }
+    await cloudSync('Update case', () => upsertCase(updatedCase));
   };
 
   const deleteCase = async (caseId: string) => {
@@ -380,11 +435,7 @@ const App = () => {
       return filtered;
     });
 
-    try {
-      await removeCase(caseId);
-    } catch (error) {
-      console.error('Failed to delete case in Supabase', error);
-    }
+    await cloudSync('Delete case', () => removeCase(caseId));
   };
 
   const addEvidence = async (caseId: string, evidence: EvidenceItem) => {
@@ -398,15 +449,11 @@ const App = () => {
       return next;
     });
 
-    try {
-      await appendEvidence(caseId, evidence);
-    } catch (error) {
-      console.error('Failed to append evidence in Supabase', error);
-    }
+    await cloudSync('Save evidence', () => appendEvidence(caseId, evidence));
   };
 
   return (
-    <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence, theme, setTheme, user }}>
+    <AppContext.Provider value={{ cases, activeCase, setActiveCase, addCase, updateCase, deleteCase, addEvidence, theme, setTheme, user, syncStatus, retrySync }}>
       <ErrorBoundary>
         <BrowserRouter>
           <Suspense fallback={<div className="p-8 text-slate-400">Loading...</div>}>

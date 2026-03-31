@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'react-toastify';
 import { TrialSession } from '../types';
 import { fetchSessions, upsertSession, removeSession as removeSessionService } from '../services/dataService';
 
@@ -32,9 +33,10 @@ export function useSavedSessions(caseId: string | undefined) {
     
     try {
       await upsertSession(session);
+      toast.success('Session saved to cloud', { autoClose: 1500, toastId: 'session-sync-ok' });
     } catch (err) {
       console.error('Failed to save session to online database:', err);
-      // Fallback or retry logic could go here if needed
+      toast.error('Trial session saved locally but cloud sync failed.');
     }
   }, []);
 
@@ -48,6 +50,7 @@ export function useSavedSessions(caseId: string | undefined) {
       await removeSessionService(id, caseId);
     } catch (err) {
       console.error('Failed to remove session from online database:', err);
+      toast.error('Session removed locally but cloud sync failed.');
     }
   }, [caseId]);
 
