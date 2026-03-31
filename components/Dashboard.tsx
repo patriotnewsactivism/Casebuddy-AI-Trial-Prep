@@ -46,7 +46,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-white font-serif">Welcome back, Counselor</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-white font-serif">Welcome back, Counselor</h1>
         <p className="text-slate-400 mt-2">Here is the status of your active litigation.</p>
       </div>
 

@@ -1,2 +1,146 @@
 /* CaseBuddy - AI-Powered Legal Trial Preparation */
-/* Additional global styles */
+/* Light theme overrides */
+
+/* ── CSS Custom Properties ── */
+:root {
+  --bg-app: #0f172a;
+  --bg-surface: #1e293b;
+  --bg-elevated: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-color: #334155;
+  --border-subtle: rgba(51, 65, 85, 0.5);
+  --glass-bg: rgba(15, 23, 42, 0.75);
+  --scrollbar-track: #1e293b;
+  --scrollbar-thumb: #475569;
+  --gold-accent: #d4af37;
+  --input-bg: #1e293b;
+}
+
+[data-theme="light"] {
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border-color: #e2e8f0;
+  --border-subtle: rgba(226, 232, 240, 0.8);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #cbd5e1;
+  --gold-accent: #b4941f;
+  --input-bg: #f1f5f9;
+}
+
+/* ── Light Theme Global Overrides ── */
+
+[data-theme="light"] body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Main app shell backgrounds */
+[data-theme="light"] .bg-slate-900 { background-color: #f8fafc !important; }
+[data-theme="light"] .bg-slate-950 { background-color: #f1f5f9 !important; }
+[data-theme="light"] .bg-slate-800 { background-color: #ffffff !important; }
+[data-theme="light"] .bg-slate-800\/80 { background-color: rgba(255,255,255,0.9) !important; }
+[data-theme="light"] .bg-slate-800\/50 { background-color: rgba(241,245,249,0.5) !important; }
+[data-theme="light"] .bg-slate-800\/40 { background-color: rgba(241,245,249,0.4) !important; }
+[data-theme="light"] .bg-slate-700 { background-color: #e2e8f0 !important; }
+[data-theme="light"] .bg-slate-700\/50 { background-color: rgba(226,232,240,0.5) !important; }
+
+/* Sidebar specific */
+[data-theme="light"] aside.bg-slate-950 {
+  background-color: #ffffff !important;
+  border-right-color: #e2e8f0 !important;
+}
+
+/* Header */
+[data-theme="light"] .bg-slate-900\/80 {
+  background-color: rgba(248, 250, 252, 0.85) !important;
+}
+
+/* Text colors */
+[data-theme="light"] .text-white { color: #0f172a !important; }
+[data-theme="light"] .text-slate-100 { color: #1e293b !important; }
+[data-theme="light"] .text-slate-200 { color: #334155 !important; }
+[data-theme="light"] .text-slate-300 { color: #475569 !important; }
+[data-theme="light"] .text-slate-400 { color: #64748b !important; }
+[data-theme="light"] .text-slate-500 { color: #94a3b8 !important; }
+
+/* Hover states */
+[data-theme="light"] .hover\:text-white:hover { color: #0f172a !important; }
+[data-theme="light"] .hover\:text-slate-200:hover { color: #334155 !important; }
+[data-theme="light"] .hover\:bg-slate-800:hover { background-color: #f1f5f9 !important; }
+[data-theme="light"] .hover\:bg-slate-800\/50:hover { background-color: rgba(241,245,249,0.5) !important; }
+
+/* Border colors */
+[data-theme="light"] .border-slate-800 { border-color: #e2e8f0 !important; }
+[data-theme="light"] .border-slate-800\/80 { border-color: rgba(226,232,240,0.8) !important; }
+[data-theme="light"] .border-slate-800\/60 { border-color: rgba(226,232,240,0.6) !important; }
+[data-theme="light"] .border-slate-700 { border-color: #e2e8f0 !important; }
+[data-theme="light"] .border-slate-700\/50 { border-color: rgba(226,232,240,0.5) !important; }
+[data-theme="light"] .border-slate-600 { border-color: #cbd5e1 !important; }
+
+/* Input fields */
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Cards and panels */
+[data-theme="light"] .glass-card {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(212, 175, 55, 0.15) !important;
+}
+
+/* Gold accent adjustments for light theme */
+[data-theme="light"] .text-gold-500 { color: #b4941f !important; }
+[data-theme="light"] .text-gold-400 { color: #c9a825 !important; }
+[data-theme="light"] .bg-gold-500\/10 { background-color: rgba(180,148,31,0.08) !important; }
+[data-theme="light"] .bg-gold-500\/15 { background-color: rgba(180,148,31,0.1) !important; }
+[data-theme="light"] .bg-gold-500\/20 { background-color: rgba(180,148,31,0.12) !important; }
+[data-theme="light"] .border-gold-500\/30 { border-color: rgba(180,148,31,0.25) !important; }
+
+/* Scrollbar for light theme */
+[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Charts backgrounds */
+[data-theme="light"] .recharts-surface { background: transparent; }
+
+/* Black overlay adjustments */
+[data-theme="light"] .bg-black\/60 { background-color: rgba(0,0,0,0.3) !important; }
+[data-theme="light"] .bg-black\/50 { background-color: rgba(0,0,0,0.25) !important; }
+
+/* Ring/focus adjustments */
+[data-theme="light"] .ring-offset-slate-950 { --tw-ring-offset-color: #f8fafc !important; }
+[data-theme="light"] .border-slate-950 { border-color: #f8fafc !important; }
+
+/* Shadows for light mode - add subtle depth */
+[data-theme="light"] .shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Toast override */
+[data-theme="light"] .Toastify__toast {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Dropdown/select options */
+[data-theme="light"] option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}

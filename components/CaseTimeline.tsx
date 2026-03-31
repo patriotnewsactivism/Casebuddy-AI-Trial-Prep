@@ -218,7 +218,7 @@ export const CaseTimeline: React.FC<CaseTimelineProps> = ({ activeCase, updateCa
       {/* Timeline Visualization */}
       <div className="relative py-8">
         {/* Center line */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-0.5" style={{
+        <div className="absolute left-4 sm:left-1/2 sm:-translate-x-1/2 top-0 bottom-0 w-0.5" style={{
           background: 'linear-gradient(to bottom, transparent, #eab308 20%, #eab308 80%, transparent)',
           boxShadow: '0 0 10px 3px rgba(234,179,8,0.25)',
         }} />
@@ -235,12 +235,12 @@ export const CaseTimeline: React.FC<CaseTimelineProps> = ({ activeCase, updateCa
               return (
                 <div key={event.id} className="relative">
                   {/* Connector dot */}
-                  <div className={`absolute left-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 border-slate-950 mt-5 ${typeColors2[event.type]} ${
+                  <div className={`absolute left-2 sm:left-1/2 sm:-translate-x-1/2 w-4 h-4 rounded-full border-2 border-slate-950 mt-5 ${typeColors2[event.type]} ${
                     event.importance === 'critical' ? 'ring-2 ring-red-500 ring-offset-1 ring-offset-slate-950 animate-pulse' : ''
                   }`} />
 
                   {/* Event card */}
-                  <div className={`w-[45%] ${isEven ? 'text-right pr-8 mr-[55%]' : 'pl-8 ml-[55%]'}`}>
+                  <div className={`w-full sm:w-[45%] ${isEven ? 'sm:text-right pl-8 sm:pl-0 sm:pr-8 sm:mr-[55%]' : 'pl-8 sm:ml-[55%]'}`}>
                     <div className={`bg-slate-800/80 border ${typeColors[event.type]} border-slate-700 rounded-xl p-4 hover:border-gold-500/30 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gold-500/10 transition-all duration-200`}>
                       <div className="flex items-start justify-between gap-3">
                         <div>

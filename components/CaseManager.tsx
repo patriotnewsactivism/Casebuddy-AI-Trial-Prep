@@ -1,7 +1,8 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
 import { Case, CaseStatus } from '../types';
-import { Plus, Trash2, LayoutDashboard, FileText, Search, Users, CheckSquare, DollarSign, Gavel, GitBranch } from 'lucide-react';
+import { Plus, Trash2, LayoutDashboard, FileText, Search, Users, CheckSquare, DollarSign, Gavel, GitBranch, Share2 } from 'lucide-react';
+import CaseShareDialog from './CaseShareDialog';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import { generateRealisticCase } from '../services/caseGenerationService';
 
@@ -40,6 +41,7 @@ const CaseManager = () => {
   const [showAiGenModal, setShowAiGenModal] = useState(false);
   const [aiGenPrompt, setAiGenPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [shareCaseId, setShareCaseId] = useState<string | null>(null);
   const [newCaseData, setNewCaseData] = useState<Partial<Case>>({
     title: '',
     client: '',
@@ -167,15 +169,27 @@ const CaseManager = () => {
                 } text-white`}>
                   {c.status}
                 </span>
-                <button
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleDeleteCase(c.id);
-                  }}
-                  className="text-slate-400 hover:text-red-500 text-xs"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      setShareCaseId(c.id);
+                    }}
+                    className="text-slate-400 hover:text-blue-400 text-xs"
+                    title="Share case"
+                  >
+                    <Share2 size={14} />
+                  </button>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleDeleteCase(c.id);
+                    }}
+                    className="text-slate-400 hover:text-red-500 text-xs"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -322,6 +336,16 @@ const CaseManager = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Case Share Dialog */}
+      {shareCaseId && (
+        <CaseShareDialog
+          caseId={shareCaseId}
+          caseTitle={cases.find(c => c.id === shareCaseId)?.title || 'Untitled'}
+          isOpen={!!shareCaseId}
+          onClose={() => setShareCaseId(null)}
+        />
       )}
     </div>
   );

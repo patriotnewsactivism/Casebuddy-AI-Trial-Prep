@@ -286,13 +286,13 @@ Return JSON with:
                 {scenario.rounds.map((round) => (
                   <div key={round.round} className="space-y-3">
                     <div className="flex justify-end">
-                      <div className="max-w-[80%] bg-blue-600 rounded-2xl rounded-br-none px-4 py-3">
+                      <div className="max-w-[90%] sm:max-w-[80%] bg-blue-600 rounded-2xl rounded-br-none px-4 py-3">
                         <p className="text-sm text-white">{round.yourArgument}</p>
                         <p className="text-xs text-blue-200 mt-1">Position: ${round.yourPosition.toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="flex justify-start">
-                      <div className="max-w-[80%] bg-slate-700 rounded-2xl rounded-bl-none px-4 py-3">
+                      <div className="max-w-[90%] sm:max-w-[80%] bg-slate-700 rounded-2xl rounded-bl-none px-4 py-3">
                         <p className="text-sm text-white">{round.opponentResponse}</p>
                         <p className="text-xs text-slate-400 mt-1">Counter: ${round.opponentPosition.toLocaleString()}</p>
                       </div>

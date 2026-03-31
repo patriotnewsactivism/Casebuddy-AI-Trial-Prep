@@ -33,6 +33,8 @@ const PublicRecordsManager = lazy(() => import('./components/PublicRecordsManage
 const OfficerDatabase = lazy(() => import('./components/OfficerDatabase'));
 const AICoCounsel = lazy(() => import('./components/AICoCounsel'));
 const DiscoveryLens = lazy(() => import('./components/DiscoveryLens'));
+const PricingPage = lazy(() => import('./components/PricingPage'));
+const TeamManager = lazy(() => import('./components/TeamManager'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -161,6 +163,11 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <NavItem path="/app/negotiation" icon={Handshake} label="Negotiation Sim" />
 
           <div className="mt-auto pt-2 border-t border-slate-800/60">
+            <NavItem path="/app/team" icon={Users} label="Team" />
+            <NavItem path="/app/pricing" icon={Sparkles} label="Upgrade Plan" />
+          </div>
+
+          <div className="pt-1 border-t border-slate-800/60">
             {/* Cloud sync status indicator */}
             <button
               onClick={syncStatus === 'error' ? retrySync : undefined}
@@ -488,6 +495,8 @@ const App = () => {
               <Route path="/app/officers" element={<AuthenticatedLayout><OfficerDatabase /></AuthenticatedLayout>} />
               <Route path="/app/ai-counsel" element={<AuthenticatedLayout><AICoCounsel /></AuthenticatedLayout>} />
               <Route path="/app/discovery-lens" element={<AuthenticatedLayout><DiscoveryLens /></AuthenticatedLayout>} />
+              <Route path="/app/pricing" element={<AuthenticatedLayout><PricingPage /></AuthenticatedLayout>} />
+              <Route path="/app/team" element={<AuthenticatedLayout><TeamManager /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

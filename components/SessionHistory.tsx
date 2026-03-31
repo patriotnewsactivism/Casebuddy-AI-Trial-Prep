@@ -1,10 +1,19 @@
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { AppContext } from '../App';
 import { TrialSession } from '../types';
 import { loadTrialSessions, getSessionsByCaseId } from '../utils/storage';
-import { Play, Pause, SkipBack, Download, Trash2, Clock, Award, AlertTriangle, MessageSquare, TrendingUp, Calendar, Filter, X } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Download, Trash2, Clock, Award, AlertTriangle, MessageSquare, TrendingUp, Calendar, Filter, X, Volume2, VolumeX, Gauge } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+const formatTime = (seconds: number): string => {
+  if (!isFinite(seconds) || seconds < 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
 
 const SessionHistory = () => {
   const { cases, activeCase } = useContext(AppContext);
@@ -13,6 +22,12 @@ const SessionHistory = () => {
   const [filterCaseId, setFilterCaseId] = useState<string>('all');
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const progressRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadSessions();
@@ -38,32 +53,83 @@ const SessionHistory = () => {
     }
   };
 
-  const playAudio = (session: TrialSession) => {
-    if (!session.audioUrl) return;
-
+  const cleanupAudio = useCallback(() => {
     if (audioElement) {
       audioElement.pause();
+      audioElement.removeAttribute('src');
       setAudioElement(null);
-      setIsPlaying(false);
     }
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+  }, [audioElement]);
+
+  const playAudio = (session: TrialSession) => {
+    if (!session.audioUrl) return;
+    cleanupAudio();
 
     const audio = new Audio(session.audioUrl);
+    audio.volume = isMuted ? 0 : volume;
+    audio.playbackRate = playbackSpeed;
+
+    audio.onloadedmetadata = () => setDuration(audio.duration);
+    audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
+    audio.onended = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
     audio.play();
     setAudioElement(audio);
     setIsPlaying(true);
-
-    audio.onended = () => {
-      setIsPlaying(false);
-      setAudioElement(null);
-    };
   };
 
-  const pauseAudio = () => {
-    if (audioElement) {
+  const togglePlayPause = () => {
+    if (!audioElement) return;
+    if (isPlaying) {
       audioElement.pause();
       setIsPlaying(false);
+    } else {
+      audioElement.play();
+      setIsPlaying(true);
     }
   };
+
+  const seekAudio = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioElement || !progressRef.current) return;
+    const rect = progressRef.current.getBoundingClientRect();
+    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audioElement.currentTime = fraction * audioElement.duration;
+  };
+
+  const skipTime = (seconds: number) => {
+    if (!audioElement) return;
+    audioElement.currentTime = Math.max(0, Math.min(audioElement.duration, audioElement.currentTime + seconds));
+  };
+
+  const handleVolumeChange = (newVolume: number) => {
+    setVolume(newVolume);
+    setIsMuted(newVolume === 0);
+    if (audioElement) audioElement.volume = newVolume;
+  };
+
+  const toggleMute = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    if (audioElement) audioElement.volume = next ? 0 : volume;
+  };
+
+  const handleSpeedChange = () => {
+    const idx = PLAYBACK_SPEEDS.indexOf(playbackSpeed);
+    const nextSpeed = PLAYBACK_SPEEDS[(idx + 1) % PLAYBACK_SPEEDS.length];
+    setPlaybackSpeed(nextSpeed);
+    if (audioElement) audioElement.playbackRate = nextSpeed;
+  };
+
+  // Cleanup audio on session change
+  useEffect(() => {
+    return () => { cleanupAudio(); };
+  }, [selectedSession]);
 
   const downloadTranscript = (session: TrialSession) => {
     const transcript = session.transcript
@@ -262,29 +328,98 @@ ${transcript}
 
                 {/* Audio Player */}
                 {selectedSession.audioUrl && (
-                  <div className="p-6 border-b border-slate-700 bg-slate-900/30">
+                  <div className="p-4 md:p-6 border-b border-slate-700 bg-slate-900/30">
                     <h3 className="text-sm font-bold text-gold-500 uppercase mb-3">Audio Recording</h3>
-                    <div className="flex items-center gap-3">
-                      {!isPlaying ? (
+
+                    {/* Progress bar */}
+                    <div
+                      ref={progressRef}
+                      onClick={seekAudio}
+                      className="w-full h-2 bg-slate-700 rounded-full cursor-pointer group mb-3 relative"
+                    >
+                      <div
+                        className="h-full bg-gold-500 rounded-full transition-[width] duration-100 relative"
+                        style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
+                      >
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </div>
+
+                    {/* Time display */}
+                    <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
+                      <span>{formatTime(currentTime)}</span>
+                      <span>{formatTime(duration || selectedSession.duration)}</span>
+                    </div>
+
+                    {/* Controls row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Skip back */}
+                      <button
+                        onClick={() => skipTime(-10)}
+                        className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"
+                        title="Back 10s"
+                      >
+                        <SkipBack size={16} />
+                      </button>
+
+                      {/* Play / Pause */}
+                      {!audioElement ? (
                         <button
                           onClick={() => playAudio(selectedSession)}
                           className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold rounded-lg transition-colors"
                         >
                           <Play size={18} />
-                          Play Recording
+                          Play
                         </button>
                       ) : (
                         <button
-                          onClick={pauseAudio}
-                          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors"
+                          onClick={togglePlayPause}
+                          className="flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold rounded-lg transition-colors"
                         >
-                          <Pause size={18} />
-                          Pause
+                          {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                          {isPlaying ? 'Pause' : 'Resume'}
                         </button>
                       )}
-                      <span className="text-sm text-slate-400">
-                        Duration: {Math.floor(selectedSession.duration / 60)}m {selectedSession.duration % 60}s
-                      </span>
+
+                      {/* Skip forward */}
+                      <button
+                        onClick={() => skipTime(10)}
+                        className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"
+                        title="Forward 10s"
+                      >
+                        <SkipForward size={16} />
+                      </button>
+
+                      <div className="w-px h-6 bg-slate-700 mx-1" />
+
+                      {/* Playback speed */}
+                      <button
+                        onClick={handleSpeedChange}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+                        title="Playback speed"
+                      >
+                        <Gauge size={14} />
+                        {playbackSpeed}x
+                      </button>
+
+                      {/* Volume */}
+                      <button
+                        onClick={toggleMute}
+                        className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"
+                        title={isMuted ? 'Unmute' : 'Mute'}
+                      >
+                        {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                      </button>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={isMuted ? 0 : volume}
+                        onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                        className="w-20 h-1 accent-gold-500 cursor-pointer"
+                        title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                      />
                     </div>
                   </div>
                 )}
