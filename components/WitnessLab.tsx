@@ -99,6 +99,7 @@ const WitnessLab = () => {
   const isProcessingRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const handleAudioUploadRef = useRef<((audioBlob: Blob, preferredTranscript?: string) => Promise<void>) | undefined>(undefined);
+  const activePointerIdRef = useRef<number | null>(null);
 
   const getSessionId = (witnessId: string) => `witness-${witnessId}-${activeCase?.id || 'default'}`;
 
@@ -442,6 +443,35 @@ const WitnessLab = () => {
     
     setCaptionText('Processing...');
   }, []);
+
+  const handleMicPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!e.isPrimary) {
+      return;
+    }
+
+    activePointerIdRef.current = e.pointerId;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    void startRecording();
+  }, [startRecording]);
+
+  const handleMicPointerUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (activePointerIdRef.current !== e.pointerId) {
+      return;
+    }
+
+    activePointerIdRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    stopRecording();
+  }, [stopRecording]);
+
+  const handleMicPointerCancel = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (activePointerIdRef.current !== e.pointerId) {
+      return;
+    }
+
+    activePointerIdRef.current = null;
+    stopRecording();
+  }, [stopRecording]);
 
   const handleAudioUpload = async (audioBlob: Blob, preferredTranscript?: string) => {
     setIsProcessingAudio(true);
@@ -965,11 +995,9 @@ ${'='.repeat(50)}
             
             <button 
               type="button"
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onMouseLeave={stopRecording}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
+              onPointerDown={handleMicPointerDown}
+              onPointerUp={handleMicPointerUp}
+              onPointerCancel={handleMicPointerCancel}
               disabled={isTyping || isProcessingAudio}
               className={`p-2 transition-all rounded-full ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
               title="Hold to speak"
