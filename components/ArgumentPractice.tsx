@@ -22,6 +22,7 @@ import { generateProactiveCoaching } from '../services/geminiService';
 import { callGeminiProxy } from '../services/apiProxy';
 import { Type } from "@google/genai";
 import { ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured, synthesizeSpeech } from '../services/elevenLabsService';
+import { shouldPreferElevenLabs } from '../utils/audioSettings';
 import { isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
 
@@ -318,7 +319,7 @@ const TrialSim: React.FC = () => {
     coachingVerbosity: 'moderate',
     audioQuality: 'high',
   });
-  const [useElevenLabs, setUseElevenLabs] = useState(true);
+  const [useElevenLabs, setUseElevenLabs] = useState(() => shouldPreferElevenLabs(true));
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
   // ── Session UI ──────────────────────────────────────────────────────────
@@ -383,8 +384,7 @@ const TrialSim: React.FC = () => {
     ? activeCase.opposingCounsel
     : MOCK_OPPONENT.name;
 
-  const elevenLabsKey = process.env.ELEVENLABS_API_KEY ?? '';
-  const canUseElevenLabs = useElevenLabs && isElevenLabsConfigured() && elevenLabsKey.length > 10;
+  const canUseElevenLabs = useElevenLabs && isElevenLabsConfigured();
 
   const avgRhetoricalScore = session.rhetoricalScores.length > 0
     ? Math.round(session.rhetoricalScores.reduce((a, b) => a + b, 0) / (session.rhetoricalScores.length || 1))
@@ -458,7 +458,6 @@ const TrialSim: React.FC = () => {
           ?? ELEVENLABS_VOICES['josh'].id;
 
         const audioData = await synthesizeSpeech(text, voiceId, {
-          apiKey: elevenLabsKey,
           stability: 0.5,
           similarityBoost: 0.75,
         });
@@ -488,7 +487,7 @@ const TrialSim: React.FC = () => {
     } finally {
       dispatch({ type: 'AI_SPEAKING_END' });
     }
-  }, [canUseElevenLabs, voiceConfig.voiceName, elevenLabsKey]);
+  }, [canUseElevenLabs, voiceConfig.voiceName]);
 
   // ── Recording ─────────────────────────────────────────────────────────────
 
