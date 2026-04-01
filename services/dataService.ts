@@ -36,15 +36,9 @@ async function caseToRow(c: Case): Promise<Record<string, any>> {
     userId = user?.id;
   }
 
-  // Determine representation from clientType
-  const representationMap: Record<string, string> = {
-    'plaintiff': 'plaintiff',
-    'defendant': 'defendant',
-    'prosecution': 'plaintiff',
-  };
-
   // Store all app-specific fields that don't have direct DB columns in metadata
   const metadata: Record<string, any> = {
+    client: c.client,
     judge: c.judge,
     opposingCounsel: c.opposingCounsel,
     winProbability: c.winProbability,
@@ -58,8 +52,7 @@ async function caseToRow(c: Case): Promise<Record<string, any>> {
     legalTheory: c.legalTheory,
     keyIssues: c.keyIssues || [],
     nextCourtDate: c.nextCourtDate,
-    // Preserve any existing metadata fields
-    ...(c as any)._metadata,
+    originalStatus: c.status,
   };
 
   // Build key_dates from nextCourtDate
@@ -72,13 +65,11 @@ async function caseToRow(c: Case): Promise<Record<string, any>> {
     id: c.id,
     user_id: userId,
     name: c.title || 'Untitled Case',
-    client_name: c.client || 'Unknown Client',
     case_number: c.docketNumber || null,
     court_name: c.courtLocation || null,
     case_type: 'other',
     status: STATUS_TO_DB[c.status] || 'active',
     description: c.summary || null,
-    representation: representationMap[c.clientType || ''] || 'other',
     plaintiffs: c.clientType === 'plaintiff' ? [c.client] : (c.opposingParty ? [c.opposingParty] : []),
     defendants: c.clientType === 'defendant' ? [c.client] : [],
     key_dates: keyDates,
@@ -98,7 +89,7 @@ function rowToCase(row: any): Case {
     id: row.id,
     user_id: row.user_id,
     title: row.name || 'Untitled Case',
-    client: row.client_name || 'Unknown Client',
+    client: meta.client || 'Unknown Client',
     status: appStatus,
     opposingCounsel: meta.opposingCounsel || '',
     judge: meta.judge || '',
@@ -108,7 +99,7 @@ function rowToCase(row: any): Case {
     docketNumber: row.case_number || '',
     courtLocation: row.court_name || '',
     jurisdiction: meta.jurisdiction || '',
-    clientType: meta.clientType || (row.representation === 'plaintiff' ? 'plaintiff' : row.representation === 'defendant' ? 'defendant' : undefined),
+    clientType: meta.clientType,
     opposingParty: meta.opposingParty || '',
     legalTheory: meta.legalTheory || '',
     keyIssues: meta.keyIssues || [],
