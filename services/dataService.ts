@@ -1,22 +1,33 @@
-import { Case, EvidenceItem, TrialSession } from '../types';
+import { Case, CaseStatus, EvidenceItem, TrialSession } from '../types';
 import { clearCases, loadCases, saveCases } from '../utils/storage';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 const isNotFoundError = (error: any) => error?.code === 'PGRST116';
-const isColumnMismatchError = (error: any) => {
-  const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
-  return message.includes('column') && (message.includes('does not exist') || message.includes('could not find'));
+
+// Map app CaseStatus values to DB status enum values
+const STATUS_TO_DB: Record<string, string> = {
+  'Pre-Trial': 'active',
+  'Discovery': 'active',
+  'Trial': 'active',
+  'Appeal': 'pending',
+  'Closed': 'closed',
 };
 
-type CaseColumnStyle = 'snake' | 'camel';
-let detectedCaseColumnStyle: CaseColumnStyle | null = null;
-
-const getFallbackCaseColumnStyle = (style: CaseColumnStyle): CaseColumnStyle => {
-  return style === 'snake' ? 'camel' : 'snake';
+const STATUS_FROM_DB: Record<string, CaseStatus> = {
+  'active': CaseStatus.PRE_TRIAL,
+  'pending': CaseStatus.APPEAL,
+  'settled': CaseStatus.CLOSED,
+  'dismissed': CaseStatus.CLOSED,
+  'closed': CaseStatus.CLOSED,
+  'archived': CaseStatus.CLOSED,
 };
 
-// Map TypeScript camelCase to database columns.
-async function caseToRow(c: Case, style: CaseColumnStyle): Promise<Record<string, any>> {
+// Map TypeScript Case to actual Supabase `cases` table columns.
+// DB schema: id, user_id, name (NOT NULL), case_number, court_name, case_type (enum),
+// status (enum: active/pending/settled/dismissed/closed/archived), description,
+// plaintiffs[], defendants[], key_dates (JSONB), metadata (JSONB),
+// client_name, representation (enum), created_at, updated_at, deleted_at
+async function caseToRow(c: Case): Promise<Record<string, any>> {
   const client = getSupabaseClient();
   let userId = c.user_id;
 
@@ -25,75 +36,86 @@ async function caseToRow(c: Case, style: CaseColumnStyle): Promise<Record<string
     userId = user?.id;
   }
 
-  const base: any = {
-    id: c.id,
-    user_id: userId,
-    title: c.title,
-    client: c.client,
-    status: c.status,
+  // Determine representation from clientType
+  const representationMap: Record<string, string> = {
+    'plaintiff': 'plaintiff',
+    'defendant': 'defendant',
+    'prosecution': 'plaintiff',
+  };
+
+  // Store all app-specific fields that don't have direct DB columns in metadata
+  const metadata: Record<string, any> = {
     judge: c.judge,
-    summary: c.summary,
+    opposingCounsel: c.opposingCounsel,
+    winProbability: c.winProbability,
     tags: c.tags || [],
     evidence: c.evidence || [],
     tasks: c.tasks || [],
     witnesses: c.witnesses || [],
+    jurisdiction: c.jurisdiction,
+    clientType: c.clientType,
+    opposingParty: c.opposingParty,
+    legalTheory: c.legalTheory,
+    keyIssues: c.keyIssues || [],
+    nextCourtDate: c.nextCourtDate,
+    // Preserve any existing metadata fields
+    ...(c as any)._metadata,
   };
 
-  if (style === 'camel') {
-    return {
-      ...base,
-      opposingCounsel: c.opposingCounsel,
-      nextCourtDate: c.nextCourtDate,
-      winProbability: c.winProbability,
-      docketNumber: c.docketNumber,
-      courtLocation: c.courtLocation,
-      jurisdiction: c.jurisdiction,
-      clientType: c.clientType,
-      opposingParty: c.opposingParty,
-      legalTheory: c.legalTheory,
-      keyIssues: c.keyIssues,
-    };
+  // Build key_dates from nextCourtDate
+  const keyDates: Record<string, any> = {};
+  if (c.nextCourtDate && c.nextCourtDate !== 'TBD') {
+    keyDates.nextCourtDate = c.nextCourtDate;
   }
 
   return {
-    ...base,
-    opposing_counsel: c.opposingCounsel,
-    next_court_date: c.nextCourtDate,
-    win_probability: c.winProbability,
-    docket_number: c.docketNumber,
-    court_location: c.courtLocation,
-    jurisdiction: c.jurisdiction,
-    client_type: c.clientType,
-    opposing_party: c.opposingParty,
-    legal_theory: c.legalTheory,
-    key_issues: c.keyIssues,
+    id: c.id,
+    user_id: userId,
+    name: c.title || 'Untitled Case',
+    client_name: c.client || 'Unknown Client',
+    case_number: c.docketNumber || null,
+    court_name: c.courtLocation || null,
+    case_type: 'other',
+    status: STATUS_TO_DB[c.status] || 'active',
+    description: c.summary || null,
+    representation: representationMap[c.clientType || ''] || 'other',
+    plaintiffs: c.clientType === 'plaintiff' ? [c.client] : (c.opposingParty ? [c.opposingParty] : []),
+    defendants: c.clientType === 'defendant' ? [c.client] : [],
+    key_dates: keyDates,
+    metadata,
   };
 }
 
-// Map database snake_case columns to TypeScript camelCase
+// Map actual Supabase `cases` row to TypeScript Case interface
 function rowToCase(row: any): Case {
+  const meta = row.metadata || {};
+  const keyDates = row.key_dates || {};
+
+  // Map DB status back to app CaseStatus, preserving original if stored in metadata
+  const appStatus = meta.originalStatus || STATUS_FROM_DB[row.status] || CaseStatus.PRE_TRIAL;
+
   return {
     id: row.id,
     user_id: row.user_id,
-    title: row.title || row.name || 'Untitled Case',
-    client: row.client || row.client_name || 'Unknown Client',
-    status: row.status,
-    opposingCounsel: row.opposing_counsel ?? row.opposingcounsel ?? row.opposingCounsel,
-    judge: row.judge,
-    nextCourtDate: row.next_court_date ?? row.nextcourtdate ?? row.nextCourtDate,
-    summary: row.summary ?? row.description,
-    winProbability: row.win_probability ?? row.winprobability ?? row.winProbability,
-    docketNumber: row.docket_number ?? row.docketnumber ?? row.docketNumber ?? row.case_number,
-    courtLocation: row.court_location ?? row.courtlocation ?? row.courtLocation ?? row.court_name,
-    jurisdiction: row.jurisdiction,
-    clientType: row.client_type ?? row.clienttype ?? row.clientType,
-    opposingParty: row.opposing_party ?? row.opposingparty ?? row.opposingParty,
-    legalTheory: row.legal_theory ?? row.legaltheory ?? row.legalTheory,
-    keyIssues: row.key_issues ?? row.keyissues ?? row.keyIssues,
-    tags: row.tags || [],
-    evidence: row.evidence || [],
-    tasks: row.tasks || [],
-    witnesses: row.witnesses || [],
+    title: row.name || 'Untitled Case',
+    client: row.client_name || 'Unknown Client',
+    status: appStatus,
+    opposingCounsel: meta.opposingCounsel || '',
+    judge: meta.judge || '',
+    nextCourtDate: keyDates.nextCourtDate || meta.nextCourtDate || 'TBD',
+    summary: row.description || '',
+    winProbability: meta.winProbability ?? 50,
+    docketNumber: row.case_number || '',
+    courtLocation: row.court_name || '',
+    jurisdiction: meta.jurisdiction || '',
+    clientType: meta.clientType || (row.representation === 'plaintiff' ? 'plaintiff' : row.representation === 'defendant' ? 'defendant' : undefined),
+    opposingParty: meta.opposingParty || '',
+    legalTheory: meta.legalTheory || '',
+    keyIssues: meta.keyIssues || [],
+    tags: meta.tags || [],
+    evidence: meta.evidence || [],
+    tasks: meta.tasks || [],
+    witnesses: meta.witnesses || [],
   };
 }
 
@@ -175,33 +197,17 @@ export const upsertCase = async (caseRecord: Case): Promise<void> => {
     }
   }
 
-  const stylesToTry: CaseColumnStyle[] = detectedCaseColumnStyle
-    ? [detectedCaseColumnStyle, getFallbackCaseColumnStyle(detectedCaseColumnStyle)]
-    : ['snake', 'camel'];
+  const row = await caseToRow(caseRecord);
+  console.log('[DataService] Attempting upsert with mapped schema');
 
-  let lastError: any = null;
+  const { error } = await client.from('cases').upsert(row, { onConflict: 'id' });
 
-  for (const style of stylesToTry) {
-    const row = await caseToRow(caseRecord, style);
-    console.log(`[DataService] Attempting upsert with ${style} style`);
-    
-    const { error } = await client.from('cases').upsert(row, { onConflict: 'id' });
-
-    if (!error) {
-      console.log(`[DataService] Successfully upserted case with ${style} style`);
-      detectedCaseColumnStyle = style;
-      return;
-    }
-
-    lastError = error;
-    console.warn(`[DataService] Upsert failed with ${style} style:`, error.message);
-    if (!isColumnMismatchError(error)) {
-      break;
-    }
+  if (error) {
+    console.error('[Supabase] upsertCase failed', error);
+    throw error;
   }
 
-  console.error('[Supabase] upsertCase failed after all attempts', lastError);
-  throw lastError;
+  console.log('[DataService] Successfully upserted case to Supabase');
 };
 
 export const removeCase = async (caseId: string): Promise<void> => {
@@ -228,26 +234,30 @@ export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Pr
     return;
   }
 
-  // First, get the current case data to ensure we have the most up-to-date evidence array
-  const { data, error } = await client.from('cases').select('evidence, user_id').eq('id', caseId).single();
-  
+  // Evidence is stored in the metadata JSONB column
+  const { data, error } = await client.from('cases').select('metadata, user_id').eq('id', caseId).single();
+
   if (error) {
-    console.error('[Supabase] fetch evidence failed', error);
+    console.error('[Supabase] fetch case metadata failed', error);
     throw error;
   }
 
-  const existingEvidence: EvidenceItem[] = Array.isArray(data?.evidence) ? data.evidence : [];
+  const meta = data?.metadata || {};
+  const existingEvidence: EvidenceItem[] = Array.isArray(meta.evidence) ? meta.evidence : [];
   const nextEvidence = [...existingEvidence, { ...evidence, lastUpdated: new Date().toISOString() }];
 
-  console.log(`[DataService] Updating case ${caseId} with ${nextEvidence.length} total evidence items`);
-  const { error: updateError } = await client.from('cases').update({ evidence: nextEvidence }).eq('id', caseId);
-  
+  console.log(`[DataService] Updating case ${caseId} with ${nextEvidence.length} total evidence items in metadata`);
+  const { error: updateError } = await client
+    .from('cases')
+    .update({ metadata: { ...meta, evidence: nextEvidence } })
+    .eq('id', caseId);
+
   if (updateError) {
     console.error('[Supabase] appendEvidence failed', updateError);
     throw updateError;
   }
 
-  console.log('[DataService] Successfully updated evidence JSON in cases table');
+  console.log('[DataService] Successfully updated evidence in cases.metadata');
   
   // Also try to insert into separate evidence table for structured data
   try {
