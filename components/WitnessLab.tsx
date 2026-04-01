@@ -5,12 +5,13 @@ import { useKnowledge } from '../contexts/KnowledgeContext';
 import { generateWitnessResponse, clearChatSession } from '../services/geminiService';
 import { generateProactiveCoaching } from '../services/geminiService';
 import { transcribeAudio } from '../services/transcriptionService';
-import { synthesizeSpeech, getTrialVoicePreset, testAudioPlayback, ensureAudioUnlocked, ELEVENLABS_VOICES, selectModelWithFallback, TrialPhase } from '../services/elevenLabsService';
+import { synthesizeSpeech, getTrialVoicePreset, testAudioPlayback, ensureAudioUnlocked, selectModelWithFallback, TrialPhase } from '../services/elevenLabsService';
 import { browserTTS, speakWithFallback, isBrowserTTSAvailable } from '../services/browserTTSService';
 import { Message, Witness, TranscriptionProvider, CoachingSuggestion } from '../types';
 import { Send, Mic, ShieldAlert, HeartPulse, StopCircle, Volume2, Loader2, Download, Lightbulb, Target, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import { toast } from 'react-toastify';
+import { shouldPreferElevenLabs } from '../utils/audioSettings';
 import CaptionOverlay from './CaptionOverlay';
 import { useSavedSessions } from '../hooks/useSavedSessions';
 
@@ -567,17 +568,15 @@ const WitnessLab = () => {
       setCaptionVisible(true);
       
       const voiceConfig = getTrialVoicePreset(selectedVoicePreset);
-      const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
-      
-      console.log('[WitnessLab TTS] ElevenLabs API Key present:', !!elevenLabsKey);
+      const useElevenLabs = shouldPreferElevenLabs(true);
+
+      console.log('[WitnessLab TTS] ElevenLabs preferred:', useElevenLabs);
       console.log('[WitnessLab TTS] Selected voice preset:', selectedVoicePreset, 'Voice ID:', voiceConfig.voiceId);
-      
-      if (elevenLabsKey && elevenLabsKey.length > 10) {
+
+      if (useElevenLabs) {
         try {
-          console.log('[WitnessLab TTS] Attempting ElevenLabs direct synthesis...');
-          const voiceId = ELEVENLABS_VOICES[voiceConfig.voiceId as keyof typeof ELEVENLABS_VOICES]?.id || ELEVENLABS_VOICES['josh'].id;
-          const audioData = await synthesizeSpeech(text, voiceId, {
-            apiKey: elevenLabsKey,
+          console.log('[WitnessLab TTS] Attempting ElevenLabs synthesis...');
+          const audioData = await synthesizeSpeech(text, voiceConfig.voiceId, {
             stability: 0.5,
             similarityBoost: 0.75,
           });
