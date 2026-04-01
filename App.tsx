@@ -39,6 +39,7 @@ import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
 import { appendEvidence, fetchCases, removeCase, supabaseReady, upsertCase } from './services/dataService';
+import { checkSupabaseHealth, getHealthStatus } from './services/supabaseClient';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean, setIsOpen: (v: boolean) => void, syncStatus: 'synced' | 'syncing' | 'error', retrySync: () => void }) => {
@@ -282,23 +283,40 @@ const App = () => {
   const [theme, setThemeState] = useState<'dark' | 'light'>('dark');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const syncQueueRef = useRef<Array<{ fn: () => Promise<void>; label: string }>>([]);
+  const cloudReachableRef = useRef<boolean | null>(null);
+  const healthNotifiedRef = useRef(false);
   const { user } = useAuth();
 
-  const cloudSync = useCallback(async (label: string, fn: () => Promise<void>) => {
-    setSyncStatus('syncing');
-    try {
-      await fn();
-      setSyncStatus(syncQueueRef.current.length === 0 ? 'synced' : 'error');
-      toast.success('Saved to cloud', { autoClose: 1500, toastId: 'sync-ok' });
-    } catch (error) {
-      setSyncStatus('error');
-      syncQueueRef.current.push({ fn, label });
-      toast.error(`Cloud sync failed: ${label}. Will retry automatically.`, { toastId: `sync-fail-${Date.now()}` });
-      console.error(`[CloudSync] ${label} failed:`, error);
-    }
-  }, []);
+  // Check Supabase health on startup and periodically
+  useEffect(() => {
+    if (!user) return;
+    const probe = async () => {
+      const reachable = await checkSupabaseHealth();
+      cloudReachableRef.current = reachable;
+      if (!reachable && !healthNotifiedRef.current) {
+        healthNotifiedRef.current = true;
+        setSyncStatus('error');
+        toast.warn('Cloud database is unreachable. Data is saved locally and will sync when the connection is restored.', {
+          autoClose: 6000,
+          toastId: 'cloud-unreachable',
+        });
+      } else if (reachable && healthNotifiedRef.current) {
+        // Cloud came back online — retry queued operations
+        healthNotifiedRef.current = false;
+        if (syncQueueRef.current.length > 0) {
+          drainQueue();
+        } else {
+          setSyncStatus('synced');
+          toast.success('Cloud connection restored', { autoClose: 2000, toastId: 'cloud-restored' });
+        }
+      }
+    };
+    probe();
+    const interval = setInterval(probe, 60000); // re-check every 60s
+    return () => clearInterval(interval);
+  }, [user]);
 
-  const retrySync = useCallback(async () => {
+  const drainQueue = useCallback(async () => {
     if (syncQueueRef.current.length === 0) return;
     setSyncStatus('syncing');
     const queue = [...syncQueueRef.current];
@@ -310,21 +328,50 @@ const App = () => {
         syncQueueRef.current.push(item);
       }
     }
-    setSyncStatus(syncQueueRef.current.length === 0 ? 'synced' : 'error');
     if (syncQueueRef.current.length === 0) {
+      setSyncStatus('synced');
       toast.success('All data synced to cloud', { autoClose: 2000, toastId: 'retry-ok' });
+    } else {
+      setSyncStatus('error');
     }
   }, []);
 
-  // Auto-retry failed syncs every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (syncQueueRef.current.length > 0) {
-        retrySync();
+  const cloudSync = useCallback(async (label: string, fn: () => Promise<void>) => {
+    // If cloud is known unreachable, queue silently (no toast spam)
+    if (cloudReachableRef.current === false) {
+      syncQueueRef.current.push({ fn, label });
+      setSyncStatus('error');
+      return;
+    }
+
+    setSyncStatus('syncing');
+    try {
+      await fn();
+      setSyncStatus(syncQueueRef.current.length === 0 ? 'synced' : 'error');
+    } catch (error) {
+      setSyncStatus('error');
+      syncQueueRef.current.push({ fn, label });
+      // Only toast if this is a new failure (cloud was previously working)
+      if (cloudReachableRef.current !== false) {
+        toast.error(`Cloud sync failed: ${label}. Will retry automatically.`, { toastId: 'sync-fail' });
       }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [retrySync]);
+      console.error(`[CloudSync] ${label} failed:`, error);
+      // Mark cloud as potentially unreachable so we stop hammering it
+      cloudReachableRef.current = false;
+    }
+  }, []);
+
+  const retrySync = useCallback(async () => {
+    // First re-check health
+    const reachable = await checkSupabaseHealth();
+    cloudReachableRef.current = reachable;
+    if (!reachable) {
+      toast.warn('Cloud database is still unreachable. Data is safe locally.', { autoClose: 3000, toastId: 'cloud-unreachable' });
+      return;
+    }
+    healthNotifiedRef.current = false;
+    await drainQueue();
+  }, [drainQueue]);
 
   useEffect(() => {
     let cancelled = false;

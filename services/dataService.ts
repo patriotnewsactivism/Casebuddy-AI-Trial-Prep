@@ -115,7 +115,14 @@ export const fetchCases = async (): Promise<Case[]> => {
     return loadCases().map(hydrateCase);
   }
 
-  const { data: { user } } = await client.auth.getUser();
+  let user;
+  try {
+    const { data } = await client.auth.getUser();
+    user = data?.user;
+  } catch (err) {
+    console.warn('[DataService] Auth check failed (Supabase may be unreachable), using local storage', err);
+    return loadCases().map(hydrateCase);
+  }
   if (!user) {
     console.log('[DataService] No authenticated user, using local storage');
     return loadCases().map(hydrateCase);
@@ -150,14 +157,21 @@ export const upsertCase = async (caseRecord: Case): Promise<void> => {
 
   // Ensure user_id is present
   if (!caseRecord.user_id) {
-    const { data: { user } } = await client.auth.getUser();
-    if (user) {
-        caseRecord.user_id = user.id;
-    } else {
-        console.warn('[DataService] Attempted to upsert case without authenticated user. Falling back to local.');
-        const current = loadCases().filter(c => c.id !== caseRecord.id);
-        cacheCases([...current, hydrateCase(caseRecord)]);
-        return;
+    try {
+      const { data: { user } } = await client.auth.getUser();
+      if (user) {
+          caseRecord.user_id = user.id;
+      } else {
+          console.warn('[DataService] No authenticated user. Falling back to local.');
+          const current = loadCases().filter(c => c.id !== caseRecord.id);
+          cacheCases([...current, hydrateCase(caseRecord)]);
+          return;
+      }
+    } catch (authErr) {
+      console.warn('[DataService] Auth check failed (Supabase may be unreachable). Falling back to local.', authErr);
+      const current = loadCases().filter(c => c.id !== caseRecord.id);
+      cacheCases([...current, hydrateCase(caseRecord)]);
+      throw authErr; // Re-throw so cloudSync knows it failed
     }
   }
 
