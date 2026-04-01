@@ -1,10 +1,11 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
 import { Case, CaseStatus } from '../types';
-import { Plus, Trash2, LayoutDashboard, FileText, Search, Users, CheckSquare, DollarSign, Gavel, GitBranch, Share2 } from 'lucide-react';
+import { Plus, Trash2, LayoutDashboard, FileText, Search, Users, CheckSquare, DollarSign, Gavel, GitBranch, Share2, BookOpen } from 'lucide-react';
 import CaseShareDialog from './CaseShareDialog';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 import { generateRealisticCase } from '../services/caseGenerationService';
+import { MOCK_CASE_TEMPLATES } from '../constants';
 
 import { OverviewTab } from './casemanager/OverviewTab';
 import { DocumentsTab } from './casemanager/DocumentsTab';
@@ -39,6 +40,7 @@ const CaseManager = () => {
   const [activeTab, setActiveTab] = useState<CaseTab>('overview');
   const [showNewCaseModal, setShowNewCaseModal] = useState(false);
   const [showAiGenModal, setShowAiGenModal] = useState(false);
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false);
   const [aiGenPrompt, setAiGenPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [shareCaseId, setShareCaseId] = useState<string | null>(null);
@@ -110,15 +112,29 @@ const CaseManager = () => {
         tasks: [],
         ...generated,
       };
-      addCase(caseObj);
+      await addCase(caseObj);
       setAiGenPrompt('');
       setShowAiGenModal(false);
       handleSuccess('Case generated from AI');
-    } catch (error) {
-      handleError('Failed to generate case');
+    } catch (error: any) {
+      console.error('[CaseManager] AI generation failed:', error);
+      handleError(error?.message || 'Failed to generate case. Check your API key configuration.');
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleLoadTemplate = async (template: Case) => {
+    const caseObj: Case = {
+      ...template,
+      id: crypto.randomUUID(),
+      evidence: (template.evidence || []).map(e => ({ ...e, caseId: '' })),
+    };
+    // Set the caseId on evidence items after we have the ID
+    caseObj.evidence = (caseObj.evidence || []).map(e => ({ ...e, caseId: caseObj.id }));
+    await addCase(caseObj);
+    setShowTemplatesModal(false);
+    handleSuccess(`Loaded template: ${template.title}`);
   };
 
   const handleDeleteCase = async (id: string) => {
@@ -131,18 +147,26 @@ const CaseManager = () => {
     <div className="flex h-full gap-6">
       {/* Sidebar: Case List */}
       <div className="w-64 border-r border-slate-700 pr-4 overflow-y-auto">
-        <div className="sticky top-0 bg-slate-900 py-4 mb-4 flex gap-2">
+        <div className="sticky top-0 bg-slate-900 py-4 mb-4 space-y-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowNewCaseModal(true)}
+              className="flex-1 flex items-center justify-center gap-2 bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold px-3 py-2 rounded-lg text-sm"
+            >
+              <Plus size={16} /> New
+            </button>
+            <button
+              onClick={() => setShowAiGenModal(true)}
+              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-2 rounded-lg text-sm"
+            >
+              AI
+            </button>
+          </div>
           <button
-            onClick={() => setShowNewCaseModal(true)}
-            className="flex-1 flex items-center justify-center gap-2 bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold px-3 py-2 rounded-lg text-sm"
+            onClick={() => setShowTemplatesModal(true)}
+            className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold px-3 py-2 rounded-lg text-sm"
           >
-            <Plus size={16} /> New
-          </button>
-          <button
-            onClick={() => setShowAiGenModal(true)}
-            className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-2 rounded-lg text-sm"
-          >
-            AI
+            <BookOpen size={16} /> Practice Templates
           </button>
         </div>
 
@@ -334,6 +358,46 @@ const CaseManager = () => {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Practice Templates Modal */}
+      {showTemplatesModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-xl font-bold text-white mb-2">Practice Case Templates</h3>
+            <p className="text-slate-400 text-sm mb-4">Load a pre-built case to practice cross-examination, strategy analysis, and trial simulation.</p>
+            {MOCK_CASE_TEMPLATES.map(category => (
+              <div key={category.category} className="mb-4">
+                <h4 className="text-gold-500 font-semibold text-sm uppercase tracking-wide mb-2">{category.category}</h4>
+                <div className="space-y-2">
+                  {category.cases.map(template => (
+                    <div key={template.id} className="bg-slate-700/50 border border-slate-600 rounded-lg p-3">
+                      <h5 className="text-white font-semibold text-sm">{template.title}</h5>
+                      <p className="text-slate-400 text-xs mt-1">Client: {template.client} | Judge: {template.judge}</p>
+                      <p className="text-slate-300 text-xs mt-1 line-clamp-2">{template.summary}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs px-2 py-0.5 rounded bg-blue-600/30 text-blue-300">{template.jurisdiction}</span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-purple-600/30 text-purple-300">{template.evidence?.length || 0} evidence items</span>
+                      </div>
+                      <button
+                        onClick={() => handleLoadTemplate(template)}
+                        className="mt-2 w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold px-3 py-1.5 rounded-lg text-xs"
+                      >
+                        Load This Case
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={() => setShowTemplatesModal(false)}
+              className="w-full mt-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold px-4 py-2 rounded-lg"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
