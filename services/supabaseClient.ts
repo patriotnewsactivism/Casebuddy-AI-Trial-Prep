@@ -3,7 +3,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // Public Supabase credentials (anon key is designed for client-side use with RLS)
 // These can be overridden via environment variables
 const DEFAULT_SUPABASE_URL = 'https://czrqlvvjrwizwdyefldo.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6cnFsdnZqcndpendkeWVmbGRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMzA4NjYsImV4cCI6MjA4MTcwNjg2Nn0.XRrrK__fvHMqaLDq_oRF_8-VvNPb-Hz_D2CNL_Hmc2A';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6cnFsdnZqcndpendkeWVmbGRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI3NjAxMjgsImV4cCI6MjA1ODMzNjEyOH0.KmGuRR9HSMRFmFv1aDJvLGduGRP0J3keeMMvxAJUmOw';
 
 const supabaseUrl = process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;

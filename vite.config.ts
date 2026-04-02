@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => {
         sourcemap: isProduction ? false : true,
         minify: isProduction ? 'esbuild' : false,
         esbuild: isProduction ? {
-          drop: ['console', 'debugger'],
+          drop: ['debugger'],
           legalComments: 'none'
         } : undefined,
         rollupOptions: {

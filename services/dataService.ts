@@ -23,10 +23,9 @@ const STATUS_FROM_DB: Record<string, CaseStatus> = {
 };
 
 // Map TypeScript Case to actual Supabase `cases` table columns.
-// DB schema: id, user_id, name (NOT NULL), case_number, court_name, case_type (enum),
-// status (enum: active/pending/settled/dismissed/closed/archived), description,
-// plaintiffs[], defendants[], key_dates (JSONB), metadata (JSONB),
-// client_name, representation (enum), created_at, updated_at, deleted_at
+// DB columns: id, user_id (NOT NULL), name (NOT NULL), case_number, court_name,
+// case_type (CHECK enum), status (CHECK enum), description, plaintiffs[],
+// defendants[], key_dates (JSONB), metadata (JSONB), created_at, updated_at, deleted_at
 async function caseToRow(c: Case): Promise<Record<string, any>> {
   const client = getSupabaseClient();
   let userId = c.user_id;
@@ -251,24 +250,32 @@ export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Pr
   console.log('[DataService] Successfully updated evidence in cases.metadata');
   
   // Also try to insert into separate evidence table for structured data
+  const VALID_EVIDENCE_TYPES = ['document', 'image', 'video', 'audio', 'physical', 'digital', 'testimony', 'other'];
   try {
-    const { error: tableError } = await client.from('evidence').insert({
-        id: evidence.id,
+    const rawType = (evidence.type || '').toLowerCase();
+    const evidenceType = VALID_EVIDENCE_TYPES.includes(rawType) ? rawType : 'document';
+
+    const evidenceRow: Record<string, any> = {
         case_id: caseId,
-        name: evidence.title,
-        description: evidence.summary,
-        type: evidence.type.toLowerCase() === 'evidence' ? 'document' : 'other',
-        category: evidence.source,
+        name: evidence.title || 'Untitled Evidence',
+        description: evidence.summary || null,
+        type: evidenceType,
+        category: evidence.source || null,
         ai_analysis: {
             entities: evidence.keyEntities,
             risks: evidence.risks,
             summary: evidence.summary,
             notes: evidence.notes
         },
-        file_path: evidence.fileName,
-        created_at: evidence.addedAt
-    });
-    
+        file_path: evidence.fileName || null,
+    };
+    // Only use id if it looks like a UUID (36 chars with dashes)
+    if (evidence.id && evidence.id.length > 30) {
+      evidenceRow.id = evidence.id;
+    }
+
+    const { error: tableError } = await client.from('evidence').insert(evidenceRow);
+
     if (tableError) {
         console.warn('[Supabase] Failed to insert into dedicated evidence table:', tableError.message);
     } else {
@@ -308,9 +315,9 @@ export const fetchSessions = async (caseId: string): Promise<TrialSession[]> => 
   const mapped: TrialSession[] = (data || []).map(row => ({
     id: row.id,
     caseId: row.case_id,
-    caseTitle: row.session_name, 
-    phase: row.session_type || 'other',
-    mode: row.notes || 'practice', 
+    caseTitle: row.session_name || 'Untitled Session',
+    phase: row.metadata?.originalPhase || row.session_type || 'other',
+    mode: row.metadata?.originalMode || row.notes || 'practice',
     date: row.session_date || new Date().toISOString(),
     duration: row.metadata?.duration || 0,
     transcript: Array.isArray(row.key_events) ? row.key_events : [],
@@ -333,22 +340,43 @@ export const upsertSession = async (session: TrialSession): Promise<void> => {
 
   if (!client) return;
 
-  const row = {
-    id: session.id.length > 30 ? session.id : undefined, // Only use if it looks like a UUID
+  // Get user_id — trial_sessions.user_id is NOT NULL
+  let userId: string | undefined;
+  try {
+    const { data: { user } } = await client.auth.getUser();
+    userId = user?.id;
+  } catch {
+    console.warn('[DataService] Auth check failed for session upsert');
+    return;
+  }
+  if (!userId) {
+    console.warn('[DataService] No authenticated user for session upsert');
+    return;
+  }
+
+  const row: Record<string, any> = {
     case_id: session.caseId,
-    session_name: session.caseTitle,
+    user_id: userId,
+    session_name: session.caseTitle || 'Untitled Session',
     session_date: new Date(session.date).toISOString().split('T')[0],
-    session_type: session.phase,
-    outcomes: session.feedback,
-    notes: session.mode,
-    ai_preparation: session.metrics,
-    key_events: session.transcript,
+    session_type: ['hearing', 'trial', 'deposition', 'mediation', 'arbitration', 'conference', 'other'].includes(session.phase) ? session.phase : 'other',
+    outcomes: session.feedback || null,
+    notes: session.mode || null,
+    ai_preparation: session.metrics || {},
+    key_events: session.transcript || [],
     metadata: {
       duration: session.duration,
       score: session.score,
-      audioUrl: session.audioUrl
+      audioUrl: session.audioUrl,
+      originalPhase: session.phase,
+      originalMode: session.mode,
     }
   };
+
+  // Only set id if it's a valid UUID format
+  if (session.id && session.id.length > 30) {
+    row.id = session.id;
+  }
 
   const { error } = await client.from('trial_sessions').upsert(row, { onConflict: 'id' });
   if (error) {
