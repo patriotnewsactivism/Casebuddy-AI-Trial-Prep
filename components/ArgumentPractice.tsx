@@ -1,645 +1,161 @@
-import React, {
-  useState, useRef, useEffect, useContext, useReducer, useCallback
-} from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useRef, useCallback, useContext, useEffect } from 'react';
 import { AppContext } from '../App';
-import { useAuth } from '../contexts/AuthContext';
-import { MOCK_OPPONENT } from '../constants';
+import { Message, TrialPhase, SimulationMode } from '../types';
 import {
-  CoachingAnalysis, Message, TrialPhase, SimulationMode,
-  TrialSession, VoiceConfig, SimulatorSettings, TrialSessionMetrics,
-  CoachingSuggestion
-} from '../types';
-import {
-  Mic, MicOff, Activity, AlertTriangle, Lightbulb, AlertCircle,
-  BookOpen, Sword, GraduationCap, User, Gavel, ArrowLeft, FileText,
-  Users, Scale, Clock, Volume2, ChevronUp, FolderOpen, ChevronDown,
-  Target, Loader2, ChevronRight, NotebookPen, X, Plus, CheckCircle2,
-  BarChart3, MessageSquare
+  Mic, MicOff, ArrowLeft, GraduationCap, Sword, BookOpen,
+  Volume2, VolumeX, Loader2, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { getTrialSimSystemPrompt, isOpenAIConfigured, streamOpenAIResponse } from '../services/openAIService';
-import { generateProactiveCoaching } from '../services/geminiService';
+import { getTrialSimSystemPrompt } from '../services/openAIService';
 import { callGeminiProxy } from '../services/apiProxy';
-import { Type } from "@google/genai";
-import { ELEVENLABS_VOICES, TRIAL_VOICE_PRESETS, isElevenLabsConfigured, synthesizeSpeech } from '../services/elevenLabsService';
-import { shouldPreferElevenLabs } from '../utils/audioSettings';
+import { Type } from '@google/genai';
+import {
+  ELEVENLABS_VOICES,
+  isElevenLabsConfigured, synthesizeSpeech, ensureAudioUnlocked
+} from '../services/elevenLabsService';
 import { isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
 
-// Extracted components and hooks
-import ObjectionModal from './TrialSim/ObjectionModal';
-import SessionCard from './TrialSim/SessionCard';
-import { StatPill, TranscriptBubble, SettingRow } from './TrialSim/AtomicComponents';
-import { useSavedSessions } from '../hooks/useSavedSessions';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface AIStructuredResponse {
+// ─── Types ───────────────────────────────────────────────────
+interface AIResponse {
   speak: string;
   action: 'response' | 'objection' | 'ruling' | 'question';
   objection: { grounds: string; explanation: string } | null;
-  ruling?: {
-    type: 'sustained' | 'overruled' | 'warning';
-    text: string;
-    judgeName: string;
-  } | null;
   coaching: {
     critique: string;
     suggestion: string;
     teleprompterScript: string;
     rhetoricalEffectiveness: number;
-    fallaciesIdentified: string[];
   };
-  notebookUpdate?: {
-    keyArgument?: string;
-    evidenceCited?: string;
-    timelineEvent?: string;
-  } | null;
 }
 
-// ─── Reactive Notebook ────────────────────────────────────────────────────────
+const PHASES: { id: TrialPhase; label: string }[] = [
+  { id: 'pre-trial-motions', label: 'Pre-Trial Motions' },
+  { id: 'voir-dire', label: 'Voir Dire' },
+  { id: 'opening-statement', label: 'Opening Statement' },
+  { id: 'direct-examination', label: 'Direct Examination' },
+  { id: 'cross-examination', label: 'Cross-Examination' },
+  { id: 'closing-argument', label: 'Closing Argument' },
+  { id: 'sentencing', label: 'Sentencing' },
+];
 
-interface NotebookTimelineEntry {
-  time: string;
-  event: string;
-  type: 'user' | 'ai' | 'objection' | 'ruling' | 'note';
-}
+const MODES: { id: SimulationMode; label: string; icon: React.ReactNode; desc: string }[] = [
+  { id: 'learn', label: 'Learn', icon: <GraduationCap size={20} />, desc: 'Step-by-step teaching' },
+  { id: 'practice', label: 'Practice', icon: <BookOpen size={20} />, desc: 'Guided with coaching' },
+  { id: 'trial', label: 'Trial', icon: <Sword size={20} />, desc: 'Full realism' },
+];
 
-interface NotebookState {
-  currentPhase: string;
-  keyArguments: string[];
-  evidenceCited: string[];
-  objectionsRaised: Array<{ grounds: string; ruling: string; time: string }>;
-  sessionTimeline: NotebookTimelineEntry[];
-  trialNotes: string[];
-}
-
-const INITIAL_NOTEBOOK: NotebookState = {
-  currentPhase: 'Initializing...',
-  keyArguments: [],
-  evidenceCited: [],
-  objectionsRaised: [],
-  sessionTimeline: [],
-  trialNotes: [],
-};
-
-// Web Speech API types
-interface SpeechRecognitionEvent extends Event {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-}
-
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  maxAlternatives: number;
-  onresult: (event: SpeechRecognitionEvent) => void;
-  onerror: (event: SpeechRecognitionErrorEvent) => void;
-  onend: () => void;
-  onspeechstart: () => void;
-  onspeechend: () => void;
-  start: () => void;
-  stop: () => void;
-}
-
-type SimView = 'setup' | 'active' | 'history';
-
-interface SessionState {
-  isLive: boolean;
-  isConnecting: boolean;
-  isAISpeaking: boolean;
-  liveVolume: number;
-  inputTranscript: string;
-  outputTranscript: string;
-  objectionCount: number;
-  rhetoricalScores: number[];
-  sessionScore: number;
-}
-
-type SessionAction =
-  | { type: 'START_CONNECTING' }
-  | { type: 'SESSION_LIVE' }
-  | { type: 'SESSION_STOPPED' }
-  | { type: 'AI_SPEAKING_START' }
-  | { type: 'AI_SPEAKING_END' }
-  | { type: 'SET_VOLUME'; volume: number }
-  | { type: 'SET_INPUT_TRANSCRIPT'; text: string }
-  | { type: 'SET_OUTPUT_TRANSCRIPT'; text: string }
-  | { type: 'OBJECTION_DETECTED' }
-  | { type: 'RHETORICAL_SCORE'; score: number }
-  | { type: 'RESET_SESSION' };
-
-const INITIAL_SESSION: SessionState = {
-  isLive: false,
-  isConnecting: false,
-  isAISpeaking: false,
-  liveVolume: 0,
-  inputTranscript: '',
-  outputTranscript: '',
-  objectionCount: 0,
-  rhetoricalScores: [],
-  sessionScore: 50,
-};
-
-function sessionReducer(state: SessionState, action: SessionAction): SessionState {
-  switch (action.type) {
-    case 'START_CONNECTING':
-      return { ...state, isConnecting: true };
-    case 'SESSION_LIVE':
-      return { ...state, isLive: true, isConnecting: false };
-    case 'SESSION_STOPPED':
-      return {
-        ...state,
-        isLive: false, isConnecting: false, isAISpeaking: false,
-        liveVolume: 0, inputTranscript: '', outputTranscript: ''
-      };
-    case 'AI_SPEAKING_START':
-      return { ...state, isAISpeaking: true };
-    case 'AI_SPEAKING_END':
-      return { ...state, isAISpeaking: false };
-    case 'SET_VOLUME':
-      return { ...state, liveVolume: action.volume };
-    case 'SET_INPUT_TRANSCRIPT':
-      return { ...state, inputTranscript: action.text };
-    case 'SET_OUTPUT_TRANSCRIPT':
-      return { ...state, outputTranscript: action.text };
-    case 'OBJECTION_DETECTED':
-      return { ...state, objectionCount: state.objectionCount + 1 };
-    case 'RHETORICAL_SCORE': {
-      const scores = [...state.rhetoricalScores, action.score];
-      const avg = Math.round(scores.reduce((a, b) => a + b, 0) / (scores.length || 1));
-      return { ...state, rhetoricalScores: scores, sessionScore: avg };
-    }
-    case 'RESET_SESSION':
-      return { ...INITIAL_SESSION };
-    default:
-      return state;
-  }
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const FILLER_WORDS = ['um', 'uh', 'like', 'you know', 'basically', 'literally', 'actually', 'right', 'so'];
-
-function buildStructuredSystemPrompt(
-  phase: TrialPhase,
-  mode: SimulationMode,
-  opponentName: string,
-  caseSummary: string,
-  judgeName: string = "Judge"
-): string {
-  const base = getTrialSimSystemPrompt(phase, mode, opponentName, caseSummary);
-  return `${base}
-
-══ RESPONSE FORMAT — CRITICAL ══
-You MUST respond ONLY with valid JSON (no markdown, no code fences) matching this schema exactly:
-
-{
-  "speak": "<what you say aloud as opposing counsel or judge — stay in character>",
-  "action": "response" | "objection" | "ruling" | "question",
-  "objection": null | { "grounds": "<legal basis, e.g. Hearsay>", "explanation": "<1–2 sentence explanation>" },
-  "ruling": null | { "type": "sustained" | "overruled" | "warning", "text": "<The judge's ruling statement>", "judgeName": "${judgeName}" },
-  "coaching": {
-    "critique": "<constructive critique of the user's last statement — be specific>",
-    "suggestion": "<concrete, actionable improvement>",
-    "teleprompterScript": "<exactly what the user should say next — write it in first person>",
-    "rhetoricalEffectiveness": <integer 0–100>,
-    "fallaciesIdentified": [<string array of any logical fallacies — empty array if none>]
-  },
-  "notebookUpdate": null | {
-    "keyArgument": "<≤10 word summary of the user's legal argument, if any>",
-    "evidenceCited": "<name of evidence or exhibit mentioned, if any>",
-    "timelineEvent": "<≤8 word label of what just happened>"
-  }
-}
-
-Rules:
-• "speak" is the ONLY text said aloud. Keep it courtroom-realistic and appropriate to the phase.
-• "objection" is non-null ONLY when you raise a formal objection; otherwise null.
-• "ruling" is non-null ONLY if the judge intervenes or rules on an objection; otherwise null.
-• "coaching" is ALWAYS fully populated — it drives the private training HUD, never spoken.
-• "rhetoricalEffectiveness" reflects argument strength: 0=catastrophic, 50=average, 100=masterful.
-• "notebookUpdate" — populate whenever any of these are present in the exchange:
-  - "keyArgument": a concise (≤10 words) summary of the user's core legal argument if one was made.
-  - "evidenceCited": name of any evidence or exhibit mentioned by either party.
-  - "timelineEvent": short label (≤8 words) summarizing what just happened (e.g. "Hearsay objection raised", "Witness credibility attacked").
-  If none apply, set notebookUpdate to null.
-• Never break character in "speak". Coaching commentary stays in "coaching" only.
-• Output ONLY valid JSON. Non-JSON output breaks the simulator.`;
-}
-
-function parseAIResponse(raw: string): AIStructuredResponse {
-  const cleaned = raw
-    .replace(/^```(?:json)?\s*/m, '')
-    .replace(/\s*```$/m, '')
-    .trim();
-
-  try {
-    const parsed = JSON.parse(cleaned) as AIStructuredResponse;
-    if (typeof parsed.speak !== 'string') throw new Error('Missing speak field');
-    return parsed;
-  } catch (err) {
-    console.warn('[TrialSim] Failed to parse structured AI response, using fallback:', err);
-    return {
-      speak: raw.trim() || '[No response]',
-      action: 'response',
-      objection: null,
-      coaching: {
-        critique: 'AI response format was unexpected — continue practicing.',
-        suggestion: 'Keep going. Your argument is being evaluated.',
-        teleprompterScript: '',
-        rhetoricalEffectiveness: 50,
-        fallaciesIdentified: [],
-      },
-    };
-  }
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const TRIAL_PHASES = [
-  { id: 'pre-trial-motions', label: 'Pre-Trial',  icon: FileText },
-  { id: 'voir-dire',         label: 'Voir Dire',  icon: Users },
-  { id: 'opening-statement', label: 'Opening',    icon: BookOpen },
-  { id: 'direct-examination',label: 'Direct',     icon: User },
-  { id: 'cross-examination', label: 'Cross',      icon: Sword },
-  { id: 'defendant-testimony',label:'Defendant',  icon: Mic },
-  { id: 'closing-argument',  label: 'Closing',    icon: Scale },
-  { id: 'sentencing',        label: 'Sentencing', icon: Gavel },
-] as const;
-
-const MODES = [
-  {
-    id: 'learn',
-    label: 'Learn',
-    desc: 'AI guides with scripts and detailed coaching',
-    icon: GraduationCap,
-    colorClass: 'bg-blue-600',
-  },
-  {
-    id: 'practice',
-    label: 'Practice',
-    desc: 'Balanced objections and feedback',
-    icon: Mic,
-    colorClass: 'bg-green-600',
-  },
-  {
-    id: 'trial',
-    label: 'Simulate',
-    desc: 'Aggressive — no mercy, real courtroom pressure',
-    icon: Sword,
-    colorClass: 'bg-red-600',
-  },
-] as const;
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
-const TrialSim: React.FC = () => {
+// ─── Component ───────────────────────────────────────────────
+const ArgumentPractice: React.FC = () => {
   const { activeCase } = useContext(AppContext);
-  const { user, updateUsage } = useAuth();
 
-  // ── Navigation ──────────────────────────────────────────────────────────
-  const [view, setView]     = useState<SimView>('setup');
-  const [phase, setPhase]   = useState<TrialPhase | null>(null);
-  const [mode, setMode]     = useState<SimulationMode | null>(null);
+  // Setup state
+  const [view, setView] = useState<'setup' | 'active'>('setup');
+  const [phase, setPhase] = useState<TrialPhase | null>(null);
+  const [mode, setMode] = useState<SimulationMode | null>(null);
+  const [voiceKey, setVoiceKey] = useState<string>('josh');
 
-  // ── Setup UI ────────────────────────────────────────────────────────────
-  const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({
-    voiceName: 'josh', personality: 'neutral', languageCode: 'en-US',
-  });
-  const [simulatorSettings, setSimulatorSettings] = useState<SimulatorSettings>({
-    voice: { voiceName: 'josh', personality: 'neutral', languageCode: 'en-US' },
-    realismLevel: 'professional',
-    interruptionFrequency: 'medium',
-    coachingVerbosity: 'moderate',
-    audioQuality: 'high',
-  });
-  const [useElevenLabs, setUseElevenLabs] = useState(() => shouldPreferElevenLabs(true));
-  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  // Session state
+  const [isLive, setIsLive] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [userTranscript, setUserTranscript] = useState('');
+  const [aiTranscript, setAiTranscript] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [teleprompter, setTeleprompter] = useState('');
+  const [coaching, setCoaching] = useState<{ critique: string; suggestion: string } | null>(null);
+  const [showCoachingDetail, setShowCoachingDetail] = useState(false);
+  const [objection, setObjection] = useState<{ grounds: string; explanation: string } | null>(null);
+  const [score, setScore] = useState(0);
+  const [scoreCount, setScoreCount] = useState(0);
+  const [muted, setMuted] = useState(false);
 
-  // ── Session UI ──────────────────────────────────────────────────────────
-  const [messages, setMessages]             = useState<Message[]>([]);
-  const [coachingTip, setCoachingTip]       = useState<CoachingAnalysis | null>(null);
-  const [objectionAlert, setObjectionAlert] = useState<{ grounds: string; explanation: string } | null>(null);
-  const [judgeAlert, setJudgeAlert] = useState<{ type: string; text: string; judgeName: string } | null>(null);
-  const [showCoaching, setShowCoaching]     = useState(false);
-  const [showTeleprompter, setShowTeleprompter] = useState(true);
-  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
-  const [proactiveSuggestions, setProactiveSuggestions] = useState<CoachingSuggestion[]>([]);
-  const [proactiveTip, setProactiveTip] = useState<string>('');
-  const [isLoadingProactive, setIsLoadingProactive] = useState(false);
-  const [showProactivePanel, setShowProactivePanel] = useState(true);
+  // Refs
+  const recognitionRef = useRef<any>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const playbackRef = useRef<HTMLAudioElement | null>(null);
+  const isLiveRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const conversationHistory = useRef<Array<{ role: string; parts: Array<{ text: string }> }>>([]);
 
-  // ── Session state machine ────────────────────────────────────────────────
-  const [session, dispatch] = useReducer(sessionReducer, INITIAL_SESSION);
+  // Keep refs in sync
+  useEffect(() => { isLiveRef.current = isLive; }, [isLive]);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
 
-  // ── Saved sessions ───────────────────────────────────────────────────────
-  const { sessions: savedSessions, addSession, removeSession } = useSavedSessions(activeCase?.id);
-
-  // ── Reactive Notebook ─────────────────────────────────────────────────────
-  const [notebook, setNotebook] = useState<NotebookState>(INITIAL_NOTEBOOK);
-  const [showNotebook, setShowNotebook] = useState(false);
-  const [newNote, setNewNote] = useState('');
-
-  // ── History playback ─────────────────────────────────────────────────────
-  const [playingSessionId, setPlayingSessionId] = useState<string | null>(null);
-  const historyAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  // ── Post-session panel ───────────────────────────────────────────────────
-  const [showPostSession, setShowPostSession] = useState(false);
-  const [lastSessionMetrics, setLastSessionMetrics] = useState<TrialSessionMetrics | null>(null);
-
-  // ── Stable refs (prevent stale closure bugs) ─────────────────────────────
-  const isLiveRef        = useRef(false);
-  const isAISpeakingRef  = useRef(false);
-  const isProcessingRef  = useRef(false);
-  const restartAttemptsRef = useRef(0);
-
-  // ── Infrastructure refs ──────────────────────────────────────────────────
-  const recognitionRef      = useRef<SpeechRecognition | null>(null);
-  const streamRef           = useRef<MediaStream | null>(null);
-  const mediaRecorderRef    = useRef<MediaRecorder | null>(null);
-  const recordedChunksRef   = useRef<Blob[]>([]);
-  const playbackAudioRef    = useRef<HTMLAudioElement | null>(null);
-  const abortControllerRef  = useRef<AbortController | null>(null);
-  const rafRef              = useRef<number | null>(null);
-  const sessionStartTimeRef = useRef<number>(0);
-  const metricsRef          = useRef<TrialSessionMetrics>({
-    objectionsReceived: 0, fallaciesCommitted: 0,
-    avgRhetoricalScore: 50, wordCount: 0, fillerWordsCount: 0,
-  });
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const vizRafRef = useRef<number | null>(null);
-  const sessionStartRef = useRef<number>(0);
-
-  // ── Derived ──────────────────────────────────────────────────────────────
-  const opponentName = activeCase?.opposingCounsel && activeCase.opposingCounsel !== 'Unknown'
-    ? activeCase.opposingCounsel
-    : MOCK_OPPONENT.name;
-
-  const canUseElevenLabs = useElevenLabs && isElevenLabsConfigured();
-
-  const avgRhetoricalScore = session.rhetoricalScores.length > 0
-    ? Math.round(session.rhetoricalScores.reduce((a, b) => a + b, 0) / (session.rhetoricalScores.length || 1))
-    : 50;
-
-  // ── Effects ──────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  useEffect(() => { isAISpeakingRef.current = session.isAISpeaking; }, [session.isAISpeaking]);
-  useEffect(() => { isLiveRef.current = session.isLive; }, [session.isLive]);
-
-  useEffect(() => {
-    metricsRef.current.objectionsReceived = session.objectionCount;
-  }, [session.objectionCount]);
-
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-      stopSession(true);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Proactive Coaching ───────────────────────────────────────────────────
-
-  const fetchProactiveCoaching = useCallback(async () => {
-    if (!activeCase || !phase) return;
-    
-    setIsLoadingProactive(true);
-    try {
-      const result = await generateProactiveCoaching(
-        phase,
-        activeCase.summary || 'A legal case',
-        'opponent',
-        messages
-      );
-      setProactiveSuggestions(result.suggestions);
-      setProactiveTip(result.generalTip);
-    } catch (error) {
-      console.warn('[TrialSim] Failed to fetch proactive coaching:', error);
-    } finally {
-      setIsLoadingProactive(false);
-    }
-  }, [activeCase, phase, messages]);
-
-  useEffect(() => {
-    if (view === 'active' && phase && messages.length === 0) {
-      fetchProactiveCoaching();
-    }
-  }, [view, phase, messages.length]);
-
-  useEffect(() => {
-    if (view === 'active' && messages.length > 0 && messages.length % 3 === 0) {
-      fetchProactiveCoaching();
-    }
-  }, [view, messages.length]);
-
-  // ── Audio playback ────────────────────────────────────────────────────────
-
-  const speakText = useCallback(async (text: string): Promise<void> => {
-    if (!text) return;
-    dispatch({ type: 'AI_SPEAKING_START' });
+  // ─── TTS ─────────────────────────────────────────────────
+  const speakText = useCallback(async (text: string) => {
+    if (muted || !text.trim()) return;
+    setIsSpeaking(true);
 
     try {
-      if (canUseElevenLabs) {
-        const voiceId =
-          ELEVENLABS_VOICES[voiceConfig.voiceName as keyof typeof ELEVENLABS_VOICES]?.id
-          ?? ELEVENLABS_VOICES['josh'].id;
+      if (isElevenLabsConfigured()) {
+        const voice = ELEVENLABS_VOICES[voiceKey as keyof typeof ELEVENLABS_VOICES];
+        const voiceId = voice?.id || ELEVENLABS_VOICES.josh.id;
 
         const audioData = await synthesizeSpeech(text, voiceId, {
           stability: 0.5,
           similarityBoost: 0.75,
+          modelId: 'eleven_turbo_v2_5',
         });
 
-        const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        playbackAudioRef.current = audio;
+        const blob = new Blob([audioData], { type: 'audio/mpeg' });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        playbackRef.current = audio;
 
-        try {
-          await new Promise<void>((resolve, reject) => {
-            audio.onended = () => resolve();
-            audio.onerror = () => reject(new Error('ElevenLabs audio playback failed'));
-            audio.play().catch(reject);
-          });
-        } finally {
-          URL.revokeObjectURL(audioUrl);
-          playbackAudioRef.current = null;
-        }
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+          audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Audio playback failed')); };
+          audio.play().catch(reject);
+        });
       } else if (isBrowserTTSAvailable()) {
         await speakWithFallback(text, { rate: 1, pitch: 1, volume: 1 });
-      } else {
-        toast.warn('Voice playback unavailable — response shown in transcript only.');
       }
-    } catch (err) {
-      console.warn('[TrialSim] Speech playback error:', err);
+    } catch (e) {
+      console.warn('[TrialSim] TTS error:', e);
     } finally {
-      dispatch({ type: 'AI_SPEAKING_END' });
+      playbackRef.current = null;
+      setIsSpeaking(false);
     }
-  }, [canUseElevenLabs, voiceConfig.voiceName]);
+  }, [voiceKey, muted]);
 
-  // ── Recording ─────────────────────────────────────────────────────────────
+  // ─── AI Response ─────────────────────────────────────────
+  const getAIResponse = useCallback(async (userText: string) => {
+    if (!phase || !mode) return;
+    setIsProcessing(true);
 
-  const startRecording = useCallback((stream: MediaStream) => {
-    recordedChunksRef.current = [];
-    try {
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
-      };
-      recorder.onerror = (e) => console.error('[TrialSim] MediaRecorder error:', e);
-      recorder.start(1000);
-      mediaRecorderRef.current = recorder;
-    } catch (err) {
-      console.error('[TrialSim] MediaRecorder init failed:', err);
-    }
-  }, []);
+    const opponentName = activeCase?.opposingCounsel || 'Opposing Counsel';
+    const caseSummary = activeCase
+      ? `${activeCase.title}: ${activeCase.summary || 'No summary available'}`
+      : 'General trial practice scenario';
 
-  // ── Session save ──────────────────────────────────────────────────────────
+    const systemPrompt = getTrialSimSystemPrompt(phase, mode, opponentName, caseSummary);
 
-  const saveSession = useCallback(() => {
-    if (!activeCase || !phase || !mode) return;
-    if (recordedChunksRef.current.length === 0) return;
-
-    const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
-    const audioUrl = URL.createObjectURL(blob);
-
-    addSession({
-      id: `session-${Date.now()}`,
-      caseId: activeCase.id,
-      caseTitle: activeCase.title,
-      phase,
-      mode,
-      date: new Date().toISOString(),
-      duration: Math.round((Date.now() - sessionStartTimeRef.current) / 1000),
-      transcript: messages.map(m => ({
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        sender: m.sender,
-        text: m.text,
-        timestamp: m.timestamp,
-      })),
-      audioUrl,
-      score: avgRhetoricalScore,
-      metrics: { ...metricsRef.current },
-    });
-
-    if (user?.plan === 'free') {
-      void updateUsage({ trial_sessions_this_month: (user.usage?.trial_sessions_this_month || 0) + 1 });
-    }
-
-    toast.success('Session saved!');
-  }, [activeCase, phase, mode, messages, avgRhetoricalScore, addSession]);
-
-  // ── Stop session ──────────────────────────────────────────────────────────
-
-  const stopSession = useCallback((silent = false) => {
-    if (!silent && recordedChunksRef.current.length > 0) {
-      setLastSessionMetrics({ ...metricsRef.current });
-      setShowPostSession(true);
-      saveSession();
-    }
-
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.onend = () => {};
-        recognitionRef.current.onerror = () => {};
-        recognitionRef.current.stop();
-      } catch {}
-      recognitionRef.current = null;
-    }
-
-    playbackAudioRef.current?.pause();
-    playbackAudioRef.current = null;
-
-    if (mediaRecorderRef.current?.state !== 'inactive') {
-      try { mediaRecorderRef.current?.stop(); } catch {}
-    }
-    mediaRecorderRef.current = null;
-
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-
-    if (vizRafRef.current) {
-      cancelAnimationFrame(vizRafRef.current);
-      vizRafRef.current = null;
-    }
-    analyserRef.current = null;
-
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-
-    dispatch({ type: 'SESSION_STOPPED' });
-    isLiveRef.current = false;
-    isProcessingRef.current = false;
-    restartAttemptsRef.current = 0;
-  }, [saveSession]);
-
-  // ── Core AI turn orchestration ────────────────────────────────────────────
-
-  const handleUserTranscript = useCallback(async (transcript: string) => {
-    if (!phase || !mode || !activeCase) return;
-    if (isProcessingRef.current) return;
-
-    isProcessingRef.current = true;
-    dispatch({ type: 'SET_INPUT_TRANSCRIPT', text: transcript });
-    dispatch({ type: 'SET_OUTPUT_TRANSCRIPT', text: '' });
-
-    metricsRef.current.wordCount += transcript.split(/\s+/).filter(Boolean).length;
-    const lc = transcript.toLowerCase();
-    metricsRef.current.fillerWordsCount += FILLER_WORDS.filter(f => lc.includes(f)).length;
-
-    setMessages(prev => [...prev, {
-      id: `${Date.now()}-u`,
-      sender: 'user',
-      text: transcript,
-      timestamp: Date.now(),
-    }]);
+    // Add user message to history
+    conversationHistory.current.push({ role: 'user', parts: [{ text: userText }] });
 
     try {
-      abortControllerRef.current = new AbortController();
-      const systemPrompt = buildStructuredSystemPrompt(phase, mode, opponentName, activeCase.summary, activeCase.judge);
-
       const response = await callGeminiProxy({
-        prompt: transcript,
+        prompt: userText,
         systemPrompt,
         model: 'gemini-2.5-flash',
+        conversationHistory: conversationHistory.current.slice(-20),
         options: {
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               speak: { type: Type.STRING },
-              action: { type: Type.STRING },
+              action: { type: Type.STRING, enum: ['response', 'objection', 'ruling', 'question'] },
               objection: {
-                type: Type.OBJECT,
+                type: Type.OBJECT, nullable: true,
                 properties: {
                   grounds: { type: Type.STRING },
-                  explanation: { type: Type.STRING }
-                }
-              },
-              ruling: {
-                type: Type.OBJECT,
-                properties: {
-                  type: { type: Type.STRING },
-                  text: { type: Type.STRING },
-                  judgeName: { type: Type.STRING }
-                }
+                  explanation: { type: Type.STRING },
+                },
               },
               coaching: {
                 type: Type.OBJECT,
@@ -648,1389 +164,382 @@ const TrialSim: React.FC = () => {
                   suggestion: { type: Type.STRING },
                   teleprompterScript: { type: Type.STRING },
                   rhetoricalEffectiveness: { type: Type.NUMBER },
-                  fallaciesIdentified: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
-                required: ['critique', 'suggestion', 'teleprompterScript', 'rhetoricalEffectiveness']
               },
-              notebookUpdate: {
-                type: Type.OBJECT,
-                properties: {
-                  keyArgument: { type: Type.STRING },
-                  evidenceCited: { type: Type.STRING },
-                  timelineEvent: { type: Type.STRING },
-                }
-              }
             },
-            required: ['speak', 'action', 'coaching']
-          }
+            required: ['speak', 'coaching'],
+          },
+          temperature: 0.8,
         },
-        conversationHistory: messages.map(m => ({
-          role: m.sender === 'user' ? 'user' : 'model',
-          parts: [{ text: m.text }]
-        }))
       });
 
-        if (!response.success || !response.text) {
-        throw new Error(response.error?.message || 'AI turn failed: No response text received');
-        }
-
-        const parsed = parseAIResponse(response.text);
-        dispatch({ type: 'SET_OUTPUT_TRANSCRIPT', text: parsed.speak });
-
-      if (parsed.objection) {
-        dispatch({ type: 'OBJECTION_DETECTED' });
-        setObjectionAlert(parsed.objection);
+      if (!response.success || !response.text) {
+        throw new Error(response.error?.message || 'Empty AI response');
       }
 
-      if (parsed.ruling) {
-        setJudgeAlert({
-          type: parsed.ruling.type,
-          text: parsed.ruling.text,
-          judgeName: parsed.ruling.judgeName || activeCase.judge || "Judge"
+      const parsed: AIResponse = JSON.parse(response.text.replace(/```json\n?|```/g, '').trim());
+
+      // Update conversation history
+      conversationHistory.current.push({ role: 'model', parts: [{ text: parsed.speak }] });
+
+      // Update messages
+      setMessages(prev => [
+        ...prev,
+        { id: crypto.randomUUID(), sender: 'user' as const, text: userText, timestamp: Date.now() },
+        { id: crypto.randomUUID(), sender: 'opponent' as const, text: parsed.speak, timestamp: Date.now() },
+      ]);
+
+      // Update coaching UI
+      setAiTranscript(parsed.speak);
+      setTeleprompter(parsed.coaching.teleprompterScript || '');
+      setCoaching({ critique: parsed.coaching.critique, suggestion: parsed.coaching.suggestion });
+
+      // Update running average score
+      if (parsed.coaching.rhetoricalEffectiveness) {
+        setScoreCount(prev => {
+          const newCount = prev + 1;
+          setScore(s => Math.round((s * prev + parsed.coaching.rhetoricalEffectiveness) / newCount));
+          return newCount;
         });
-        
-        setMessages(prev => [...prev, {
-          id: `${Date.now()}-j`,
-          sender: 'system',
-          text: `[${parsed.ruling?.judgeName || 'Judge'}]: ${parsed.ruling?.text}`,
-          timestamp: Date.now(),
-        }]);
       }
 
-      if (parsed.coaching) {
-        const { coaching } = parsed;
-        setCoachingTip({
-          critique: coaching.critique,
-          suggestion: coaching.suggestion,
-          teleprompterScript: coaching.teleprompterScript,
-          rhetoricalEffectiveness: coaching.rhetoricalEffectiveness,
-          fallaciesIdentified: coaching.fallaciesIdentified,
-        } as CoachingAnalysis);
-
-        dispatch({ type: 'RHETORICAL_SCORE', score: coaching.rhetoricalEffectiveness });
-        metricsRef.current.avgRhetoricalScore = avgRhetoricalScore;
-
-        if (coaching.fallaciesIdentified.length > 0) {
-          metricsRef.current.fallaciesCommitted += coaching.fallaciesIdentified.length;
-        }
+      // Handle objection
+      if (parsed.action === 'objection' && parsed.objection) {
+        setObjection(parsed.objection);
+        setTimeout(() => setObjection(null), 6000);
       }
 
-      // ── Reactive notebook update ──────────────────────────────────────────
-      const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      setNotebook(prev => {
-        const next = { ...prev };
-
-        if (parsed.notebookUpdate) {
-          const { keyArgument, evidenceCited, timelineEvent } = parsed.notebookUpdate;
-          if (keyArgument?.trim()) {
-            next.keyArguments = [...prev.keyArguments, keyArgument.trim()].slice(-8);
-          }
-          if (evidenceCited?.trim()) {
-            const alreadyIn = prev.evidenceCited.includes(evidenceCited.trim());
-            if (!alreadyIn) next.evidenceCited = [...prev.evidenceCited, evidenceCited.trim()];
-          }
-          if (timelineEvent?.trim()) {
-            next.sessionTimeline = [
-              ...prev.sessionTimeline,
-              { time: now, event: timelineEvent.trim(), type: 'ai' as const }
-            ].slice(-20);
-          }
-        }
-
-        if (parsed.objection) {
-          next.objectionsRaised = [
-            ...prev.objectionsRaised,
-            {
-              grounds: parsed.objection.grounds,
-              ruling: parsed.ruling ? parsed.ruling.type : 'pending',
-              time: now,
-            }
-          ];
-          next.sessionTimeline = [
-            ...next.sessionTimeline,
-            { time: now, event: `Objection: ${parsed.objection.grounds}`, type: 'objection' as const }
-          ].slice(-20);
-        }
-
-        if (parsed.ruling) {
-          next.sessionTimeline = [
-            ...next.sessionTimeline,
-            { time: now, event: `Ruling: ${parsed.ruling.type}`, type: 'ruling' as const }
-          ].slice(-20);
-        }
-
-        return next;
-      });
-
-      setMessages(prev => [...prev, {
-        id: `${Date.now()}-o`,
-        sender: 'opponent',
-        text: parsed.speak || '[No response]',
-        timestamp: Date.now(),
-      }]);
-
+      // Speak the response
       await speakText(parsed.speak);
-      
-      if (parsed.ruling) {
-        await new Promise(r => setTimeout(r, 500));
-        await speakText(parsed.ruling.text);
-        setTimeout(() => setJudgeAlert(null), 5000);
-      }
 
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      console.error('[TrialSim] AI turn error:', err);
-      toast.error('Failed to get AI response — check configuration.');
+    } catch (e: any) {
+      console.error('[TrialSim] AI response error:', e);
+      toast.error('AI response failed. Try speaking again.');
     } finally {
-      dispatch({ type: 'SET_INPUT_TRANSCRIPT', text: '' });
-      dispatch({ type: 'AI_SPEAKING_END' });
-      isProcessingRef.current = false;
+      setIsProcessing(false);
     }
-  }, [phase, mode, activeCase, opponentName, avgRhetoricalScore, speakText, messages]);
+  }, [phase, mode, activeCase, speakText]);
 
-  // ── Start session ─────────────────────────────────────────────────────────
+  // ─── Speech Recognition ──────────────────────────────────
+  const processTranscript = useCallback((text: string) => {
+    if (!text.trim() || isProcessingRef.current || isSpeakingRef.current) return;
+    setUserTranscript(text);
+    getAIResponse(text);
+  }, [getAIResponse]);
+
+  const stopSession = useCallback(() => {
+    setIsLive(false);
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
+      recognitionRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (playbackRef.current) {
+      playbackRef.current.pause();
+      playbackRef.current = null;
+    }
+    setIsSpeaking(false);
+    setIsListening(false);
+    setIsProcessing(false);
+    setView('setup');
+  }, []);
 
   const startSession = useCallback(async () => {
-    if (!activeCase || !phase || !mode) {
-      toast.error('Select a case, phase, and mode first.');
-      return;
-    }
+    if (!phase || !mode) return;
 
-    if (user?.plan === 'free' && (user.usage?.trial_sessions_this_month || 0) >= 1) {
-      toast.error('Free plan is limited to 1 trial session per month. Please upgrade to Pro.');
-      return;
-    }
-
-    if (!isOpenAIConfigured()) {
-      toast.error('OpenAI API key not configured. Add OPENAI_API_KEY to .env.local');
-      return;
-    }
-
-    dispatch({ type: 'START_CONNECTING' });
-    sessionStartTimeRef.current = Date.now();
-    metricsRef.current = { objectionsReceived: 0, fallaciesCommitted: 0, avgRhetoricalScore: 50, wordCount: 0, fillerWordsCount: 0 };
-    isProcessingRef.current = false;
-    restartAttemptsRef.current = 0;
-    setNotebook({
-      ...INITIAL_NOTEBOOK,
-      currentPhase: phase?.replace(/-/g, ' ') || 'Unknown',
-    });
-
-    let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      });
+      await ensureAudioUnlocked();
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Real-time volume meter setup
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
+      const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognitionClass) {
+        toast.error('Speech recognition not supported. Use Chrome or Edge.');
+        stream.getTracks().forEach(t => t.stop());
+        return;
       }
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-      analyserRef.current = analyser;
-      sessionStartRef.current = Date.now();
+      const recognition = new SpeechRecognitionClass();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
+      recognitionRef.current = recognition;
 
-      // Canvas audio visualizer
-      const drawVisualizer = () => {
-        if (!isLiveRef.current) return;
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            analyser.getByteFrequencyData(dataArray);
-            const w = canvas.width;
-            const h = canvas.height;
-            ctx.clearRect(0, 0, w, h);
-            const barCount = Math.min(32, dataArray.length);
-            const barWidth = w / barCount - 1;
-            for (let i = 0; i < barCount; i++) {
-              const barHeight = (dataArray[i] / 255) * h;
-              const hue = 40 + (dataArray[i] / 255) * 20; // gold tones
-              ctx.fillStyle = `hsla(${hue}, 80%, 55%, 0.85)`;
-              ctx.fillRect(i * (barWidth + 1), h - barHeight, barWidth, barHeight);
+      let restartCount = 0;
+
+      recognition.onresult = (event: any) => {
+        // Don't capture while AI is speaking or processing
+        if (isSpeakingRef.current || isProcessingRef.current) return;
+
+        let interim = '';
+        let final = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const t = event.results[i][0].transcript;
+          if (event.results[i].isFinal) final += t;
+          else interim += t;
+        }
+
+        // Show live transcript
+        setUserTranscript(final || interim);
+        setIsListening(true);
+
+        // Clear previous silence timer
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+        if (final.trim()) {
+          processTranscript(final.trim());
+        } else if (interim.trim()) {
+          // Wait 2s of silence then process interim
+          silenceTimerRef.current = setTimeout(() => {
+            if (!isProcessingRef.current && !isSpeakingRef.current && isLiveRef.current) {
+              processTranscript(interim.trim());
             }
-          }
+          }, 2000);
         }
-
-        // Also update volume meter
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-        const average = sum / dataArray.length;
-        dispatch({ type: 'SET_VOLUME', volume: Math.min(100, average * 2) });
-        vizRafRef.current = requestAnimationFrame(drawVisualizer);
       };
-      vizRafRef.current = requestAnimationFrame(drawVisualizer);
 
-      const updateVolume = () => {
-        if (!isLiveRef.current) return;
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
+      recognition.onerror = (event: any) => {
+        console.warn('[TrialSim] Recognition error:', event.error);
+        if (['not-allowed', 'audio-capture', 'service-not-allowed'].includes(event.error)) {
+          toast.error(`Microphone error: ${event.error}`);
+          stopSession();
         }
-        const average = sum / dataArray.length;
-        dispatch({ type: 'SET_VOLUME', volume: Math.min(100, average * 2) });
-        rafRef.current = requestAnimationFrame(updateVolume);
       };
-      rafRef.current = requestAnimationFrame(updateVolume);
 
-    } catch (err) {
-      console.error('[TrialSim] Microphone denied:', err);
-      toast.error('Microphone access denied — allow it in browser settings and retry.');
-      dispatch({ type: 'SESSION_STOPPED' });
-      return;
-    }
-
-    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) {
-      toast.error('Speech recognition not supported. Use Chrome or Edge.');
-      stream.getTracks().forEach(t => t.stop());
-      dispatch({ type: 'SESSION_STOPPED' });
-      return;
-    }
-
-    const recognition = new SpeechRecognitionClass() as any;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognition.maxAlternatives = 1;
-    recognitionRef.current = recognition;
-
-    recognition.onstart = () => {
-      console.log('[TrialSim] SpeechRecognition started');
-    };
-
-    const MAX_RESTARTS = 10;
-    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastTranscriptTime = Date.now();
-
-    recognition.onspeechstart = () => {
-      console.log('[TrialSim] User speaking...');
-      dispatch({ type: 'SET_VOLUME', volume: 80 });
-      lastTranscriptTime = Date.now();
-    };
-    
-    recognition.onspeechend = () => {
-      dispatch({ type: 'SET_VOLUME', volume: 20 });
-    };
-
-    recognition.onresult = async (event: SpeechRecognitionEvent) => {
-      if (isAISpeakingRef.current) {
-        console.log('[TrialSim] Ignoring speech result because AI is speaking');
-        return;
-      }
-      
-      lastTranscriptTime = Date.now();
-      if (silenceTimer) {
-        clearTimeout(silenceTimer);
-        silenceTimer = null;
-      }
-
-      let interimTranscript = '';
-      let latestFinalTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const t = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          latestFinalTranscript += t;
-        } else {
-          interimTranscript += t;
+      recognition.onend = () => {
+        setIsListening(false);
+        if (isLiveRef.current && restartCount < 10) {
+          restartCount++;
+          setTimeout(() => {
+            if (isLiveRef.current) {
+              try { recognition.start(); } catch { /* ignore */ }
+            }
+          }, 150);
         }
-      }
+      };
 
-      if (interimTranscript) {
-        dispatch({ type: 'SET_INPUT_TRANSCRIPT', text: interimTranscript.trim() });
-        dispatch({ type: 'SET_VOLUME', volume: 60 + Math.random() * 30 });
-        
-        // Start silence timer for interim results
-        silenceTimer = setTimeout(async () => {
-          if (interimTranscript.trim() && !isProcessingRef.current && !isAISpeakingRef.current) {
-            console.log('[TrialSim] Silence detected, processing interim transcript');
-            await handleUserTranscript(interimTranscript.trim());
-          }
-        }, 2500); // 2.5s of silence triggers it
-      }
-
-      if (latestFinalTranscript.trim() && !isProcessingRef.current) {
-        if (silenceTimer) clearTimeout(silenceTimer);
-        await handleUserTranscript(latestFinalTranscript.trim());
-      }
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      const FATAL_ERRORS = ['not-allowed', 'audio-capture', 'service-not-allowed'];
-      if (FATAL_ERRORS.includes(event.error)) {
-        toast.error(`Speech recognition: ${event.error} — check browser settings.`);
-        stopSession();
-        return;
-      }
-      if (event.error === 'aborted' || event.error === 'no-speech') {
-        return;
-      }
-      console.warn('[TrialSim] Non-fatal recognition error:', event.error);
-    };
-
-    recognition.onend = () => {
-      if (!recognitionRef.current || !isLiveRef.current) return;
-
-      if (restartAttemptsRef.current >= MAX_RESTARTS) {
-        toast.error('Speech recognition stopped repeatedly. Please refresh the page.');
-        dispatch({ type: 'SESSION_STOPPED' });
-        return;
-      }
-
-      const delay = Math.min(200, 100 + restartAttemptsRef.current * 20);
-      setTimeout(() => {
-        if (!isLiveRef.current || !recognitionRef.current) return;
-        try {
-          recognition.start();
-          restartAttemptsRef.current = 0;
-        } catch (err) {
-          restartAttemptsRef.current++;
-          console.error('[TrialSim] Recognition restart failed:', err);
-        }
-      }, delay);
-    };
-
-    try {
       recognition.start();
-    } catch (err) {
-      console.error('[TrialSim] recognition.start() failed:', err);
-      toast.error('Failed to start speech recognition. Refresh and try again.');
-      stream.getTracks().forEach(t => t.stop());
-      dispatch({ type: 'SESSION_STOPPED' });
-      return;
+      setIsLive(true);
+      setView('active');
+      setMessages([]);
+      conversationHistory.current = [];
+      setScore(0);
+      setScoreCount(0);
+      setTeleprompter('');
+      setCoaching(null);
+      setAiTranscript('');
+      setUserTranscript('');
+
+      // Opening AI message
+      const openingPrompt = mode === 'learn'
+        ? `Session starting. Phase: ${phase}. Welcome the attorney, explain this phase, and suggest how to begin. Be encouraging and educational.`
+        : `The ${phase} phase is now in session. Set the scene briefly and respond in character.`;
+
+      setTimeout(() => getAIResponse(openingPrompt), 500);
+
+    } catch (e: any) {
+      console.error('[TrialSim] Start failed:', e);
+      toast.error(e.message || 'Failed to start session');
     }
+  }, [phase, mode, processTranscript, getAIResponse, stopSession]);
 
-    startRecording(stream);
-    dispatch({ type: 'SESSION_LIVE' });
-    isLiveRef.current = true;
+  // Cleanup on unmount
+  useEffect(() => () => stopSession(), [stopSession]);
 
-    if (!canUseElevenLabs) {
-      toast.info('ElevenLabs not configured — using browser voice.');
-    }
-    toast.success('Session started — speak to begin!');
-  }, [activeCase, phase, mode, canUseElevenLabs, handleUserTranscript, startRecording, stopSession]);
-
-  const handleObjectionResponse = useCallback((response: string) => {
-    setObjectionAlert(null);
-    handleUserTranscript(response);
-  }, [handleUserTranscript]);
-
-  const addTrialNote = useCallback(() => {
-    const trimmed = newNote.trim();
-    if (!trimmed) return;
-    const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setNotebook(prev => ({
-      ...prev,
-      trialNotes: [...prev.trialNotes, trimmed],
-      sessionTimeline: [
-        ...prev.sessionTimeline,
-        { time: now, event: `Note: ${trimmed}`, type: 'note' as const }
-      ].slice(-20),
-    }));
-    setNewNote('');
-  }, [newNote]);
-
-  const playHistorySession = useCallback((s: TrialSession) => {
-    if (playingSessionId === s.id) {
-      historyAudioRef.current?.pause();
-      setPlayingSessionId(null);
-      return;
-    }
-    historyAudioRef.current?.pause();
-    if (!s.audioUrl) return;
-    const audio = new Audio(s.audioUrl);
-    audio.onended = () => setPlayingSessionId(null);
-    audio.play();
-    historyAudioRef.current = audio;
-    setPlayingSessionId(s.id);
-  }, [playingSessionId]);
-
-  const downloadAudio = useCallback((s: TrialSession) => {
-    if (!s.audioUrl) { toast.error('No audio available.'); return; }
-    Object.assign(document.createElement('a'), {
-      href: s.audioUrl,
-      download: `trial-${s.phase}-${s.date.slice(0, 10)}.webm`,
-    }).click();
-  }, []);
-
-  const exportTranscript = useCallback((s: TrialSession) => {
-    const lines = [
-      'TRIAL SIMULATION TRANSCRIPT',
-      '='.repeat(40),
-      `Case:     ${s.caseTitle}`,
-      `Phase:    ${s.phase}`,
-      `Mode:     ${s.mode}`,
-      `Date:     ${new Date(s.date).toLocaleString()}`,
-      `Duration: ${Math.floor(s.duration / 60)}m ${s.duration % 60}s`,
-      `Score:    ${s.score}%`,
-      '',
-    ];
-
-    if (s.metrics) {
-      lines.push(
-        'METRICS',
-        `  Objections received:  ${s.metrics.objectionsReceived ?? 0}`,
-        `  Fallacies committed:  ${s.metrics.fallaciesCommitted ?? 0}`,
-        `  Avg rhetorical score: ${s.metrics.avgRhetoricalScore ?? 50}%`,
-        `  Word count:           ${s.metrics.wordCount ?? 0}`,
-        `  Filler words:         ${s.metrics.fillerWordsCount ?? 0}`,
-        '',
-      );
-    }
-
-    lines.push('TRANSCRIPT', '='.repeat(40));
-    (s.transcript ?? []).forEach(m => {
-      const sender = m.sender === 'user' ? 'YOU' : m.sender.toUpperCase();
-      lines.push(`\n[${sender}]:\n${m.text}`);
-    });
-
-    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
-    Object.assign(document.createElement('a'), {
-      href: url,
-      download: `transcript-${s.phase}-${s.date.slice(0, 10)}.txt`,
-    }).click();
-    URL.revokeObjectURL(url);
-    toast.success('Transcript exported.');
-  }, []);
-
-  const handleDeleteSession = useCallback((id: string) => {
-    if (!window.confirm('Delete this session?')) return;
-    removeSession(id);
-    toast.success('Session deleted.');
-  }, [removeSession]);
-
-  if (!activeCase) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh] text-slate-500 p-4">
-        <AlertCircle size={48} className="mb-4 opacity-40" />
-        <p className="text-lg font-semibold text-white">No Active Case</p>
-        <p className="text-sm text-slate-500 mt-1 mb-6">Select a case to begin your simulation.</p>
-        <Link
-          to="/app/cases"
-          className="bg-gold-600 hover:bg-gold-500 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors"
-        >
-          Select a Case
-        </Link>
-      </div>
-    );
-  }
-
+  // ─── SETUP VIEW ──────────────────────────────────────────
   if (view === 'setup') {
     return (
-      <div className="min-h-screen pb-20">
-        {/* Header */}
-        <div className="relative overflow-hidden bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-slate-800 px-5 py-5">
-          <div className="absolute inset-0 bg-gradient-to-r from-gold-500/5 via-transparent to-gold-500/5 pointer-events-none" />
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-gold-500/10 border border-gold-500/20">
-                <Gavel size={20} className="text-gold-500" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold font-serif text-white">Trial Simulator</h1>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  AI-powered courtroom practice with real-time coaching
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setView('history')}
-              className="flex items-center gap-2 text-sm text-slate-400 hover:text-gold-400 transition-colors px-3 py-2 rounded-lg hover:bg-slate-800"
-            >
-              <Clock size={15} />
-              History ({savedSessions.length})
-            </button>
+      <div className="max-w-2xl mx-auto p-4 space-y-6">
+        <h1 className="text-2xl font-bold text-white">Trial Simulator</h1>
+        <p className="text-slate-400 text-sm">Select a trial phase and difficulty, then enter the courtroom.</p>
+
+        {/* Phase */}
+        <div>
+          <label className="text-sm font-semibold text-slate-300 mb-2 block">Trial Phase</label>
+          <div className="grid grid-cols-2 gap-2">
+            {PHASES.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setPhase(p.id)}
+                className={`p-3 rounded-lg text-sm font-medium transition-all text-left ${
+                  phase === p.id ? 'bg-gold-500 text-slate-900' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="p-5 space-y-6 max-w-2xl mx-auto">
-          <section>
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Select Trial Phase</h2>
-            <div className="grid grid-cols-4 gap-2">
-              {TRIAL_PHASES.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setPhase(id as TrialPhase)}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all duration-150 ${
-                    phase === id
-                      ? 'bg-gold-500/10 border-gold-500/40 text-gold-400'
-                      : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span className="text-xs font-medium leading-tight text-center">{label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+        {/* Mode */}
+        <div>
+          <label className="text-sm font-semibold text-slate-300 mb-2 block">Difficulty</label>
+          <div className="grid grid-cols-3 gap-2">
+            {MODES.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setMode(m.id)}
+                className={`p-3 rounded-lg text-center transition-all ${
+                  mode === m.id ? 'bg-gold-500 text-slate-900' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                <div className="flex justify-center mb-1">{m.icon}</div>
+                <div className="text-sm font-semibold">{m.label}</div>
+                <div className="text-xs opacity-70">{m.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
 
-          <section>
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Select Difficulty</h2>
-            <div className="space-y-2">
-              {MODES.map(({ id, label, desc, icon: Icon, colorClass }) => (
-                <button
-                  key={id}
-                  onClick={() => setMode(id as SimulationMode)}
-                  className={`w-full p-4 rounded-xl border text-left flex items-center gap-4 transition-all duration-150 ${
-                    mode === id
-                      ? `${colorClass} border-transparent text-white`
-                      : 'bg-slate-800/50 border-slate-700/50 text-slate-300 hover:bg-slate-800 hover:border-slate-600'
-                  }`}
-                >
-                  <div className={`p-2 rounded-lg ${mode === id ? 'bg-white/20' : 'bg-slate-700'}`}>
-                    <Icon size={18} />
-                  </div>
-                  <div>
-                    <p className="font-semibold">{label}</p>
-                    <p className="text-xs opacity-70 mt-0.5">{desc}</p>
-                  </div>
-                  {mode === id && <CheckCircle2 size={16} className="ml-auto opacity-80" />}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <button
-              onClick={() => setShowVoiceSettings(v => !v)}
-              className="w-full flex items-center justify-between p-4 bg-slate-800 rounded-lg text-slate-300 hover:bg-slate-700 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <Volume2 size={20} className="text-gold-500" />
-                <div className="text-left">
-                  <p className="font-semibold">Voice & Settings</p>
-                  <p className="text-xs opacity-60">{voiceConfig.voiceName} · {simulatorSettings.realismLevel}</p>
-                </div>
-              </div>
-              {showVoiceSettings ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </button>
-
-            {showVoiceSettings && (
-              <div className="mt-2 p-4 bg-slate-800 rounded-lg space-y-5 border border-slate-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-300">ElevenLabs Voices</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {useElevenLabs ? 'Realistic AI voices (recommended)' : 'Using browser built-in voice'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setUseElevenLabs(v => !v)}
-                    role="switch"
-                    aria-checked={useElevenLabs}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${
-                      useElevenLabs ? 'bg-gold-500' : 'bg-slate-600'
-                    }`}
-                  >
-                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
-                      useElevenLabs ? 'left-6' : 'left-0.5'
-                    }`} />
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-slate-400 mb-2">Voice</label>
-                  <select
-                    value={voiceConfig.voiceName}
-                    onChange={e => setVoiceConfig(v => ({ ...v, voiceName: e.target.value }))}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:outline-none focus:border-gold-500"
-                  >
-                    {Object.entries(ELEVENLABS_VOICES).map(([id, voice]) => (
-                      <option key={id} value={id}>
-                        {voice.name} — {voice.description}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {phase && (
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-2">Role Preset</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {Object.entries(TRIAL_VOICE_PRESETS).map(([id, preset]) => (
-                        <button
-                          key={id}
-                          onClick={() => setVoiceConfig(v => ({ ...v, voiceName: preset.voice }))}
-                          className={`p-2.5 rounded-lg text-left text-xs transition-all ${
-                            voiceConfig.voiceName === preset.voice
-                              ? 'bg-gold-500 text-slate-900'
-                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                          }`}
-                        >
-                          <p className="font-semibold capitalize">{id.replace(/-/g, ' ')}</p>
-                          <p className="opacity-70 line-clamp-2 mt-0.5">{preset.description}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <SettingRow
-                  label="Realism Level"
-                  options={['casual', 'professional', 'intense']}
-                  value={simulatorSettings.realismLevel}
-                  onChange={v => setSimulatorSettings(s => ({ ...s, realismLevel: v as any }))}
-                />
-                <SettingRow
-                  label="Interruption Frequency"
-                  options={['low', 'medium', 'high']}
-                  value={simulatorSettings.interruptionFrequency}
-                  onChange={v => setSimulatorSettings(s => ({ ...s, interruptionFrequency: v as any }))}
-                />
-                <SettingRow
-                  label="Coaching Detail"
-                  options={['minimal', 'moderate', 'detailed']}
-                  value={simulatorSettings.coachingVerbosity}
-                  onChange={v => setSimulatorSettings(s => ({ ...s, coachingVerbosity: v as any }))}
-                />
-              </div>
-            )}
-          </section>
-
-          <button
-            disabled={!phase || !mode}
-            onClick={() => {
-              setMessages([]);
-              setCoachingTip(null);
-              setObjectionAlert(null);
-              setShowPostSession(false);
-              setLastSessionMetrics(null);
-              setNotebook({ ...INITIAL_NOTEBOOK, currentPhase: phase?.replace(/-/g, ' ') || 'Unknown' });
-              dispatch({ type: 'RESET_SESSION' });
-              setView('active');
-            }}
-            className="w-full py-4 rounded-xl text-base font-bold transition-all disabled:cursor-not-allowed
-              bg-gold-500 text-slate-900 hover:bg-gold-400 shadow-lg hover:shadow-gold-500/20
-              disabled:bg-slate-700 disabled:text-slate-500 flex items-center justify-center gap-2"
+        {/* Voice */}
+        <div>
+          <label className="text-sm font-semibold text-slate-300 mb-2 block">Opponent Voice (ElevenLabs)</label>
+          <select
+            value={voiceKey}
+            onChange={e => setVoiceKey(e.target.value)}
+            className="w-full bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm"
           >
-            <Gavel size={18} />
-            {phase && mode
-              ? `Enter Courtroom — ${phase.replace(/-/g, ' ')} · ${mode}`
-              : 'Select Phase & Mode to Begin'}
-          </button>
+            {Object.entries(ELEVENLABS_VOICES).map(([key, v]) => (
+              <option key={key} value={key}>{v.name} — {v.description}</option>
+            ))}
+          </select>
         </div>
+
+        {/* Start */}
+        <button
+          onClick={startSession}
+          disabled={!phase || !mode}
+          className="w-full bg-gold-500 hover:bg-gold-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-900 font-bold py-4 rounded-xl text-lg"
+        >
+          Enter Courtroom
+        </button>
       </div>
     );
   }
 
-  if (view === 'history') {
-    return (
-      <div className="min-h-screen pb-20">
-        <div className="sticky top-0 bg-slate-900 z-10 border-b border-slate-800 p-4 flex items-center gap-4">
-          <button onClick={() => setView('setup')} className="text-slate-400 hover:text-white">
-            <ArrowLeft size={24} />
-          </button>
-          <h1 className="text-xl font-bold text-white">Session History</h1>
-          <span className="text-sm text-slate-500">({savedSessions.length} sessions)</span>
+  // ─── ACTIVE SESSION VIEW ─────────────────────────────────
+  return (
+    <div className="flex flex-col h-full relative">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
+        <button onClick={stopSession} className="text-slate-400 hover:text-white flex items-center gap-1 text-sm">
+          <ArrowLeft size={16} /> Exit
+        </button>
+        <div className="text-center">
+          <span className="text-gold-500 font-semibold text-sm">{PHASES.find(p => p.id === phase)?.label}</span>
+          <span className="text-slate-500 text-xs ml-2">({mode})</span>
         </div>
-
-        <div className="p-4">
-          {savedSessions.length === 0 ? (
-            <div className="text-center py-16 text-slate-500">
-              <Clock size={48} className="mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium">No sessions yet</p>
-              <p className="text-sm mt-1 opacity-70">Complete a simulation to see it recorded here.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {savedSessions.map(s => (
-                <SessionCard
-                  key={s.id}
-                  session={s}
-                  isPlaying={playingSessionId === s.id}
-                  onPlay={() => playHistorySession(s)}
-                  onDownload={() => downloadAudio(s)}
-                  onExport={() => exportTranscript(s)}
-                  onDelete={() => handleDeleteSession(s.id)}
-                />
-              ))}
-            </div>
-          )}
+        <div className="flex items-center gap-3">
+          {score > 0 && <span className="text-gold-500 font-bold text-sm">{score}%</span>}
+          <button onClick={() => setMuted(!muted)} className="text-slate-400 hover:text-white">
+            {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          </button>
         </div>
       </div>
-    );
-  }
 
-  // ── Post-session score panel ──────────────────────────────────────────────
-  if (showPostSession && lastSessionMetrics) {
-    const score = avgRhetoricalScore;
-    const grade = score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 55 ? 'C' : score >= 40 ? 'D' : 'F';
-    const gradeColor = score >= 85 ? 'text-green-400 bg-green-500/10 border-green-500/30' :
-                       score >= 70 ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' :
-                       score >= 55 ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' :
-                       'text-red-400 bg-red-500/10 border-red-500/30';
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-900">
-        <div className="w-full max-w-lg space-y-5">
-          {/* Score header */}
-          <div className="text-center">
-            <div className={`inline-flex items-center justify-center w-24 h-24 rounded-2xl border-2 text-5xl font-black mb-4 ${gradeColor}`}>
-              {grade}
-            </div>
-            <h2 className="text-2xl font-bold font-serif text-white">Session Complete</h2>
-            <p className="text-slate-400 text-sm mt-1 capitalize">{phase?.replace(/-/g, ' ')} · {mode} mode</p>
+      {/* Objection Banner */}
+      {objection && (
+        <div className="bg-red-900/90 text-white px-4 py-3 text-center animate-pulse shrink-0">
+          <div className="font-bold text-lg">OBJECTION! — {objection.grounds}</div>
+          <div className="text-sm text-red-200">{objection.explanation}</div>
+        </div>
+      )}
+
+      {/* Main scrollable content */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* User transcript */}
+        {userTranscript && (
+          <div className="bg-blue-900/30 border border-blue-800/50 rounded-lg p-3">
+            <div className="text-blue-400 text-xs font-semibold mb-1">YOU</div>
+            <div className="text-white text-base">{userTranscript}</div>
           </div>
+        )}
 
-          {/* Metrics grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: 'Rhetorical Score', value: `${score}%`, color: 'text-gold-400' },
-              { label: 'Objections Received', value: lastSessionMetrics.objectionsReceived, color: 'text-red-400' },
-              { label: 'Fallacies Committed', value: lastSessionMetrics.fallaciesCommitted, color: 'text-amber-400' },
-              { label: 'Words Spoken', value: lastSessionMetrics.wordCount, color: 'text-blue-400' },
-              { label: 'Filler Words', value: lastSessionMetrics.fillerWordsCount, color: 'text-slate-400' },
-              { label: 'Key Arguments', value: notebook.keyArguments.length, color: 'text-green-400' },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                <p className="text-xs text-slate-500 uppercase tracking-wider">{label}</p>
-                <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
+        {/* Processing indicator */}
+        {isProcessing && (
+          <div className="flex items-center gap-2 text-slate-400 text-sm">
+            <Loader2 size={16} className="animate-spin" /> Thinking...
+          </div>
+        )}
+
+        {/* AI response */}
+        {aiTranscript && (
+          <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-3">
+            <div className="text-gold-500 text-xs font-semibold mb-1">OPPOSING COUNSEL</div>
+            <div className="text-slate-200 text-base">{aiTranscript}</div>
+          </div>
+        )}
+
+        {/* Transcript history */}
+        {messages.length > 2 && (
+          <div className="space-y-2 pt-2 border-t border-slate-800">
+            <div className="text-slate-500 text-xs font-semibold">TRANSCRIPT</div>
+            {messages.slice(-10).map(msg => (
+              <div key={msg.id} className={`text-sm ${msg.sender === 'user' ? 'text-blue-300' : 'text-slate-400'}`}>
+                <span className="font-semibold">{msg.sender === 'user' ? 'You: ' : 'Counsel: '}</span>
+                {msg.text}
               </div>
             ))}
           </div>
+        )}
+      </div>
 
-          {/* Key arguments */}
-          {notebook.keyArguments.length > 0 && (
-            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-              <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">Arguments Made</p>
-              <ul className="space-y-1">
-                {notebook.keyArguments.slice(0, 4).map((arg, i) => (
-                  <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
-                    <CheckCircle2 size={10} className="text-emerald-400 mt-0.5 shrink-0" />
-                    {arg}
-                  </li>
-                ))}
-              </ul>
+      {/* ── TELEPROMPTER — fixed above mic bar ───────────── */}
+      {(teleprompter || coaching) && (
+        <div className="border-t border-slate-700 bg-slate-900/95 px-4 py-3 shrink-0">
+          {teleprompter && (
+            <div className="mb-2">
+              <div className="text-gold-500 text-xs font-bold uppercase tracking-wide mb-1">Say This</div>
+              <div className="text-white text-lg leading-relaxed font-medium">"{teleprompter}"</div>
             </div>
           )}
-
-          {/* Actions */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => { setShowPostSession(false); setView('setup'); }}
-              className="flex-1 py-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 font-semibold text-sm transition-colors"
-            >
-              Practice Again
-            </button>
-            <button
-              onClick={() => { setShowPostSession(false); setView('history'); }}
-              className="flex-1 py-3 rounded-xl bg-gold-500 text-slate-900 hover:bg-gold-400 font-bold text-sm transition-colors"
-            >
-              View Session
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex flex-col pb-20 md:pb-0">
-      {objectionAlert && (
-        <ObjectionModal
-          grounds={objectionAlert.grounds}
-          explanation={objectionAlert.explanation}
-          onRespond={handleObjectionResponse}
-          onDismiss={() => setObjectionAlert(null)}
-        />
-      )}
-
-      {/* Mobile notebook overlay */}
-      {showNotebook && (
-        <div className="fixed inset-0 z-50 lg:hidden flex flex-col bg-slate-900 border-l border-slate-700 overflow-hidden">
-          <div className="flex items-center justify-between p-3 bg-slate-800 border-b border-slate-700">
-            <div className="flex items-center gap-2">
-              <NotebookPen size={16} className="text-gold-400" />
-              <span className="text-sm font-bold text-gold-400 uppercase tracking-wide">Live Notebook</span>
-            </div>
-            <button onClick={() => setShowNotebook(false)} className="text-slate-400 hover:text-white">
-              <X size={20} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {/* Phase */}
-            <div className="p-2.5 bg-slate-800 rounded-lg">
-              <p className="text-[10px] font-bold text-gold-400 uppercase tracking-wide mb-1">Phase</p>
-              <p className="text-sm text-white capitalize">{notebook.currentPhase}</p>
-            </div>
-            {/* Timeline */}
-            {notebook.sessionTimeline.length > 0 && (
-              <div className="p-2.5 bg-slate-800 rounded-lg">
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wide mb-2">Timeline</p>
-                <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                  {notebook.sessionTimeline.slice().reverse().map((entry, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs">
-                      <span className="text-slate-500 shrink-0 font-mono text-[9px] mt-0.5">{entry.time}</span>
-                      <span className={`${
-                        entry.type === 'objection' ? 'text-red-300' :
-                        entry.type === 'ruling' ? 'text-yellow-300' :
-                        entry.type === 'note' ? 'text-emerald-300' :
-                        'text-slate-300'
-                      }`}>{entry.event}</span>
-                    </div>
-                  ))}
+          {coaching && (
+            <div>
+              <button
+                onClick={() => setShowCoachingDetail(!showCoachingDetail)}
+                className="flex items-center gap-1 text-slate-400 text-xs hover:text-white"
+              >
+                {showCoachingDetail ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                Coaching Notes
+              </button>
+              {showCoachingDetail && (
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="text-yellow-400">{coaching.critique}</div>
+                  <div className="text-green-400">{coaching.suggestion}</div>
                 </div>
-              </div>
-            )}
-            {/* Key Arguments */}
-            {notebook.keyArguments.length > 0 && (
-              <div className="p-2.5 bg-slate-800 rounded-lg">
-                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-2">Key Arguments</p>
-                <ul className="space-y-1">
-                  {notebook.keyArguments.map((arg, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-xs text-slate-300">
-                      <CheckCircle2 size={10} className="text-emerald-500 mt-0.5 shrink-0" />
-                      {arg}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {/* Objections */}
-            {notebook.objectionsRaised.length > 0 && (
-              <div className="p-2.5 bg-slate-800 rounded-lg">
-                <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide mb-2">Objections</p>
-                <ul className="space-y-1">
-                  {notebook.objectionsRaised.map((obj, i) => (
-                    <li key={i} className="text-xs">
-                      <span className="text-red-300">{obj.grounds}</span>
-                      <span className="text-slate-500"> · {obj.ruling}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {/* Evidence Cited */}
-            {notebook.evidenceCited.length > 0 && (
-              <div className="p-2.5 bg-slate-800 rounded-lg">
-                <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wide mb-2">Evidence Cited</p>
-                <ul className="space-y-1">
-                  {notebook.evidenceCited.map((ev, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-xs text-slate-300">
-                      <BarChart3 size={10} className="text-purple-400 mt-0.5 shrink-0" />
-                      {ev}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {/* Trial Notes */}
-            <div className="p-2.5 bg-slate-800 rounded-lg">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Trial Notes</p>
-              {notebook.trialNotes.length > 0 && (
-                <ul className="space-y-1 mb-2">
-                  {notebook.trialNotes.map((note, i) => (
-                    <li key={i} className="text-xs text-slate-300 flex items-start gap-1.5">
-                      <MessageSquare size={10} className="text-slate-500 mt-0.5 shrink-0" />
-                      {note}
-                    </li>
-                  ))}
-                </ul>
               )}
-              <div className="flex gap-1">
-                <input
-                  value={newNote}
-                  onChange={e => setNewNote(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addTrialNote(); } }}
-                  placeholder="Add note... (Enter)"
-                  className="flex-1 text-xs bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white placeholder-slate-500 focus:outline-none focus:border-gold-500"
-                />
-                <button
-                  onClick={addTrialNote}
-                  className="px-2 py-1.5 bg-gold-500/20 hover:bg-gold-500/30 text-gold-400 rounded border border-gold-500/30 transition-colors"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
-      {/* Courtroom Banner */}
-      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-gold-500/20 px-4 py-2.5 flex items-center gap-3">
+      {/* ── MIC CONTROL ──────────────────────────────────── */}
+      <div className="px-4 py-4 bg-slate-900 border-t border-slate-700 flex items-center justify-center gap-4 shrink-0">
         <button
-          onClick={() => { stopSession(); setView('setup'); }}
-          className="text-slate-500 hover:text-white transition-colors p-1 rounded"
-          title="End session"
+          onClick={stopSession}
+          className={`w-16 h-16 rounded-full flex items-center justify-center transition-all ${
+            isListening
+              ? 'bg-red-500 animate-pulse shadow-lg shadow-red-500/30'
+              : isSpeaking
+                ? 'bg-purple-600 shadow-lg shadow-purple-500/30'
+                : 'bg-red-600 hover:bg-red-500'
+          }`}
         >
-          <ArrowLeft size={18} />
+          <MicOff size={28} className="text-white" />
         </button>
-        <div className="flex items-center gap-2">
-          <Gavel size={14} className="text-gold-500" />
-          <span className="text-gold-500 text-xs font-bold uppercase tracking-widest">
-            Court in Session
-          </span>
-          <span className="text-slate-600 text-xs">·</span>
-          <span className="text-slate-300 text-xs capitalize">{phase?.replace(/-/g, ' ')}</span>
-          <span className="text-slate-600 text-xs">·</span>
-          <span className="text-slate-400 text-xs">{mode}</span>
-        </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-800 rounded-full border border-slate-700">
-            <AlertTriangle size={10} className="text-red-400" />
-            <span className="text-xs text-slate-300">{session.objectionCount}</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800 rounded-full border border-slate-700">
-            <span className="text-xs text-slate-300">Score: <span className="text-gold-400 font-bold">{session.sessionScore}%</span></span>
-          </div>
-          {session.isLive && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/40 rounded-full border border-red-800/50">
-              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-              <span className="text-xs text-red-300 font-bold">LIVE</span>
-            </div>
-          )}
-          <button
-            onClick={() => setShowNotebook(v => !v)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-colors lg:hidden ${
-              showNotebook ? 'bg-gold-500/30 text-gold-300' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'
-            }`}
-            title="Toggle Live Notebook"
-          >
-            <NotebookPen size={11} />
-            <span className="text-xs font-medium">Notes</span>
-          </button>
+        <div className="text-slate-400 text-xs">
+          {isSpeaking ? 'AI speaking...' : isProcessing ? 'Processing...' : isListening ? 'Listening...' : 'Waiting...'}
         </div>
       </div>
-
-      {/* Judge Alert */}
-      {judgeAlert && (
-        <div className={`mx-4 mt-3 flex items-start gap-3 px-4 py-3 rounded-xl border animate-slideInLeft ${
-          judgeAlert.type === 'sustained' ? 'bg-red-500/10 border-red-500/30' :
-          judgeAlert.type === 'overruled' ? 'bg-green-500/10 border-green-500/30' :
-          'bg-amber-500/10 border-amber-500/30'
-        }`}>
-          <Gavel size={16} className={
-            judgeAlert.type === 'sustained' ? 'text-red-400 shrink-0 mt-0.5' :
-            judgeAlert.type === 'overruled' ? 'text-green-400 shrink-0 mt-0.5' :
-            'text-amber-400 shrink-0 mt-0.5'
-          } />
-          <div className="flex-1 min-w-0">
-            <span className={`text-xs font-bold uppercase tracking-wider ${
-              judgeAlert.type === 'sustained' ? 'text-red-400' :
-              judgeAlert.type === 'overruled' ? 'text-green-400' : 'text-amber-400'
-            }`}>{judgeAlert.type}</span>
-            <p className="text-sm text-white mt-0.5">&ldquo;{judgeAlert.text}&rdquo;</p>
-          </div>
-          <button onClick={() => setJudgeAlert(null)} className="text-slate-500 hover:text-white shrink-0">
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* ── Left: Simulation area ── */}
-        <div className="flex-1 flex flex-col">
-        <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-900">
-          {/* Stats row */}
-          <div className="flex items-center gap-4 md:gap-6 mb-5">
-            <StatPill label="Score"      value={`${session.sessionScore}%`} color="gold" />
-            <div className="w-px h-5 bg-slate-700" />
-            <StatPill label="Avg"        value={`${avgRhetoricalScore}%`}   color="slate" />
-            <div className="w-px h-5 bg-slate-700" />
-            <StatPill label="Objections" value={session.objectionCount}     color="red" />
-            <div className="w-px h-5 bg-slate-700 hidden sm:block" />
-            <StatPill label="Words" value={metricsRef.current.wordCount} color="slate" className="hidden sm:block" />
-          </div>
-
-          {/* Audio visualizer canvas */}
-          <div className="w-full max-w-xs mb-4">
-            <canvas
-              ref={canvasRef}
-              width={280}
-              height={56}
-              className={`w-full rounded-xl transition-opacity duration-300 ${
-                session.isLive ? 'opacity-100' : 'opacity-20'
-              }`}
-              style={{ background: 'rgba(15,23,42,0.9)', border: '1px solid rgba(212,175,55,0.1)' }}
-            />
-          </div>
-
-          {/* Opponent avatar */}
-          <div className={`relative w-28 h-28 rounded-2xl border-2 transition-all duration-300 ${
-            session.isAISpeaking
-              ? 'border-emerald-500 shadow-[0_0_24px_rgba(16,185,129,0.3)]'
-              : session.isLive && session.liveVolume > 20
-                ? 'border-gold-500/60 shadow-[0_0_16px_rgba(212,175,55,0.2)]'
-                : 'border-slate-700'
-          }`}>
-            <div className="w-full h-full rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-              <Gavel size={40} className="text-slate-600" />
-            </div>
-            {session.isAISpeaking && (
-              <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/30 animate-pulse" />
-            )}
-          </div>
-
-          <p className="mt-3 text-white font-semibold text-center">
-            {phase === 'defendant-testimony' ? 'Prosecutor' : opponentName}
-          </p>
-          <p className={`text-sm mt-1 font-medium transition-colors ${
-            session.isConnecting ? 'text-amber-400' :
-            session.isAISpeaking ? 'text-emerald-400' :
-            session.isLive       ? 'text-blue-400'   : 'text-slate-500'
-          }`}>
-            {session.isConnecting ? '⟳ Connecting…' :
-             session.isAISpeaking ? '● Speaking' :
-             session.isLive       ? '● Listening' : 'Ready'}
-          </p>
-
-          {/* Volume bar */}
-          {session.isLive && (
-            <div className="w-full max-w-[200px] mt-3 h-1 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gold-500 rounded-full transition-all duration-75"
-                style={{ width: `${Math.min(100, session.liveVolume * 1.2)}%` }}
-              />
-            </div>
-          )}
-
-          {/* ── Live Caption Bar ── */}
-          {session.isLive && (
-            <div className="w-full max-w-2xl mt-5 space-y-2">
-              {/* User speaking caption */}
-              <div className={`px-4 py-3 rounded-xl border transition-all duration-200 ${
-                session.inputTranscript
-                  ? 'bg-blue-500/10 border-blue-500/30'
-                  : 'bg-slate-800/50 border-slate-700/50'
-              }`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">You</span>
-                  {session.inputTranscript && (
-                    <span className="flex gap-0.5">
-                      <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1 h-1 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </span>
-                  )}
-                </div>
-                <p className={`text-sm leading-relaxed ${session.inputTranscript ? 'text-white italic' : 'text-slate-500'}`}>
-                  {session.inputTranscript || 'Speak now — your words appear here in real time…'}
-                </p>
-              </div>
-              {/* AI response caption */}
-              <div className={`px-4 py-3 rounded-xl border transition-all duration-200 ${
-                session.outputTranscript
-                  ? 'bg-emerald-500/10 border-emerald-500/30'
-                  : 'bg-slate-800/50 border-slate-700/50'
-              }`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                    {session.isAISpeaking ? 'Speaking…' : 'Response'}
-                  </span>
-                </div>
-                <p className={`text-sm leading-relaxed ${session.outputTranscript ? 'text-white' : 'text-slate-500'}`}>
-                  {session.outputTranscript || 'Waiting for AI response…'}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {(activeCase.evidence ?? []).length > 0 && (
-            <div className="w-full max-w-sm mt-5">
-              <button
-                onClick={() => setShowEvidencePanel(v => !v)}
-                className="w-full flex items-center justify-between p-2.5 bg-slate-800 rounded-lg text-slate-300 text-sm hover:bg-slate-700 transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <FolderOpen size={16} className="text-gold-500" />
-                  Evidence ({(activeCase.evidence || []).length} items)
-                </span>
-                <ChevronDown
-                  size={16}
-                  className={`transition-transform duration-200 ${showEvidencePanel ? 'rotate-180' : ''}`}
-                />
-              </button>
-              <div className={`overflow-hidden transition-all duration-300 ${showEvidencePanel ? 'max-h-52' : 'max-h-0'}`}>
-                <div className="mt-1.5 space-y-1 max-h-52 overflow-y-auto pr-0.5">
-                  {(activeCase.evidence || []).map((e, i) => (
-                    <div key={i} className="p-2.5 bg-slate-800 rounded text-xs">
-                      <p className="font-semibold text-white truncate">{e.title}</p>
-                      <p className="text-slate-400 line-clamp-2 mt-0.5">
-                        {e.summary?.slice(0, 130) ?? 'No summary available'}
-                        {(e.summary?.length ?? 0) > 130 ? '…' : ''}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="hidden md:flex flex-col gap-2 h-28 px-6 py-2 justify-end overflow-hidden">
-          {messages.slice(-3).map(m => {
-            const isUser = m.sender === 'user';
-            const isOpponent = m.sender === 'opponent';
-            return (
-              <div
-                key={m.id}
-                className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] ${isUser ? 'ml-auto' : 'mr-auto'}`}
-              >
-                <div className="flex items-center gap-2 mb-0.5 px-1">
-                  {isUser ? (
-                    <span className="text-[9px] font-bold tracking-wide text-blue-400 uppercase bg-blue-500/20 px-1.5 py-0.5 rounded-full border border-blue-500/30">
-                      ATTORNEY — YOU
-                    </span>
-                  ) : isOpponent ? (
-                    <span className="text-[9px] font-bold tracking-wide text-red-400 uppercase bg-red-500/20 px-1.5 py-0.5 rounded-full border border-red-500/30">
-                      OPPOSING COUNSEL
-                    </span>
-                  ) : (
-                    <span className="text-[9px] font-bold tracking-wide text-slate-400 uppercase bg-slate-500/20 px-1.5 py-0.5 rounded-full border border-slate-500/30">
-                      {m.sender.toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div className={`text-xs px-3 py-1.5 rounded-lg ${
-                  isUser
-                    ? 'bg-blue-900/50 text-blue-200'
-                    : 'bg-slate-800 text-slate-300'
-                }`}>
-                  {m.text.slice(0, 120)}{m.text.length > 120 ? '…' : ''}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        </div>{/* end left panel */}
-
-        {/* ── Right: Live Notebook Sidebar (desktop) ── */}
-        <div className="hidden lg:flex flex-col w-80 bg-slate-800 border-l border-slate-700 overflow-hidden">
-          <div className="flex items-center justify-between p-3 bg-gold-500/10 border-b border-gold-500/20">
-            <div className="flex items-center gap-2">
-              <NotebookPen size={14} className="text-gold-400" />
-              <span className="text-xs font-bold text-gold-400 uppercase tracking-wide">Live Notebook</span>
-              {session.isLive && (
-                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-              )}
-            </div>
-            <span className="text-[10px] text-slate-500 capitalize">{notebook.currentPhase}</span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {/* Timeline */}
-            <div>
-              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wide mb-2 flex items-center gap-1">
-                <Clock size={9} /> Session Timeline
-              </p>
-              {notebook.sessionTimeline.length === 0 ? (
-                <p className="text-xs text-slate-600 italic">Events appear here as they happen…</p>
-              ) : (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
-                  {notebook.sessionTimeline.slice().reverse().map((entry, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs">
-                      <span className="text-slate-600 shrink-0 font-mono text-[9px] mt-0.5 w-14">{entry.time}</span>
-                      <span className={`leading-snug ${
-                        entry.type === 'objection' ? 'text-red-300' :
-                        entry.type === 'ruling' ? 'text-yellow-300' :
-                        entry.type === 'note' ? 'text-emerald-300' :
-                        'text-slate-300'
-                      }`}>{entry.event}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="h-px bg-slate-700" />
-
-            {/* Key Arguments */}
-            <div>
-              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-2">Key Arguments</p>
-              {notebook.keyArguments.length === 0 ? (
-                <p className="text-xs text-slate-600 italic">Arguments will be tracked here…</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {notebook.keyArguments.map((arg, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-xs text-slate-300">
-                      <CheckCircle2 size={10} className="text-emerald-500 mt-0.5 shrink-0" />
-                      {arg}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {/* Objections */}
-            {notebook.objectionsRaised.length > 0 && (
-              <>
-                <div className="h-px bg-slate-700" />
-                <div>
-                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide mb-2">
-                    Objections ({notebook.objectionsRaised.length})
-                  </p>
-                  <ul className="space-y-1.5">
-                    {notebook.objectionsRaised.map((obj, i) => (
-                      <li key={i} className="text-xs">
-                        <span className="text-red-300 font-medium">{obj.grounds}</span>
-                        <span className="text-slate-500"> · {obj.ruling} · </span>
-                        <span className="text-slate-600 font-mono text-[9px]">{obj.time}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </>
-            )}
-
-            {/* Evidence Cited */}
-            {notebook.evidenceCited.length > 0 && (
-              <>
-                <div className="h-px bg-slate-700" />
-                <div>
-                  <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wide mb-2">Evidence Cited</p>
-                  <ul className="space-y-1">
-                    {notebook.evidenceCited.map((ev, i) => (
-                      <li key={i} className="flex items-start gap-1.5 text-xs text-slate-300">
-                        <BarChart3 size={10} className="text-purple-400 mt-0.5 shrink-0" />
-                        {ev}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </>
-            )}
-
-            <div className="h-px bg-slate-700" />
-
-            {/* Trial Notes */}
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Trial Notes</p>
-              {notebook.trialNotes.length > 0 && (
-                <ul className="space-y-1.5 mb-2 max-h-24 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
-                  {notebook.trialNotes.map((note, i) => (
-                    <li key={i} className="text-xs text-slate-300 flex items-start gap-1.5">
-                      <MessageSquare size={10} className="text-slate-500 mt-0.5 shrink-0" />
-                      {note}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="flex gap-1">
-                <input
-                  value={newNote}
-                  onChange={e => setNewNote(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addTrialNote(); } }}
-                  placeholder="Add note… (Enter)"
-                  className="flex-1 text-xs bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white placeholder-slate-600 focus:outline-none focus:border-gold-500"
-                />
-                <button
-                  onClick={addTrialNote}
-                  className="px-2 py-1.5 bg-gold-500/20 hover:bg-gold-500/30 text-gold-400 rounded border border-gold-500/30 transition-colors"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
-              <p className="text-[9px] text-slate-600 mt-1">Ctrl+Enter to add note quickly</p>
-            </div>
-          </div>
-        </div>
-      </div>{/* end flex-1 flex-row */}
-
-      {/* ── Floating Teleprompter Card ── */}
-      {coachingTip?.teleprompterScript && session.isLive && (
-        <div className="fixed bottom-28 left-4 max-w-sm w-full sm:w-80 z-40 animate-slideInLeft">
-          <div className="bg-slate-900/95 backdrop-blur-sm border border-gold-500/30 rounded-2xl shadow-2xl overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Lightbulb size={13} className="text-gold-500" />
-                <span className="text-xs font-bold text-gold-500 uppercase tracking-wider">Next Line</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                  coachingTip.rhetoricalEffectiveness >= 70 ? 'bg-green-500/20 text-green-400' :
-                  coachingTip.rhetoricalEffectiveness >= 40 ? 'bg-amber-500/20 text-amber-400' :
-                  'bg-red-500/20 text-red-400'
-                }`}>
-                  {coachingTip.rhetoricalEffectiveness}%
-                </span>
-              </div>
-              <button
-                onClick={() => setShowCoaching(v => !v)}
-                className="text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                <BookOpen size={12} />
-              </button>
-            </div>
-            <div className="px-4 py-3">
-              <p className="text-white text-sm leading-relaxed italic">
-                &ldquo;{coachingTip.teleprompterScript}&rdquo;
-              </p>
-            </div>
-            {showCoaching && coachingTip && (
-              <div className="px-4 pb-3 pt-1 border-t border-slate-800 space-y-1.5">
-                <p className="text-xs text-slate-400"><span className="text-slate-500">Critique: </span>{coachingTip.critique}</p>
-                <p className="text-xs text-gold-300"><span className="text-gold-500">Tip: </span>{coachingTip.suggestion}</p>
-                {(coachingTip.fallaciesIdentified ?? []).length > 0 && (
-                  <p className="text-xs text-red-300">
-                    <span className="text-red-400">Fallacies: </span>
-                    {coachingTip.fallaciesIdentified!.join(', ')}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Mic Control Bar ── */}
-      <div className="fixed md:relative bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 px-6 py-4">
-        <div className="flex items-center justify-center gap-6">
-          {!session.isLive ? (
-            <button
-              onClick={startSession}
-              disabled={session.isConnecting}
-              className="flex flex-col items-center group disabled:cursor-not-allowed"
-            >
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center shadow-xl transition-all duration-200
-                ${session.isConnecting
-                  ? 'bg-slate-700 cursor-not-allowed'
-                  : 'bg-gold-500 text-slate-900 group-hover:bg-gold-400 group-hover:scale-105 group-active:scale-95 shadow-gold-500/30'}`}>
-                {session.isConnecting
-                  ? <Activity className="animate-spin text-slate-400" size={30} />
-                  : <Mic size={30} />}
-              </div>
-              <span className="text-xs text-gold-500 mt-2 font-bold tracking-wide uppercase">
-                {session.isConnecting ? 'Connecting…' : 'Go Live'}
-              </span>
-            </button>
-          ) : (
-            <div className="flex items-center gap-6">
-              <div className="flex flex-col items-center opacity-60">
-                <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-                  <Activity size={16} className="text-gold-400 animate-pulse" />
-                </div>
-                <span className="text-[10px] text-slate-500 mt-1">Active</span>
-              </div>
-              <button
-                onClick={() => stopSession()}
-                className="flex flex-col items-center group"
-              >
-                <div className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white shadow-xl shadow-red-500/20 transition-all group-hover:scale-105 group-active:scale-95">
-                  <MicOff size={30} />
-                </div>
-                <span className="text-xs text-red-400 mt-2 font-bold tracking-wide uppercase">Stop & Save</span>
-              </button>
-              <div className="flex flex-col items-center opacity-60">
-                <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-                  <span className="text-xs font-bold text-white">{metricsRef.current.wordCount}</span>
-                </div>
-                <span className="text-[10px] text-slate-500 mt-1">Words</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div ref={messagesEndRef} />
     </div>
   );
 };
 
-export default TrialSim;
+export default ArgumentPractice;
