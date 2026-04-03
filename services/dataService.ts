@@ -2,9 +2,7 @@ import { Case, CaseStatus, EvidenceItem, TrialSession } from '../types';
 import { clearCases, loadCases, saveCases } from '../utils/storage';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
-const isNotFoundError = (error: any) => error?.code === 'PGRST116';
-
-// Map app CaseStatus values to DB status enum values
+// ── Status mapping between app and DB ────────────────────────
 const STATUS_TO_DB: Record<string, string> = {
   'Pre-Trial': 'active',
   'Discovery': 'active',
@@ -14,52 +12,30 @@ const STATUS_TO_DB: Record<string, string> = {
 };
 
 const STATUS_FROM_DB: Record<string, CaseStatus> = {
-  'active': CaseStatus.PRE_TRIAL,
-  'pending': CaseStatus.APPEAL,
-  'settled': CaseStatus.CLOSED,
-  'dismissed': CaseStatus.CLOSED,
-  'closed': CaseStatus.CLOSED,
-  'archived': CaseStatus.CLOSED,
+  active: CaseStatus.PRE_TRIAL,
+  pending: CaseStatus.APPEAL,
+  settled: CaseStatus.CLOSED,
+  dismissed: CaseStatus.CLOSED,
+  closed: CaseStatus.CLOSED,
+  archived: CaseStatus.CLOSED,
 };
 
-// Map TypeScript Case to actual Supabase `cases` table columns.
-// DB columns: id, user_id (NOT NULL), name (NOT NULL), case_number, court_name,
-// case_type (CHECK enum), status (CHECK enum), description, plaintiffs[],
-// defendants[], key_dates (JSONB), metadata (JSONB), created_at, updated_at, deleted_at
-async function caseToRow(c: Case): Promise<Record<string, any>> {
+// ── Helpers ──────────────────────────────────────────────────
+
+/** Get current authenticated user id, or null. Never throws. */
+async function getAuthUserId(): Promise<string | null> {
   const client = getSupabaseClient();
-  let userId = c.user_id;
-
-  if (!userId && client) {
+  if (!client) return null;
+  try {
     const { data: { user } } = await client.auth.getUser();
-    userId = user?.id;
+    return user?.id ?? null;
+  } catch (e) {
+    console.warn('[DataService] auth.getUser() failed:', e);
+    return null;
   }
+}
 
-  // Store all app-specific fields that don't have direct DB columns in metadata
-  const metadata: Record<string, any> = {
-    client: c.client,
-    judge: c.judge,
-    opposingCounsel: c.opposingCounsel,
-    winProbability: c.winProbability,
-    tags: c.tags || [],
-    evidence: c.evidence || [],
-    tasks: c.tasks || [],
-    witnesses: c.witnesses || [],
-    jurisdiction: c.jurisdiction,
-    clientType: c.clientType,
-    opposingParty: c.opposingParty,
-    legalTheory: c.legalTheory,
-    keyIssues: c.keyIssues || [],
-    nextCourtDate: c.nextCourtDate,
-    originalStatus: c.status,
-  };
-
-  // Build key_dates from nextCourtDate
-  const keyDates: Record<string, any> = {};
-  if (c.nextCourtDate && c.nextCourtDate !== 'TBD') {
-    keyDates.nextCourtDate = c.nextCourtDate;
-  }
-
+function caseToRow(c: Case, userId: string): Record<string, any> {
   return {
     id: c.id,
     user_id: userId,
@@ -69,43 +45,53 @@ async function caseToRow(c: Case): Promise<Record<string, any>> {
     case_type: 'other',
     status: STATUS_TO_DB[c.status] || 'active',
     description: c.summary || null,
-    plaintiffs: c.clientType === 'plaintiff' ? [c.client] : (c.opposingParty ? [c.opposingParty] : []),
-    defendants: c.clientType === 'defendant' ? [c.client] : [],
-    key_dates: keyDates,
-    metadata,
+    plaintiffs: [],
+    defendants: [],
+    key_dates: {},
+    metadata: {
+      client: c.client,
+      judge: c.judge,
+      opposingCounsel: c.opposingCounsel,
+      winProbability: c.winProbability,
+      tags: c.tags || [],
+      evidence: c.evidence || [],
+      tasks: c.tasks || [],
+      witnesses: c.witnesses || [],
+      jurisdiction: c.jurisdiction,
+      clientType: c.clientType,
+      opposingParty: c.opposingParty,
+      legalTheory: c.legalTheory,
+      keyIssues: c.keyIssues || [],
+      nextCourtDate: c.nextCourtDate,
+      originalStatus: c.status,
+    },
   };
 }
 
-// Map actual Supabase `cases` row to TypeScript Case interface
 function rowToCase(row: any): Case {
-  const meta = row.metadata || {};
-  const keyDates = row.key_dates || {};
-
-  // Map DB status back to app CaseStatus, preserving original if stored in metadata
-  const appStatus = meta.originalStatus || STATUS_FROM_DB[row.status] || CaseStatus.PRE_TRIAL;
-
+  const m = row.metadata || {};
   return {
     id: row.id,
     user_id: row.user_id,
     title: row.name || 'Untitled Case',
-    client: meta.client || 'Unknown Client',
-    status: appStatus,
-    opposingCounsel: meta.opposingCounsel || '',
-    judge: meta.judge || '',
-    nextCourtDate: keyDates.nextCourtDate || meta.nextCourtDate || 'TBD',
+    client: m.client || 'Unknown Client',
+    status: m.originalStatus || STATUS_FROM_DB[row.status] || CaseStatus.PRE_TRIAL,
+    opposingCounsel: m.opposingCounsel || '',
+    judge: m.judge || '',
+    nextCourtDate: m.nextCourtDate || 'TBD',
     summary: row.description || '',
-    winProbability: meta.winProbability ?? 50,
+    winProbability: m.winProbability ?? 50,
     docketNumber: row.case_number || '',
     courtLocation: row.court_name || '',
-    jurisdiction: meta.jurisdiction || '',
-    clientType: meta.clientType,
-    opposingParty: meta.opposingParty || '',
-    legalTheory: meta.legalTheory || '',
-    keyIssues: meta.keyIssues || [],
-    tags: meta.tags || [],
-    evidence: meta.evidence || [],
-    tasks: meta.tasks || [],
-    witnesses: meta.witnesses || [],
+    jurisdiction: m.jurisdiction || '',
+    clientType: m.clientType,
+    opposingParty: m.opposingParty || '',
+    legalTheory: m.legalTheory || '',
+    keyIssues: m.keyIssues || [],
+    tags: m.tags || [],
+    evidence: m.evidence || [],
+    tasks: m.tasks || [],
+    witnesses: m.witnesses || [],
   };
 }
 
@@ -116,185 +102,131 @@ const hydrateCase = (c: Case): Case => ({
   tags: c.tags || [],
 });
 
-const cacheCases = (cases: Case[]) => {
-  saveCases(cases.map(hydrateCase));
-};
+const cacheCases = (cases: Case[]) => saveCases(cases.map(hydrateCase));
+
+// ── CRUD ─────────────────────────────────────────────────────
 
 export const fetchCases = async (): Promise<Case[]> => {
   const client = getSupabaseClient();
-  if (!client) {
-    console.log('[DataService] Supabase not configured, using local storage');
+  if (!client) return loadCases().map(hydrateCase);
+
+  const userId = await getAuthUserId();
+  if (!userId) {
+    console.log('[DataService] No auth user — using local storage');
     return loadCases().map(hydrateCase);
   }
 
-  let user;
-  try {
-    const { data } = await client.auth.getUser();
-    user = data?.user;
-  } catch (err) {
-    console.warn('[DataService] Auth check failed (Supabase may be unreachable), using local storage', err);
-    return loadCases().map(hydrateCase);
-  }
-  if (!user) {
-    console.log('[DataService] No authenticated user, using local storage');
-    return loadCases().map(hydrateCase);
-  }
-
-  console.log('[DataService] Fetching cases for user:', user.id);
   const { data, error } = await client
     .from('cases')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .is('deleted_at', null);
 
   if (error) {
-    console.error('[Supabase] fetchCases failed; falling back to local cache', error);
+    console.error('[DataService] fetchCases error:', JSON.stringify(error));
     return loadCases().map(hydrateCase);
   }
 
-  console.log(`[DataService] Successfully fetched ${data?.length || 0} cases from Supabase`);
   const cases = (data || []).map(rowToCase);
   cacheCases(cases);
   return cases;
 };
 
 export const upsertCase = async (caseRecord: Case): Promise<void> => {
-  console.log(`[DataService] Upserting case: ${caseRecord.title} (${caseRecord.id})`);
   const client = getSupabaseClient();
   if (!client) {
+    // No Supabase — save locally only
     const current = loadCases().filter(c => c.id !== caseRecord.id);
     cacheCases([...current, hydrateCase(caseRecord)]);
     return;
   }
 
-  // Ensure user_id is present
-  if (!caseRecord.user_id) {
-    try {
-      const { data: { user } } = await client.auth.getUser();
-      if (user) {
-          caseRecord.user_id = user.id;
-      } else {
-          console.warn('[DataService] No authenticated user. Falling back to local.');
-          const current = loadCases().filter(c => c.id !== caseRecord.id);
-          cacheCases([...current, hydrateCase(caseRecord)]);
-          return;
-      }
-    } catch (authErr) {
-      console.warn('[DataService] Auth check failed (Supabase may be unreachable). Falling back to local.', authErr);
-      const current = loadCases().filter(c => c.id !== caseRecord.id);
-      cacheCases([...current, hydrateCase(caseRecord)]);
-      throw authErr; // Re-throw so cloudSync knows it failed
-    }
+  const userId = caseRecord.user_id || (await getAuthUserId());
+  if (!userId) {
+    console.warn('[DataService] upsertCase: no user_id — saving locally only');
+    const current = loadCases().filter(c => c.id !== caseRecord.id);
+    cacheCases([...current, hydrateCase(caseRecord)]);
+    return; // Don't throw — just degrade gracefully
   }
 
-  const row = await caseToRow(caseRecord);
-  console.log('[DataService] Attempting upsert with mapped schema');
+  const row = caseToRow(caseRecord, userId);
+  console.log('[DataService] upsert row keys:', Object.keys(row).join(', '));
 
   const { error } = await client.from('cases').upsert(row, { onConflict: 'id' });
 
   if (error) {
-    console.error('[Supabase] upsertCase failed', error);
+    console.error('[DataService] upsertCase FAILED:', JSON.stringify(error));
     throw error;
   }
 
-  console.log('[DataService] Successfully upserted case to Supabase');
+  console.log('[DataService] upsertCase OK');
 };
 
 export const removeCase = async (caseId: string): Promise<void> => {
   const client = getSupabaseClient();
   if (!client) {
-    const updated = loadCases().filter(c => c.id !== caseId);
-    cacheCases(updated);
+    cacheCases(loadCases().filter(c => c.id !== caseId));
     return;
   }
 
-  const { error } = await client.from('cases').update({ deleted_at: new Date().toISOString() }).eq('id', caseId);
+  const { error } = await client
+    .from('cases')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', caseId);
+
   if (error) {
-    console.error('[Supabase] removeCase failed', error);
+    console.error('[DataService] removeCase FAILED:', JSON.stringify(error));
     throw error;
   }
 };
 
 export const appendEvidence = async (caseId: string, evidence: EvidenceItem): Promise<void> => {
-  console.log(`[DataService] Appending evidence to case ${caseId}: ${evidence.title}`);
   const client = getSupabaseClient();
   if (!client) {
-    const updated = loadCases().map(c => c.id === caseId ? { ...c, evidence: [...(c.evidence || []), evidence] } : c);
+    const updated = loadCases().map(c =>
+      c.id === caseId ? { ...c, evidence: [...(c.evidence || []), evidence] } : c
+    );
     cacheCases(updated);
     return;
   }
 
-  // Evidence is stored in the metadata JSONB column
-  const { data, error } = await client.from('cases').select('metadata, user_id').eq('id', caseId).single();
+  // Read current metadata
+  const { data, error } = await client
+    .from('cases')
+    .select('metadata')
+    .eq('id', caseId)
+    .single();
 
   if (error) {
-    console.error('[Supabase] fetch case metadata failed', error);
+    console.error('[DataService] appendEvidence read FAILED:', JSON.stringify(error));
     throw error;
   }
 
   const meta = data?.metadata || {};
-  const existingEvidence: EvidenceItem[] = Array.isArray(meta.evidence) ? meta.evidence : [];
-  const nextEvidence = [...existingEvidence, { ...evidence, lastUpdated: new Date().toISOString() }];
+  const existing: EvidenceItem[] = Array.isArray(meta.evidence) ? meta.evidence : [];
+  meta.evidence = [...existing, { ...evidence, lastUpdated: new Date().toISOString() }];
 
-  console.log(`[DataService] Updating case ${caseId} with ${nextEvidence.length} total evidence items in metadata`);
-  const { error: updateError } = await client
+  const { error: updateErr } = await client
     .from('cases')
-    .update({ metadata: { ...meta, evidence: nextEvidence } })
+    .update({ metadata: meta })
     .eq('id', caseId);
 
-  if (updateError) {
-    console.error('[Supabase] appendEvidence failed', updateError);
-    throw updateError;
-  }
-
-  console.log('[DataService] Successfully updated evidence in cases.metadata');
-  
-  // Also try to insert into separate evidence table for structured data
-  const VALID_EVIDENCE_TYPES = ['document', 'image', 'video', 'audio', 'physical', 'digital', 'testimony', 'other'];
-  try {
-    const rawType = (evidence.type || '').toLowerCase();
-    const evidenceType = VALID_EVIDENCE_TYPES.includes(rawType) ? rawType : 'document';
-
-    const evidenceRow: Record<string, any> = {
-        case_id: caseId,
-        name: evidence.title || 'Untitled Evidence',
-        description: evidence.summary || null,
-        type: evidenceType,
-        category: evidence.source || null,
-        ai_analysis: {
-            entities: evidence.keyEntities,
-            risks: evidence.risks,
-            summary: evidence.summary,
-            notes: evidence.notes
-        },
-        file_path: evidence.fileName || null,
-    };
-    // Only use id if it looks like a UUID (36 chars with dashes)
-    if (evidence.id && evidence.id.length > 30) {
-      evidenceRow.id = evidence.id;
-    }
-
-    const { error: tableError } = await client.from('evidence').insert(evidenceRow);
-
-    if (tableError) {
-        console.warn('[Supabase] Failed to insert into dedicated evidence table:', tableError.message);
-    } else {
-        console.log('[DataService] Successfully inserted into dedicated evidence table');
-    }
-  } catch (e) {
-    console.warn('[Supabase] Evidence table structured insert failed (might not exist)');
+  if (updateErr) {
+    console.error('[DataService] appendEvidence update FAILED:', JSON.stringify(updateErr));
+    throw updateErr;
   }
 };
 
+// ── Sessions ─────────────────────────────────────────────────
+
 export const fetchSessions = async (caseId: string): Promise<TrialSession[]> => {
   const client = getSupabaseClient();
-  if (!client) {
-    try {
-      return JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]');
-    } catch {
-      return [];
-    }
-  }
+  const localKey = `trial_sessions_${caseId}`;
+  const loadLocal = (): TrialSession[] => {
+    try { return JSON.parse(localStorage.getItem(localKey) ?? '[]'); } catch { return []; }
+  };
+
+  if (!client) return loadLocal();
 
   const { data, error } = await client
     .from('trial_sessions')
@@ -303,16 +235,11 @@ export const fetchSessions = async (caseId: string): Promise<TrialSession[]> => 
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('[Supabase] fetchSessions failed', error);
-    try {
-      return JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]');
-    } catch {
-      return [];
-    }
+    console.error('[DataService] fetchSessions error:', JSON.stringify(error));
+    return loadLocal();
   }
 
-  // Map database row to TrialSession interface
-  const mapped: TrialSession[] = (data || []).map(row => ({
+  return (data || []).map((row: any) => ({
     id: row.id,
     caseId: row.case_id,
     caseTitle: row.session_name || 'Untitled Session',
@@ -325,41 +252,30 @@ export const fetchSessions = async (caseId: string): Promise<TrialSession[]> => 
     feedback: row.outcomes || '',
     metrics: row.ai_preparation || {},
   }));
-
-  return mapped;
 };
 
 export const upsertSession = async (session: TrialSession): Promise<void> => {
-  console.log(`[DataService] Upserting session: ${session.id} for case ${session.caseId}`);
-  const client = getSupabaseClient();
-  
-  // Always update local cache first
-  const localSessions = JSON.parse(localStorage.getItem(`trial_sessions_${session.caseId}`) ?? '[]');
-  const filtered = localSessions.filter((s: any) => s.id !== session.id);
-  localStorage.setItem(`trial_sessions_${session.caseId}`, JSON.stringify([session, ...filtered].slice(0, 20)));
+  // Always save locally first
+  const localKey = `trial_sessions_${session.caseId}`;
+  try {
+    const local = JSON.parse(localStorage.getItem(localKey) ?? '[]');
+    const filtered = local.filter((s: any) => s.id !== session.id);
+    localStorage.setItem(localKey, JSON.stringify([session, ...filtered].slice(0, 20)));
+  } catch { /* ignore */ }
 
+  const client = getSupabaseClient();
   if (!client) return;
 
-  // Get user_id — trial_sessions.user_id is NOT NULL
-  let userId: string | undefined;
-  try {
-    const { data: { user } } = await client.auth.getUser();
-    userId = user?.id;
-  } catch {
-    console.warn('[DataService] Auth check failed for session upsert');
-    return;
-  }
-  if (!userId) {
-    console.warn('[DataService] No authenticated user for session upsert');
-    return;
-  }
+  const userId = await getAuthUserId();
+  if (!userId) return;
 
+  const VALID_TYPES = ['hearing', 'trial', 'deposition', 'mediation', 'arbitration', 'conference', 'other'];
   const row: Record<string, any> = {
     case_id: session.caseId,
     user_id: userId,
     session_name: session.caseTitle || 'Untitled Session',
     session_date: new Date(session.date).toISOString().split('T')[0],
-    session_type: ['hearing', 'trial', 'deposition', 'mediation', 'arbitration', 'conference', 'other'].includes(session.phase) ? session.phase : 'other',
+    session_type: VALID_TYPES.includes(session.phase) ? session.phase : 'other',
     outcomes: session.feedback || null,
     notes: session.mode || null,
     ai_preparation: session.metrics || {},
@@ -370,53 +286,49 @@ export const upsertSession = async (session: TrialSession): Promise<void> => {
       audioUrl: session.audioUrl,
       originalPhase: session.phase,
       originalMode: session.mode,
-    }
+    },
   };
-
-  // Only set id if it's a valid UUID format
-  if (session.id && session.id.length > 30) {
-    row.id = session.id;
-  }
+  if (session.id && session.id.length > 30) row.id = session.id;
 
   const { error } = await client.from('trial_sessions').upsert(row, { onConflict: 'id' });
   if (error) {
-    console.error('[Supabase] upsertSession failed', error);
+    console.error('[DataService] upsertSession FAILED:', JSON.stringify(error));
     throw error;
   }
-  console.log('[DataService] Successfully upserted session to Supabase');
 };
 
 export const removeSession = async (sessionId: string, caseId: string): Promise<void> => {
   const client = getSupabaseClient();
   if (!client) {
-    const localSessions = JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]');
-    const updated = localSessions.filter((s: any) => s.id !== sessionId);
-    localStorage.setItem(`trial_sessions_${caseId}`, JSON.stringify(updated));
+    try {
+      const local = JSON.parse(localStorage.getItem(`trial_sessions_${caseId}`) ?? '[]');
+      localStorage.setItem(`trial_sessions_${caseId}`, JSON.stringify(local.filter((s: any) => s.id !== sessionId)));
+    } catch { /* ignore */ }
     return;
   }
 
   const { error } = await client.from('trial_sessions').delete().eq('id', sessionId);
   if (error) {
-    console.error('[Supabase] removeSession failed', error);
+    console.error('[DataService] removeSession FAILED:', JSON.stringify(error));
     throw error;
   }
 };
+
+// ── Preferences ──────────────────────────────────────────────
 
 export const upsertPreferences = async (prefs: Record<string, any>): Promise<void> => {
   const client = getSupabaseClient();
   if (!client) return;
-  const { data: { user } } = await client.auth.getUser();
-  if (!user) return;
-  const { error } = await client.from('profiles').update({ preferences: prefs }).eq('id', user.id);
+  const userId = await getAuthUserId();
+  if (!userId) return;
+  const { error } = await client.from('profiles').update({ preferences: prefs }).eq('id', userId);
   if (error) {
-    console.error('[Supabase] upsertPreferences failed', error);
+    console.error('[DataService] upsertPreferences FAILED:', JSON.stringify(error));
     throw error;
   }
-  console.log('[DataService] Successfully synced preferences to cloud');
 };
 
-export const resetLocalCache = () => {
-  clearCases();
-};
+// ── Exports ──────────────────────────────────────────────────
 
+export const resetLocalCache = () => clearCases();
 export const supabaseReady = isSupabaseConfigured;
