@@ -7,26 +7,12 @@ import {
 } from 'lucide-react';
 import { getTrialSimSystemPrompt } from '../services/openAIService';
 import { callGeminiProxy } from '../services/apiProxy';
-import { Type } from '@google/genai';
 import {
   ELEVENLABS_VOICES,
   isElevenLabsConfigured, synthesizeSpeech, ensureAudioUnlocked
 } from '../services/elevenLabsService';
 import { isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
-
-// ─── Types ───────────────────────────────────────────────────
-interface AIResponse {
-  speak: string;
-  action: 'response' | 'objection' | 'ruling' | 'question';
-  objection: { grounds: string; explanation: string } | null;
-  coaching: {
-    critique: string;
-    suggestion: string;
-    teleprompterScript: string;
-    rhetoricalEffectiveness: number;
-  };
-}
 
 const PHASES: { id: TrialPhase; label: string }[] = [
   { id: 'pre-trial-motions', label: 'Pre-Trial Motions' },
@@ -139,36 +125,11 @@ const ArgumentPractice: React.FC = () => {
 
     try {
       const response = await callGeminiProxy({
-        prompt: userText,
+        prompt: userText + '\n\nRespond with JSON only: {"speak":"your in-character response","action":"response|objection|ruling|question","objectionGrounds":"if objecting, the grounds","objectionExplanation":"if objecting, explanation","critique":"specific coaching critique","suggestion":"better approach suggestion","teleprompterScript":"exact words user should say next","rhetoricalScore":0-100}',
         systemPrompt,
         model: 'gemini-2.5-flash',
         conversationHistory: conversationHistory.current.slice(-20),
         options: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              speak: { type: Type.STRING },
-              action: { type: Type.STRING, enum: ['response', 'objection', 'ruling', 'question'] },
-              objection: {
-                type: Type.OBJECT, nullable: true,
-                properties: {
-                  grounds: { type: Type.STRING },
-                  explanation: { type: Type.STRING },
-                },
-              },
-              coaching: {
-                type: Type.OBJECT,
-                properties: {
-                  critique: { type: Type.STRING },
-                  suggestion: { type: Type.STRING },
-                  teleprompterScript: { type: Type.STRING },
-                  rhetoricalEffectiveness: { type: Type.NUMBER },
-                },
-              },
-            },
-            required: ['speak', 'coaching'],
-          },
           temperature: 0.8,
         },
       });
@@ -177,40 +138,56 @@ const ArgumentPractice: React.FC = () => {
         throw new Error(response.error?.message || 'Empty AI response');
       }
 
-      const parsed: AIResponse = JSON.parse(response.text.replace(/```json\n?|```/g, '').trim());
+      // Parse JSON — strip markdown fences if present
+      let raw = response.text.replace(/```json\n?|```/g, '').trim();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // If JSON parse fails, treat entire response as spoken text
+        parsed = { speak: raw, action: 'response', critique: '', suggestion: '', teleprompterScript: '', rhetoricalScore: 0 };
+      }
+
+      const spokenText = parsed.speak || raw;
+      const coaching = {
+        critique: parsed.critique || '',
+        suggestion: parsed.suggestion || '',
+        teleprompterScript: parsed.teleprompterScript || '',
+        rhetoricalEffectiveness: parsed.rhetoricalScore || 0,
+      };
 
       // Update conversation history
-      conversationHistory.current.push({ role: 'model', parts: [{ text: parsed.speak }] });
+      conversationHistory.current.push({ role: 'model', parts: [{ text: spokenText }] });
 
       // Update messages
       setMessages(prev => [
         ...prev,
         { id: crypto.randomUUID(), sender: 'user' as const, text: userText, timestamp: Date.now() },
-        { id: crypto.randomUUID(), sender: 'opponent' as const, text: parsed.speak, timestamp: Date.now() },
+        { id: crypto.randomUUID(), sender: 'opponent' as const, text: spokenText, timestamp: Date.now() },
       ]);
 
       // Update coaching UI
-      setAiTranscript(parsed.speak);
-      setTeleprompter(parsed.coaching.teleprompterScript || '');
-      setCoaching({ critique: parsed.coaching.critique, suggestion: parsed.coaching.suggestion });
+      setAiTranscript(spokenText);
+      setTeleprompter(coaching.teleprompterScript || '');
+      setCoaching({ critique: coaching.critique, suggestion: coaching.suggestion });
 
       // Update running average score
-      if (parsed.coaching.rhetoricalEffectiveness) {
+      if (coaching.rhetoricalEffectiveness) {
         setScoreCount(prev => {
           const newCount = prev + 1;
-          setScore(s => Math.round((s * prev + parsed.coaching.rhetoricalEffectiveness) / newCount));
+          setScore(s => Math.round((s * prev + coaching.rhetoricalEffectiveness) / newCount));
           return newCount;
         });
       }
 
       // Handle objection
-      if (parsed.action === 'objection' && parsed.objection) {
-        setObjection(parsed.objection);
+      if (parsed.action === 'objection' && parsed.objectionGrounds) {
+        setObjection({ grounds: parsed.objectionGrounds, explanation: parsed.objectionExplanation || '' });
         setTimeout(() => setObjection(null), 6000);
       }
 
       // Speak the response
-      await speakText(parsed.speak);
+      await speakText(spokenText);
 
     } catch (e: any) {
       console.error('[TrialSim] AI response error:', e);
