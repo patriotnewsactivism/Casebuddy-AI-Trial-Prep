@@ -30,8 +30,19 @@ export interface TeamMember {
   user_id: string;
   email: string;
   full_name?: string;
-  role: 'owner' | 'attorney' | 'paralegal' | 'viewer';
+  role: 'owner' | 'admin' | 'attorney' | 'paralegal' | 'viewer';
   joined_at: string;
+}
+
+export interface TeamInvitation {
+  id: string;
+  team_id: string;
+  team_name: string;
+  invited_by: string;
+  invited_email: string;
+  role: TeamMember['role'];
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: string;
 }
 
 // ── Case Sharing ─────────────────────────────────────────────────────────────
@@ -39,7 +50,7 @@ export interface TeamMember {
 export const shareCase = async (
   _caseId: string,
   _email: string,
-  _permission: 'view' | 'edit' | 'admin' = 'view',
+  _permission: CaseCollaborator['permission'] = 'view',
 ): Promise<CaseCollaborator | null> => {
   console.warn('[collaborationService] Case sharing not yet configured.');
   return null;
@@ -47,17 +58,15 @@ export const shareCase = async (
 
 export const fetchCaseCollaborators = async (
   _caseId: string,
-): Promise<CaseCollaborator[]> => {
-  return [];
-};
+): Promise<CaseCollaborator[]> => [];
 
-export const removeCaseCollaborator = async (_collaboratorId: string): Promise<void> => {
+export const removeCaseCollaborator = async (_id: string): Promise<void> => {
   console.warn('[collaborationService] removeCaseCollaborator: stub.');
 };
 
 export const updateCasePermission = async (
-  _collaboratorId: string,
-  _permission: 'view' | 'edit' | 'admin',
+  _id: string,
+  _permission: CaseCollaborator['permission'],
 ): Promise<void> => {
   console.warn('[collaborationService] updateCasePermission: stub.');
 };
@@ -69,25 +78,21 @@ export const createTeam = async (_name: string): Promise<Team | null> => {
   return null;
 };
 
-export const getTeams = async (): Promise<Team[]> => {
-  return [];
-};
+export const fetchTeams = async (): Promise<Team[]> => [];
 
 export const deleteTeam = async (_teamId: string): Promise<void> => {
   console.warn('[collaborationService] deleteTeam: stub.');
 };
 
-export const inviteTeamMember = async (
+export const fetchTeamMembers = async (_teamId: string): Promise<TeamMember[]> => [];
+
+export const inviteToTeam = async (
   _teamId: string,
   _email: string,
   _role: TeamMember['role'] = 'viewer',
-): Promise<TeamMember | null> => {
-  console.warn('[collaborationService] inviteTeamMember: stub.');
+): Promise<TeamInvitation | null> => {
+  console.warn('[collaborationService] inviteToTeam: stub.');
   return null;
-};
-
-export const getTeamMembers = async (_teamId: string): Promise<TeamMember[]> => {
-  return [];
 };
 
 export const removeTeamMember = async (_memberId: string): Promise<void> => {
@@ -99,6 +104,15 @@ export const updateTeamMemberRole = async (
   _role: TeamMember['role'],
 ): Promise<void> => {
   console.warn('[collaborationService] updateTeamMemberRole: stub.');
+};
+
+export const fetchMyInvitations = async (): Promise<TeamInvitation[]> => [];
+
+export const respondToInvitation = async (
+  _invitationId: string,
+  _accept: boolean,
+): Promise<void> => {
+  console.warn('[collaborationService] respondToInvitation: stub.');
 };
 
 export const isCollaborationEnabled = (): boolean => false;
