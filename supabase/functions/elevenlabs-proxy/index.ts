@@ -18,22 +18,16 @@ interface ElevenLabsRequest {
   };
 }
 
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
-const DEFAULT_MODEL = 'eleven_monolingual_v1';
+// Default: authoritative male voice for opposing counsel
+const DEFAULT_VOICE_ID = 'TxGEqnHWrfWFTfGW9XjX'; // Josh - deep, professional
+const DEFAULT_MODEL = 'eleven_turbo_v2_5';          // Fastest + highest quality
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return handleOptions();
-  }
-
-  if (req.method !== 'POST') {
-    return errorResponse('Method not allowed', 405);
-  }
+  if (req.method === 'OPTIONS') return handleOptions();
+  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
   try {
-    if (!ELEVENLABS_API_KEY) {
-      return errorResponse('ElevenLabs API key not configured', 500);
-    }
+    if (!ELEVENLABS_API_KEY) return errorResponse('ElevenLabs API key not configured', 500);
 
     const authHeader = req.headers.get('Authorization');
     const user = await validateAuth(authHeader);
@@ -46,14 +40,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const body: ElevenLabsRequest = await req.json();
-
-    if (!body.text) {
-      return errorResponse('Missing required field: text');
-    }
-
-    if (body.text.length > 5000) {
-      return errorResponse('Text exceeds maximum length of 5000 characters', 413);
-    }
+    if (!body.text) return errorResponse('Missing required field: text');
+    if (body.text.length > 5000) return errorResponse('Text exceeds 5000 character limit', 413);
 
     const voiceId = body.voiceId ?? DEFAULT_VOICE_ID;
     const modelId = body.options?.model_id ?? DEFAULT_MODEL;
@@ -62,17 +50,18 @@ Deno.serve(async (req: Request) => {
       text: body.text,
       model_id: modelId,
       voice_settings: {
-        stability: body.options?.stability ?? 0.5,
-        similarity_boost: body.options?.similarity_boost ?? 0.75,
-        style: body.options?.style ?? 0,
+        stability: body.options?.stability ?? 0.45,
+        similarity_boost: body.options?.similarity_boost ?? 0.80,
+        style: body.options?.style ?? 0.3,
         use_speaker_boost: body.options?.use_speaker_boost ?? true,
       },
     };
 
+    // Prefer mp3_44100_128 — best quality/size tradeoff for real-time
     const outputFormat = body.options?.output_format ?? 'mp3_44100_128';
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     try {
       const response = await fetch(
@@ -82,7 +71,7 @@ Deno.serve(async (req: Request) => {
           headers: {
             'Content-Type': 'application/json',
             'xi-api-key': ELEVENLABS_API_KEY,
-            Accept: 'audio/mpeg',
+            'Accept': 'audio/mpeg',
           },
           body: JSON.stringify(payload),
           signal: controller.signal,
@@ -104,22 +93,16 @@ Deno.serve(async (req: Request) => {
         headers: {
           ...corsHeaders,
           'Content-Type': 'audio/mpeg',
-          'Content-Length': audioBuffer.byteLength.toString(),
-          'Cache-Control': 'public, max-age=3600',
+          'Content-Length': String(audioBuffer.byteLength),
+          'Cache-Control': 'no-cache',
         },
       });
-    } catch (fetchError) {
+    } finally {
       clearTimeout(timeout);
-      if (fetchError.name === 'AbortError') {
-        return errorResponse('Request timeout', 504);
-      }
-      throw fetchError;
     }
-  } catch (error) {
-    console.error('Error in elevenlabs-proxy:', error);
-    return errorResponse(
-      error.message ?? 'Internal server error',
-      error.message?.includes('Authorization') || error.message?.includes('token') ? 401 : 500
-    );
+  } catch (error: unknown) {
+    console.error('ElevenLabs proxy error:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    return errorResponse(`Internal error: ${msg}`, 500);
   }
 });
