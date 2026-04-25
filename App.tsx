@@ -32,7 +32,6 @@ const MockJury = lazy(() => import('./components/MockJury'));
 const PublicRecordsManager = lazy(() => import('./components/PublicRecordsManager'));
 const OfficerDatabase = lazy(() => import('./components/OfficerDatabase'));
 const AICoCounsel = lazy(() => import('./components/AICoCounsel'));
-const DiscoveryLens = lazy(() => import('./components/DiscoveryLens'));
 const PricingPage = lazy(() => import('./components/PricingPage'));
 const TeamManager = lazy(() => import('./components/TeamManager'));
 import { MOCK_CASES } from './constants';
@@ -541,7 +540,7 @@ const App = () => {
               <Route path="/app/foia" element={<AuthenticatedLayout><PublicRecordsManager /></AuthenticatedLayout>} />
               <Route path="/app/officers" element={<AuthenticatedLayout><OfficerDatabase /></AuthenticatedLayout>} />
               <Route path="/app/ai-counsel" element={<AuthenticatedLayout><AICoCounsel /></AuthenticatedLayout>} />
-              <Route path="/app/discovery-lens" element={<AuthenticatedLayout><DiscoveryLens /></AuthenticatedLayout>} />
+</AuthenticatedLayout>} />
               <Route path="/app/pricing" element={<AuthenticatedLayout><PricingPage /></AuthenticatedLayout>} />
               <Route path="/app/team" element={<AuthenticatedLayout><TeamManager /></AuthenticatedLayout>} />
 
