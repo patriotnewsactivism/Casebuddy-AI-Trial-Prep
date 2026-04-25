@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import { Message } from '../types';
 import { callGeminiProxy } from '../services/apiProxy';
-import DiscoveryLens from './DiscoveryLens';
 import { toast } from 'react-toastify';
 
 type PersonaTab = 'cocounsel' | 'paralegal';
@@ -27,7 +26,7 @@ const quickActions = [
   { label: 'Strategy Room',      icon: Brain,        path: '/app/strategy',    color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
   { label: 'Draft Document',     icon: FileText,     path: '/app/docs',        color: 'text-green-400 bg-green-500/10 border-green-500/20' },
   { label: 'Mock Jury',          icon: Scale,        path: '/app/mock-jury',   color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
-  { label: 'DiscoveryLens',      icon: ScanLine,     path: '/app/discovery-lens', color: 'text-gold-400 bg-gold-500/10 border-gold-500/20' },
+  { label: 'DiscoveryLens',      icon: ScanLine,     path: 'https://discovery.casebuddy.live', color: 'text-gold-400 bg-gold-500/10 border-gold-500/20' },
 ];
 
 const suggestedPrompts = [
@@ -425,8 +424,20 @@ Keep responses focused and professional. Lead with your most important point. Us
               </div>
             )}
           </div>
-          <div className="flex-1 overflow-hidden">
-            <DiscoveryLens embedded />
+          <div className="flex-1 overflow-hidden flex flex-col items-center justify-center gap-4 p-6">
+            <ScanLine size={40} className="text-gold-400 opacity-60" />
+            <div className="text-center">
+              <p className="text-white font-semibold mb-1">DiscoveryLens is a standalone app</p>
+              <p className="text-slate-400 text-sm mb-4">Upload and OCR your case documents, then AI extracts key facts, timeline events, witnesses, and tasks automatically.</p>
+              <a
+                href="https://discovery.casebuddy.live"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 text-slate-900 font-bold rounded-lg text-sm transition-all"
+              >
+                <ScanLine size={15} /> Open DiscoveryLens
+              </a>
+            </div>
           </div>
         </div>
       )}
