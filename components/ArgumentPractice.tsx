@@ -486,18 +486,20 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
     if (!phase || !mode) return;
 
     try {
-      await ensureAudioUnlocked();
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request mic first so browser prompts user before anything else
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       streamRef.current = stream;
 
       const SpeechRecognitionClass =
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognitionClass) {
-        toast.error('Speech recognition requires Chrome or Edge.');
+        toast.error('Speech recognition requires Chrome or Edge. Firefox is not supported.');
         stream.getTracks().forEach(t => t.stop());
         return;
       }
+
+      // Try audio unlock (non-fatal if it fails)
+      try { await ensureAudioUnlocked(); } catch { /* ignore unlock errors */ }
 
       const recognition = new SpeechRecognitionClass();
       recognition.continuous = true;
@@ -506,64 +508,91 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
       recognition.maxAlternatives = 1;
       recognitionRef.current = recognition;
 
-      let restartCount = 0;
+      let restartDelay = 200;
+      let accumulatedFinal = '';
 
       recognition.onresult = (event: any) => {
-        if (isSpeakingRef.current || isProcessingRef.current) return;
-
+        // Always show captions even while AI speaks
         let interim = '';
         let final = '';
-
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const t = event.results[i][0].transcript;
           if (event.results[i].isFinal) final += t;
           else interim += t;
         }
 
-        // Show live captions (interim = live, final = confirmed)
         if (interim) setInterimTranscript(interim);
         if (final) {
-          setUserTranscript(final);
+          accumulatedFinal += ' ' + final;
+          setUserTranscript(accumulatedFinal.trim());
           setInterimTranscript('');
         }
-        setIsListening(true);
 
+        // Only update listening indicator — do NOT process while AI is busy
+        if (!isSpeakingRef.current && !isProcessingRef.current) {
+          setIsListening(true);
+        }
+
+        // Clear previous silence timer
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        if (final.trim()) {
-          processTranscript(final.trim());
-        } else if (interim.trim()) {
+        // Wait for silence then send — but ONLY if AI is idle
+        const textToSend = (accumulatedFinal + ' ' + (interim || '')).trim();
+        if (textToSend.length > 2) {
           silenceTimerRef.current = setTimeout(() => {
-            if (!isProcessingRef.current && !isSpeakingRef.current && isLiveRef.current) {
-              processTranscript(interim.trim());
+            if (isSpeakingRef.current || isProcessingRef.current || !isLiveRef.current) return;
+            const text = accumulatedFinal.trim() || interim.trim();
+            if (text.length > 2) {
+              accumulatedFinal = '';
+              setUserTranscript('');
+              setInterimTranscript('');
+              getAIResponse(text);
             }
-          }, 2200);
+          }, 1800); // 1.8s silence = end of utterance
         }
       };
 
       recognition.onerror = (event: any) => {
-        console.warn('[TrialSim] Recognition error:', event.error);
-        if (['not-allowed', 'audio-capture', 'service-not-allowed'].includes(event.error)) {
-          toast.error(`Microphone error: ${event.error}`);
+        const err = event.error;
+        console.warn('[TrialSim] Recognition error:', err);
+        if (err === 'not-allowed' || err === 'service-not-allowed') {
+          toast.error('Microphone access denied. Check browser permissions.');
           stopSession();
+        } else if (err === 'audio-capture') {
+          toast.error('No microphone detected. Please connect a microphone.');
+          stopSession();
+        } else if (err === 'network') {
+          // Network errors: recognition will auto-restart via onend
+          console.warn('[TrialSim] Network error on recognition — will restart');
+        } else if (err === 'no-speech') {
+          // Normal — just no one spoke, will restart
         }
+        // All other errors: let onend handle the restart
+      };
+
+      recognition.onstart = () => {
+        console.log('[TrialSim] Recognition started');
+        restartDelay = 200; // reset backoff on successful start
       };
 
       recognition.onend = () => {
         setIsListening(false);
-        if (isLiveRef.current && restartCount < 20) {
-          restartCount++;
+        // Auto-restart as long as session is live
+        if (isLiveRef.current) {
           setTimeout(() => {
-            if (isLiveRef.current) {
-              try { recognition.start(); } catch { /* ignore */ }
+            if (isLiveRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {
+                // Recognition may already be running — safe to ignore
+              }
             }
-          }, 200);
+          }, restartDelay);
+          restartDelay = Math.min(restartDelay * 1.5, 3000); // exponential backoff
         }
       };
 
-      recognition.start();
-      setIsLive(true);
-      setView('active');
+      // Reset all state
       setMessages([]);
       conversationHistory.current = [];
       setScore(0);
@@ -575,26 +604,33 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
       setInterimTranscript('');
       setSessionDuration(0);
       setSessionStartTime(Date.now());
+      setIsLive(true);
+      setView('active');
 
-      // Opening AI message based on mode
+      recognition.start();
+
+      // Opening AI message — delay slightly so state settles
       const openingPrompt =
         mode === 'learn'
-          ? `This is the start of the ${phase} phase. Please welcome the attorney to this simulation, explain what the ${phase} phase is, what their role is, what the key rules are, and what they should say first. Be warm, educational, and encouraging. Then get into character and wait for them to speak.`
+          ? `This is the start of the ${phase} phase. Welcome the attorney warmly. Explain what this phase is, their role, the key rules, and what they should say first. Be encouraging and educational. Then get into character and await their first statement.`
           : mode === 'practice'
-          ? `The ${phase} phase is beginning. Set the scene in 1-2 sentences in character, then be ready to respond to opposing counsel.`
-          : `Court is in session. ${phase.replace(/-/g, ' ')} phase begins now. Set the scene in one sentence and wait for opposing counsel to speak.`;
+          ? `The ${phase} phase is beginning. Set the scene in one sentence in character as opposing counsel or judge. Keep it brief — then wait for the attorney to speak.`
+          : `Court is in session. ${phase.replace(/-/g, ' ')} phase. Set the scene in one crisp sentence. Wait for opposing counsel.`;
 
-      setTimeout(() => getAIResponse(openingPrompt), 600);
+      // Small delay before opening message so recognition has started
+      setTimeout(() => getAIResponse(openingPrompt), 800);
 
     } catch (e: any) {
       console.error('[TrialSim] Start failed:', e);
-      if (e.name === 'NotAllowedError') {
-        toast.error('Microphone permission denied. Please allow microphone access.');
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+        toast.error('Microphone permission denied. Click the lock icon in your browser address bar and allow microphone access.');
+      } else if (e.name === 'NotFoundError') {
+        toast.error('No microphone found. Please connect a microphone and try again.');
       } else {
         toast.error(e.message || 'Failed to start session');
       }
     }
-  }, [phase, mode, processTranscript, getAIResponse, stopSession]);
+  }, [phase, mode, getAIResponse, stopSession]);
 
   // Cleanup on unmount
   useEffect(() => () => stopSession(), [stopSession]);
