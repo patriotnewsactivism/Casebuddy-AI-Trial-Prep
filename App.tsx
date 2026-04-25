@@ -540,7 +540,6 @@ const App = () => {
               <Route path="/app/foia" element={<AuthenticatedLayout><PublicRecordsManager /></AuthenticatedLayout>} />
               <Route path="/app/officers" element={<AuthenticatedLayout><OfficerDatabase /></AuthenticatedLayout>} />
               <Route path="/app/ai-counsel" element={<AuthenticatedLayout><AICoCounsel /></AuthenticatedLayout>} />
-</AuthenticatedLayout>} />
               <Route path="/app/pricing" element={<AuthenticatedLayout><PricingPage /></AuthenticatedLayout>} />
               <Route path="/app/team" element={<AuthenticatedLayout><TeamManager /></AuthenticatedLayout>} />
 
