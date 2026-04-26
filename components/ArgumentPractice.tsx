@@ -300,6 +300,40 @@ const ArgumentPractice: React.FC = () => {
     if (muted || !text.trim()) return;
     setIsSpeaking(true);
 
+    // Helper: browser TTS with role-appropriate voice
+    const doBrowserTTS = async () => {
+      if (!isBrowserTTSAvailable()) return;
+      // Role-based voice settings for courtroom realism
+      const voiceSettings = {
+        judge:    { rate: 0.88, pitch: 0.75, gender: 'male' as const },
+        opposing: { rate: 0.95, pitch: 0.85, gender: 'male' as const },
+        witness:  { rate: 1.0,  pitch: 1.05, gender: 'female' as const },
+        default:  { rate: 0.92, pitch: 0.88, gender: 'male' as const },
+      };
+      const roleKey = text.toLowerCase().includes('sustained') || text.toLowerCase().includes('overruled') || text.toLowerCase().includes('your honor')
+        ? 'judge'
+        : text.toLowerCase().includes('witness') ? 'witness' : 'opposing';
+      const vs = voiceSettings[roleKey] || voiceSettings.default;
+
+      // Try to get the best available voice for this role
+      const voices = window.speechSynthesis?.getVoices() || [];
+      const englishVoices = voices.filter(v => v.lang.startsWith('en'));
+      // Prefer Google/Microsoft high-quality voices
+      const preferred = englishVoices.find(v =>
+        v.name.includes('Google') && (vs.gender === 'male' ? v.name.includes('Male') : v.name.includes('Female'))
+      ) || englishVoices.find(v =>
+        v.name.includes('Microsoft') || v.name.includes('Daniel') || v.name.includes('Samantha')
+      ) || englishVoices[0];
+
+      await speakWithFallback(text, {
+        rate: vs.rate,
+        pitch: vs.pitch,
+        volume: 1.0,
+        voice: preferred?.name,
+      });
+    };
+
+    let elevenLabsSucceeded = false;
     try {
       if (isElevenLabsConfigured()) {
         const voice = ELEVENLABS_VOICES[voiceKey as keyof typeof ELEVENLABS_VOICES];
@@ -313,32 +347,37 @@ const ArgumentPractice: React.FC = () => {
           useSpeakerBoost: true,
         });
 
-        const blob = new Blob([audioData], { type: 'audio/mpeg' });
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.volume = 1.0;
-        playbackRef.current = audio;
+        if (audioData && audioData.byteLength > 100) {
+          const blob = new Blob([audioData], { type: 'audio/mpeg' });
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.volume = 1.0;
+          playbackRef.current = audio;
 
-        await new Promise<void>((resolve, reject) => {
-          audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
-          audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Playback failed')); };
-          audio.play().catch(reject);
-        });
-      } else if (isBrowserTTSAvailable()) {
-        // Enhanced browser TTS — pick a deeper, authoritative voice
-        await speakWithFallback(text, {
-          rate: 0.95,
-          pitch: 0.9,
-          volume: 1.0,
-          voiceURI: undefined, // let browserTTS pick best available
-        });
+          await new Promise<void>((resolve, reject) => {
+            audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+            audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Playback failed')); };
+            audio.play().catch(reject);
+          });
+          elevenLabsSucceeded = true;
+        }
       }
     } catch (e) {
-      console.warn('[TrialSim] TTS error:', e);
-    } finally {
-      playbackRef.current = null;
-      setIsSpeaking(false);
+      console.warn('[TrialSim] ElevenLabs TTS failed, falling back to browser voice:', e);
     }
+
+    // Always fall back to browser TTS if ElevenLabs didn't work
+    if (!elevenLabsSucceeded) {
+      try {
+        await doBrowserTTS();
+      } catch (e2) {
+        console.warn('[TrialSim] Browser TTS also failed:', e2);
+        toast.error('Voice output failed. Check speaker volume.', { autoClose: 3000 });
+      }
+    }
+
+    playbackRef.current = null;
+    setIsSpeaking(false);
   }, [voiceKey, muted]);
 
   // ── AI Response ───────────────────────────────────────────────────────────────
@@ -537,6 +576,9 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
         // Wait for silence then send — but ONLY if AI is idle
+        // Mobile browsers often have shorter recognition bursts, so use shorter timeout on mobile
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const silenceMs = isMobile ? 2200 : 1800; // Slightly longer on mobile for flaky mic
         const textToSend = (accumulatedFinal + ' ' + (interim || '')).trim();
         if (textToSend.length > 2) {
           silenceTimerRef.current = setTimeout(() => {
@@ -548,7 +590,7 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
               setInterimTranscript('');
               getAIResponse(text);
             }
-          }, 1800); // 1.8s silence = end of utterance
+          }, silenceMs);
         }
       };
 
@@ -570,25 +612,54 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
         // All other errors: let onend handle the restart
       };
 
+      let consecutiveRestarts = 0;
+
       recognition.onstart = () => {
         console.log('[TrialSim] Recognition started');
-        restartDelay = 200; // reset backoff on successful start
+        restartDelay = 200;
+        consecutiveRestarts = 0; // reset on successful start
       };
 
       recognition.onend = () => {
         setIsListening(false);
         // Auto-restart as long as session is live
         if (isLiveRef.current) {
+          consecutiveRestarts++;
+          // If we've restarted many times without getting results, warn the user
+          if (consecutiveRestarts >= 8) {
+            toast.warning('Mic connection unstable — try tapping the mic icon to restart.', { autoClose: 5000, toastId: 'mic-unstable' });
+            consecutiveRestarts = 0;
+          }
           setTimeout(() => {
             if (isLiveRef.current && recognitionRef.current) {
               try {
                 recognitionRef.current.start();
               } catch (e) {
                 // Recognition may already be running — safe to ignore
+                // On mobile, recreate the recognition if start fails
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                if (isMobile && isLiveRef.current) {
+                  try {
+                    const SRC = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                    if (SRC) {
+                      const fresh = new SRC();
+                      fresh.continuous = true;
+                      fresh.interimResults = true;
+                      fresh.lang = 'en-US';
+                      fresh.maxAlternatives = 1;
+                      fresh.onresult = recognition.onresult;
+                      fresh.onerror = recognition.onerror;
+                      fresh.onstart = recognition.onstart;
+                      fresh.onend = recognition.onend;
+                      recognitionRef.current = fresh;
+                      fresh.start();
+                    }
+                  } catch { /* last resort failed */ }
+                }
               }
             }
           }, restartDelay);
-          restartDelay = Math.min(restartDelay * 1.5, 3000); // exponential backoff
+          restartDelay = Math.min(restartDelay * 1.5, 3000);
         }
       };
 
