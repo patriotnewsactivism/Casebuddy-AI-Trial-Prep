@@ -12,27 +12,48 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
         allowedHosts: true,
         headers: {
+          // Required for FFmpeg SharedArrayBuffer support
           'Cross-Origin-Embedder-Policy': 'require-corp',
           'Cross-Origin-Opener-Policy': 'same-origin',
         },
       },
       plugins: [react()],
       define: {
-        // API keys for direct access (fallback when Edge Functions unavailable)
-        'process.env.API_KEY': JSON.stringify(env.API_KEY || env.GEMINI_API_KEY || env.GOOGLE_AI_API_KEY || ''),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || env.GOOGLE_AI_API_KEY || ''),
-        'process.env.OPENAI_API_KEY': JSON.stringify(env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || ''),
-        'process.env.ELEVENLABS_API_KEY': JSON.stringify(env.ELEVENLABS_API_KEY || env.VITE_ELEVENLABS_API_KEY || ''),
-        // Supabase public keys - safe for client-side
-        'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL || env.VITE_SUPABASE_URL || ''),
-        'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || ''),
-        // Azure Computer Vision - for OCR
-        'process.env.AZURE_VISION_ENDPOINT': JSON.stringify(env.AZURE_VISION_ENDPOINT || env.AZURE_DOC_INTELLIGENCE_ENDPOINT || ''),
-        'process.env.AZURE_VISION_KEY': JSON.stringify(env.AZURE_VISION_KEY || env.AZURE_DOC_INTELLIGENCE_KEY || ''),
-        // Additional API keys
-        'process.env.ASSEMBLYAI_API_KEY': JSON.stringify(env.ASSEMBLYAI_API_KEY || ''),
-        'process.env.OCR_SPACE_API_KEY': JSON.stringify(env.OCR_SPACE_API_KEY || ''),
-        'process.env.DAILY_API_KEY': JSON.stringify(env.DAILY_API_KEY || ''),
+        // Vercel: set VITE_GEMINI_API_KEY etc. in project environment variables
+        // Fallback chain handles both VITE_ prefixed and unprefixed names
+        'process.env.API_KEY': JSON.stringify(
+          env.VITE_GEMINI_API_KEY || env.VITE_API_KEY || env.API_KEY || env.GEMINI_API_KEY || env.GOOGLE_AI_API_KEY || ''
+        ),
+        'process.env.GEMINI_API_KEY': JSON.stringify(
+          env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY || env.API_KEY || env.GOOGLE_AI_API_KEY || ''
+        ),
+        'process.env.OPENAI_API_KEY': JSON.stringify(
+          env.VITE_OPENAI_API_KEY || env.OPENAI_API_KEY || ''
+        ),
+        'process.env.ELEVENLABS_API_KEY': JSON.stringify(
+          env.VITE_ELEVENLABS_API_KEY || env.ELEVENLABS_API_KEY || ''
+        ),
+        'process.env.SUPABASE_URL': JSON.stringify(
+          env.VITE_SUPABASE_URL || env.SUPABASE_URL || ''
+        ),
+        'process.env.SUPABASE_ANON_KEY': JSON.stringify(
+          env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || ''
+        ),
+        'process.env.AZURE_VISION_ENDPOINT': JSON.stringify(
+          env.VITE_AZURE_VISION_ENDPOINT || env.AZURE_VISION_ENDPOINT || env.AZURE_DOC_INTELLIGENCE_ENDPOINT || ''
+        ),
+        'process.env.AZURE_VISION_KEY': JSON.stringify(
+          env.VITE_AZURE_VISION_KEY || env.AZURE_VISION_KEY || env.AZURE_DOC_INTELLIGENCE_KEY || ''
+        ),
+        'process.env.ASSEMBLYAI_API_KEY': JSON.stringify(
+          env.VITE_ASSEMBLYAI_API_KEY || env.ASSEMBLYAI_API_KEY || ''
+        ),
+        'process.env.OCR_SPACE_API_KEY': JSON.stringify(
+          env.VITE_OCR_SPACE_API_KEY || env.OCR_SPACE_API_KEY || ''
+        ),
+        'process.env.DAILY_API_KEY': JSON.stringify(
+          env.VITE_DAILY_API_KEY || env.DAILY_API_KEY || ''
+        ),
       },
       resolve: {
         alias: {
