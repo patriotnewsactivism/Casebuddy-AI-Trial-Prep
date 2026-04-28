@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
         allowedHosts: true,
         headers: {
           // Required for FFmpeg SharedArrayBuffer support
-          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Embedder-Policy': 'credentialless',
           'Cross-Origin-Opener-Policy': 'same-origin',
         },
       },
