@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Scale, Mic, Users, BrainCircuit, TrendingUp, CheckCircle, Zap, Award, Shield, Clock, DollarSign, Star, ArrowRight, Menu, X, FileAudio, Gavel } from 'lucide-react';
+import { Scale, Mic, Users, BrainCircuit, TrendingUp, CheckCircle, Zap, Award, Shield, Clock, DollarSign, Star, ArrowRight, Menu, X, FileAudio, Gavel, Lock, Server, Trash2, ChevronDown, ChevronUp, Upload, Play, Target, BarChart2 } from 'lucide-react';
 
 const LandingPage = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const features = [
     {
@@ -38,6 +39,33 @@ const LandingPage = () => {
     }
   ];
 
+  const howItWorks = [
+    {
+      step: '01',
+      icon: Upload,
+      title: 'Upload Your Case',
+      description: 'Add case details, evidence documents, witness information, and key arguments to build your case file.'
+    },
+    {
+      step: '02',
+      icon: Play,
+      title: 'Run AI Simulations',
+      description: 'Practice with live voice AI, test jury reactions, run cross-examination drills, and get real-time coaching.'
+    },
+    {
+      step: '03',
+      icon: BarChart2,
+      title: 'Refine Your Strategy',
+      description: 'Review performance analytics, identify weak arguments, and iterate until your case is airtight.'
+    },
+    {
+      step: '04',
+      icon: Target,
+      title: 'Win in Court',
+      description: 'Walk into the courtroom prepared with data-driven confidence and a battle-tested strategy.'
+    }
+  ];
+
   const pricingTiers = [
     {
       name: 'Free',
@@ -48,8 +76,7 @@ const LandingPage = () => {
         '3 AI generations/month',
         '1 trial session/month',
         'Basic analytics',
-        'Community support',
-        'No export features'
+        'Community support'
       ],
       cta: 'Get Started Free',
       highlight: false
@@ -66,7 +93,8 @@ const LandingPage = () => {
         'Session recording & history',
         'Mock jury simulation',
         'Priority support',
-        'All features unlocked'
+        'All features unlocked',
+        'Export & share reports'
       ],
       cta: 'Start Pro Trial',
       highlight: true
@@ -88,6 +116,16 @@ const LandingPage = () => {
       cta: 'Contact Sales',
       highlight: false
     }
+  ];
+
+  const comparisonData = [
+    { feature: 'Cost per trial', casebuddy: '$129/mo', consultant: '$5K–$25K', chatgpt: '$20/mo', manual: 'Your time' },
+    { feature: '24/7 availability', casebuddy: true, consultant: false, chatgpt: true, manual: false },
+    { feature: 'Voice simulation', casebuddy: true, consultant: false, chatgpt: false, manual: false },
+    { feature: 'AI jury prediction', casebuddy: true, consultant: false, chatgpt: false, manual: false },
+    { feature: 'Real-time coaching', casebuddy: true, consultant: false, chatgpt: false, manual: false },
+    { feature: 'Legal accuracy', casebuddy: 'Purpose-built', consultant: 'Expert', chatgpt: 'Risk of hallucination', manual: 'Depends on you' },
+    { feature: 'Case data security', casebuddy: 'Encrypted', consultant: 'Varies', chatgpt: 'Data may be used for training', manual: 'Secure' },
   ];
 
   const testimonials = [
@@ -114,6 +152,48 @@ const LandingPage = () => {
     }
   ];
 
+  const faqs = [
+    {
+      question: 'Is my case data secure and privileged?',
+      answer: 'Absolutely. CaseBuddy uses 256-bit AES encryption for all data at rest and in transit. Your case data is never used to train AI models, and we maintain strict attorney-client privilege protections. You can delete all your data at any time from your account settings.'
+    },
+    {
+      question: 'How accurate is the AI jury simulation?',
+      answer: 'Our AI jury simulation uses advanced language models trained to simulate diverse juror perspectives, demographics, and reasoning patterns. While no simulation can perfectly predict a real jury, CaseBuddy helps you identify weaknesses in your arguments and test different strategies before stepping into the courtroom.'
+    },
+    {
+      question: 'Can I use CaseBuddy for federal and state cases?',
+      answer: 'Yes. CaseBuddy supports trial preparation for cases in all 50 states and federal courts. The AI adapts to different jurisdictions, rules of evidence, and procedural requirements based on your case settings.'
+    },
+    {
+      question: 'Does CaseBuddy replace a jury consultant?',
+      answer: 'No — CaseBuddy complements your existing preparation workflow. Use it to practice 24/7, stress-test arguments, and identify weak spots before working with your consultant. Many attorneys use CaseBuddy for daily preparation and bring the insights to their jury consultant for strategic refinement.'
+    },
+    {
+      question: 'What if opposing counsel accesses my CaseBuddy data?',
+      answer: 'Your data is protected by work product doctrine and attorney-client privilege. All data is encrypted, access-controlled, and stored on secure US-based servers. We never share, sell, or expose your case data to any third party.'
+    },
+    {
+      question: 'Can I cancel my subscription anytime?',
+      answer: 'Yes. There are no long-term contracts or cancellation fees. You can cancel your Pro or Firm subscription at any time from your account settings. Your data remains accessible until the end of your billing period.'
+    },
+    {
+      question: 'How does the live voice trial simulation work?',
+      answer: 'Our voice simulation uses real-time AI to play the role of opposing counsel, witnesses, or the judge. You speak naturally, and the AI responds with realistic objections, cross-examination questions, and courtroom dialogue — just like practicing with a real partner, but available anytime.'
+    },
+    {
+      question: 'Do you offer discounts for solo practitioners?',
+      answer: 'Our Free tier gives solo practitioners a chance to try CaseBuddy at no cost. The Pro plan at $129/month is designed to be accessible — less than the cost of a single billable hour for most attorneys. Contact us for special arrangements if you\'re a public defender or legal aid attorney.'
+    }
+  ];
+
+  const securityFeatures = [
+    { icon: Lock, title: '256-bit AES Encryption', description: 'All data encrypted at rest and in transit' },
+    { icon: Server, title: 'US-Based Servers', description: 'Data stored exclusively on secure US infrastructure' },
+    { icon: Shield, title: 'Never Used for Training', description: 'Your case data is never used to train AI models' },
+    { icon: Trash2, title: 'Right to Deletion', description: 'Delete all your data anytime from account settings' },
+  ];
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
       {/* Navigation */}
@@ -128,9 +208,10 @@ const LandingPage = () => {
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-slate-300 hover:text-white transition-colors">Features</a>
+              <a href="#how-it-works" className="text-slate-300 hover:text-white transition-colors">How It Works</a>
               <a href="#pricing" className="text-slate-300 hover:text-white transition-colors">Pricing</a>
               <a href="#testimonials" className="text-slate-300 hover:text-white transition-colors">Testimonials</a>
-              <a href="https://transcribe.casebuddy.live" target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-white transition-colors">Transcriber</a>
+              <a href="#faq" className="text-slate-300 hover:text-white transition-colors">FAQ</a>
               <Link
                 to="/app"
                 className="bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold px-6 py-2 rounded-lg transition-colors"
@@ -152,9 +233,10 @@ const LandingPage = () => {
           {mobileMenuOpen && (
             <div className="md:hidden py-4 space-y-4 border-t border-slate-800">
               <a href="#features" className="block text-slate-300 hover:text-white transition-colors">Features</a>
+              <a href="#how-it-works" className="block text-slate-300 hover:text-white transition-colors">How It Works</a>
               <a href="#pricing" className="block text-slate-300 hover:text-white transition-colors">Pricing</a>
               <a href="#testimonials" className="block text-slate-300 hover:text-white transition-colors">Testimonials</a>
-              <a href="https://transcribe.casebuddy.live" target="_blank" rel="noopener noreferrer" className="block text-slate-300 hover:text-white transition-colors">Transcriber</a>
+              <a href="#faq" className="block text-slate-300 hover:text-white transition-colors">FAQ</a>
               <Link
                 to="/app"
                 className="block bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold px-6 py-2 rounded-lg transition-colors text-center"
@@ -279,6 +361,87 @@ const LandingPage = () => {
         </div>
       </section>
 
+      {/* How It Works Section */}
+      <section id="how-it-works" className="py-20 sm:py-32 bg-slate-900/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white font-serif mb-4">
+              How It Works
+            </h2>
+            <p className="text-lg text-slate-400">
+              From case upload to courtroom confidence in four simple steps
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {howItWorks.map((step, i) => (
+              <div key={i} className="relative text-center">
+                <div className="w-16 h-16 bg-gold-900/30 border border-gold-500/30 rounded-xl flex items-center justify-center mx-auto mb-6">
+                  <step.icon className="text-gold-500" size={28} />
+                </div>
+                <div className="text-xs font-bold text-gold-500 tracking-widest mb-2">{step.step}</div>
+                <h3 className="text-lg font-bold text-white mb-2">{step.title}</h3>
+                <p className="text-sm text-slate-400">{step.description}</p>
+                {i < howItWorks.length - 1 && (
+                  <div className="hidden lg:block absolute top-8 left-[calc(50%+48px)] w-[calc(100%-96px)] border-t border-dashed border-slate-700"></div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Comparison Table Section */}
+      <section className="py-20 sm:py-32">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white font-serif mb-4">
+              CaseBuddy vs. The Alternatives
+            </h2>
+            <p className="text-lg text-slate-400">
+              A jury consultant charges $5,000–$25,000 per trial. CaseBuddy costs less than a single billable hour.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-700">
+                  <th className="text-left text-sm text-slate-400 font-medium py-4 pr-4"></th>
+                  <th className="text-center text-sm font-bold text-gold-500 py-4 px-3">CaseBuddy</th>
+                  <th className="text-center text-sm text-slate-400 font-medium py-4 px-3">Jury Consultant</th>
+                  <th className="text-center text-sm text-slate-400 font-medium py-4 px-3">ChatGPT</th>
+                  <th className="text-center text-sm text-slate-400 font-medium py-4 px-3">Manual Prep</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonData.map((row, i) => (
+                  <tr key={i} className="border-b border-slate-800">
+                    <td className="text-sm text-slate-300 py-3 pr-4 font-medium">{row.feature}</td>
+                    {['casebuddy', 'consultant', 'chatgpt', 'manual'].map((key) => {
+                      const val = row[key as keyof typeof row];
+                      return (
+                        <td key={key} className="text-center py-3 px-3">
+                          {val === true ? (
+                            <CheckCircle className="text-green-500 mx-auto" size={18} />
+                          ) : val === false ? (
+                            <X className="text-slate-600 mx-auto" size={18} />
+                          ) : (
+                            <span className={`text-sm ${key === 'casebuddy' ? 'text-gold-400 font-semibold' : 'text-slate-400'}`}>
+                              {val}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing Section */}
       <section id="pricing" className="py-20 sm:py-32 bg-slate-900/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -286,8 +449,11 @@ const LandingPage = () => {
             <h2 className="text-3xl sm:text-4xl font-bold text-white font-serif mb-4">
               Simple, Transparent Pricing
             </h2>
-            <p className="text-lg text-slate-400">
+            <p className="text-lg text-slate-400 mb-2">
               Choose the plan that fits your practice
+            </p>
+            <p className="text-sm text-slate-500">
+              Less than the cost of one billable hour — a fraction of what jury consultants charge
             </p>
           </div>
 
@@ -335,8 +501,38 @@ const LandingPage = () => {
         </div>
       </section>
 
+      {/* Security Section */}
+      <section className="py-20 sm:py-32">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white font-serif mb-4">
+              Built for Attorney-Client Privilege
+            </h2>
+            <p className="text-lg text-slate-400">
+              Your case data deserves the same protection you give your clients
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {securityFeatures.map((item, i) => (
+              <div key={i} className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 text-center">
+                <div className="w-12 h-12 bg-green-900/20 border border-green-700/30 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <item.icon className="text-green-500" size={24} />
+                </div>
+                <h3 className="text-sm font-bold text-white mb-1">{item.title}</h3>
+                <p className="text-xs text-slate-400">{item.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-center text-xs text-slate-500 mt-8">
+            CaseBuddy is a practice and preparation tool. It does not provide legal advice and is not a substitute for professional legal counsel.
+          </p>
+        </div>
+      </section>
+
       {/* Testimonials Section */}
-      <section id="testimonials" className="py-20 sm:py-32">
+      <section id="testimonials" className="py-20 sm:py-32 bg-slate-900/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-white font-serif mb-4">
@@ -355,7 +551,7 @@ const LandingPage = () => {
               >
                 <div className="flex gap-1 mb-4">
                   {[...Array(testimonial.rating)].map((_, j) => (
-                    <Star key={j} className="text-gold-500 fill-gold-500" size={16} />
+                    <Star key={j} className="text-gold-500" size={16} style={{ fill: '#d4af37' }} />
                   ))}
                 </div>
                 <p className="text-slate-300 mb-6 italic">"{testimonial.quote}"</p>
@@ -364,6 +560,46 @@ const LandingPage = () => {
                   <div className="text-sm text-slate-400">{testimonial.role}</div>
                   <div className="text-xs text-slate-500">{testimonial.firm}</div>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section id="faq" className="py-20 sm:py-32">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white font-serif mb-4">
+              Frequently Asked Questions
+            </h2>
+            <p className="text-lg text-slate-400">
+              Everything attorneys need to know before getting started
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {faqs.map((faq, i) => (
+              <div
+                key={i}
+                className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden"
+              >
+                <button
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-800/80 transition-colors"
+                >
+                  <span className="text-white font-medium pr-4">{faq.question}</span>
+                  {openFaq === i ? (
+                    <ChevronUp className="text-gold-500 flex-shrink-0" size={20} />
+                  ) : (
+                    <ChevronDown className="text-slate-400 flex-shrink-0" size={20} />
+                  )}
+                </button>
+                {openFaq === i && (
+                  <div className="px-5 pb-5 pt-0">
+                    <p className="text-sm text-slate-400 leading-relaxed">{faq.answer}</p>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -412,7 +648,7 @@ const LandingPage = () => {
               <a href="mailto:support@casebuddy.live" className="hover:text-white transition-colors">Support</a>
             </div>
             <div className="text-sm text-slate-500">
-              © 2025 CaseBuddy. All rights reserved.
+              © 2026 CaseBuddy. All rights reserved.
             </div>
           </div>
         </div>
