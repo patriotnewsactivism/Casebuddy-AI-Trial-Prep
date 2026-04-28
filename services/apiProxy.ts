@@ -360,9 +360,16 @@ export const callGeminiProxy = async (
   if (isSupabaseConfigured()) {
     try {
       console.log('[apiProxy] Attempting Gemini Edge Function proxy...');
-      const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+
+      // Race the proxy call against a timeout so we fall back to direct quickly
+      const proxyPromise = supabase.functions.invoke('gemini-proxy', {
         body: request,
       });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Edge function timeout (8s)')), 8000)
+      );
+
+      const { data, error } = await Promise.race([proxyPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('[apiProxy] Supabase function error:', error);
@@ -376,7 +383,7 @@ export const callGeminiProxy = async (
       console.warn('[apiProxy] Proxy returned success=false:', data?.error || 'Unknown proxy error');
     } catch (err: any) {
       console.warn('[apiProxy] Proxy failure, falling back to direct:', err.message || err);
-      // If it's a CORS error or function not found, we fall back to direct
+      // If it's a CORS error, function not found, or timeout, we fall back to direct
     }
   }
 
