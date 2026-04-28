@@ -268,6 +268,7 @@ const ArgumentPractice: React.FC = () => {
   const isProcessingRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conversationHistory = useRef<Array<{ role: string; parts: Array<{ text: string }> }>>([]);
+  const consecutiveAIFailures = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -433,6 +434,7 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
       }
 
       const spokenText = parsed.speak || raw;
+      consecutiveAIFailures.current = 0; // Reset on success
       conversationHistory.current.push({ role: 'model', parts: [{ text: spokenText }] });
 
       // Update messages
@@ -486,7 +488,12 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
 
     } catch (e: any) {
       console.error('[TrialSim] AI error:', e);
-      toast.error('AI response failed. Try speaking again.');
+      consecutiveAIFailures.current += 1;
+      if (consecutiveAIFailures.current >= 3) {
+        toast.error('AI is not responding. The API key or proxy may be misconfigured. Voice recognition is still active — your speech is being captured.', { autoClose: 8000, toastId: 'ai-down' });
+      } else {
+        toast.error('AI response failed. Try speaking again.');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -529,6 +536,25 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       streamRef.current = stream;
 
+      // Set up audio analyser for visual mic feedback
+      try {
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        // Check mic level every 200ms
+        const checkLevel = () => {
+          if (!isLiveRef.current) return;
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(data);
+          const avg = data.reduce((a, b) => a + b, 0) / data.length;
+          if (avg > 5) setIsListening(true); // Audio detected
+          requestAnimationFrame(checkLevel);
+        };
+        checkLevel();
+      } catch { /* AudioContext not critical */ }
+
       const SpeechRecognitionClass =
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognitionClass) {
@@ -567,10 +593,8 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
           setInterimTranscript('');
         }
 
-        // Only update listening indicator — do NOT process while AI is busy
-        if (!isSpeakingRef.current && !isProcessingRef.current) {
-          setIsListening(true);
-        }
+        // Always show that we're hearing the user, even while AI is busy
+        setIsListening(true);
 
         // Clear previous silence timer
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -679,6 +703,9 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
       setView('active');
 
       recognition.start();
+
+      // Confirm mic is working
+      toast.success('🎤 Mic connected — speak and you\'ll see your words appear', { autoClose: 4000, toastId: 'mic-connected' });
 
       // Opening AI message — delay slightly so state settles
       const openingPrompt =
@@ -985,6 +1012,14 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
 
       {/* ── Live Caption Bar ── */}
       <div className="shrink-0 px-4 py-2 bg-slate-900/80 border-b border-slate-800/50 min-h-[44px] flex items-center gap-2">
+        {/* User transcript always visible when speaking */}
+        {(isListening || interimTranscript || userTranscript) && (
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+            <span className="text-slate-400 text-xs font-semibold mr-1">YOU:</span>
+            <span className="text-white text-sm italic leading-snug line-clamp-1">{interimTranscript || userTranscript}</span>
+          </div>
+        )}
         {isSpeaking ? (
           <div className="flex items-center gap-2">
             <div className="flex gap-0.5">
@@ -1004,17 +1039,11 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
             <Loader2 size={14} className="animate-spin text-amber-500" />
             <span className="text-xs text-slate-500">Opposing counsel is thinking...</span>
           </div>
-        ) : (isListening || interimTranscript) ? (
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-            <span className="text-slate-400 text-xs font-semibold mr-1">YOU:</span>
-            <span className="text-white text-sm italic leading-snug">{interimTranscript || userTranscript}</span>
-          </div>
-        ) : (
+        ) : !(isListening || interimTranscript || userTranscript) ? (
           <span className="text-slate-600 text-xs">
             🎙 Listening... speak into your microphone
           </span>
-        )}
+        ) : null}
       </div>
 
       {/* ── Message Transcript ── */}
