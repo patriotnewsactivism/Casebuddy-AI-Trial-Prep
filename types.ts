@@ -1098,7 +1098,7 @@ export const TIER_LIMITS: Record<UserTier, TierLimits> = {
 };
 
 // AI Model Router Types
-export type AIProvider = 'gemini-flash' | 'gemini-pro' | 'openai';
+export type AIProvider = 'deepseek' | 'gemini-flash' | 'gemini-pro' | 'openai';
 
 export interface AIModelConfig {
   provider: AIProvider;

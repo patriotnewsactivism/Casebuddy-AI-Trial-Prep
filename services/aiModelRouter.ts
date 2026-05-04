@@ -13,6 +13,14 @@ import { AIModelConfig, AIProvider, AIRoutingDecision, UserTier } from '../types
 
 // Available AI models with cost information
 const AI_MODELS: Record<AIProvider, AIModelConfig> = {
+  'deepseek': {
+    provider: 'deepseek',
+    model: 'deepseek-v4-flash',
+    costPer1kTokens: 0.00014,  // $0.14/M input tokens — cheapest capable model
+    maxTokens: 8192,
+    supportsStructuredOutput: true,
+    supportsThinking: false,
+  },
   'gemini-flash': {
     provider: 'gemini-flash',
     model: 'gemini-2.5-flash',
@@ -154,29 +162,21 @@ export function routeAIRequest(
       reason = 'Pro/Enterprise tier: using pro model for strategy analysis';
     }
   } else if (complexity < 0.35) {
-    // Low complexity - always use flash (free)
-    selectedModel = AI_MODELS['gemini-flash'];
-    reason = `Low complexity (${complexity.toFixed(2)}): using cost-free flash model`;
+    // Low complexity — DeepSeek V4 Flash is cheapest capable option
+    selectedModel = AI_MODELS['deepseek'];
+    reason = `Low complexity (${complexity.toFixed(2)}): using DeepSeek V4 Flash (\$0.14/M tokens)`;
   } else if (complexity < 0.6) {
-    // Medium complexity - use flash for free users, pro for paid
-    if (tier === 'free') {
-      selectedModel = AI_MODELS['gemini-flash'];
-      reason = `Medium complexity (${complexity.toFixed(2)}): free tier uses flash`;
-    } else {
-      selectedModel = AI_MODELS['gemini-flash'];
-      reason = `Medium complexity (${complexity.toFixed(2)}): flash is sufficient`;
-    }
+    // Medium complexity — DeepSeek handles this well
+    selectedModel = AI_MODELS['deepseek'];
+    reason = `Medium complexity (${complexity.toFixed(2)}): DeepSeek V4 Flash is cost-effective`;
   } else {
-    // High complexity - upgrade model for paid users
+    // High complexity — DeepSeek for most, Gemini Pro only for tasks requiring thinking
     if (tier === 'enterprise') {
       selectedModel = AI_MODELS['gemini-pro'];
-      reason = `High complexity (${complexity.toFixed(2)}): enterprise tier uses pro model`;
-    } else if (tier === 'pro') {
-      selectedModel = AI_MODELS['gemini-pro'];
-      reason = `High complexity (${complexity.toFixed(2)}): pro tier uses pro model`;
+      reason = `High complexity (${complexity.toFixed(2)}): enterprise tier uses Gemini Pro for deep reasoning`;
     } else {
-      selectedModel = AI_MODELS['gemini-flash'];
-      reason = `High complexity (${complexity.toFixed(2)}): free tier limited to flash`;
+      selectedModel = AI_MODELS['deepseek'];
+      reason = `High complexity (${complexity.toFixed(2)}): DeepSeek V4 Flash handles most legal analysis`;
     }
   }
 

@@ -8,6 +8,7 @@ import { callGeminiProxy, callOpenAIProxy, isProxyReady, checkProxyHealth, Gemin
 import { getCachedResult, cacheResult } from "./cacheService";
 import { routeAIRequest, getModelString } from "./aiModelRouter";
 import { logAudit } from "./auditLogService";
+import { isDeepSeekConfigured, generateDeepSeekResponse } from "./deepseekService";
 
 const apiKey = process.env.API_KEY || '';
 
