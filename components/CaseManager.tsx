@@ -118,7 +118,7 @@ const CaseManager = () => {
       handleSuccess('Case generated from AI');
     } catch (error: any) {
       console.error('[CaseManager] AI generation failed:', error);
-      handleError(error?.message || 'Failed to generate case. Check your API key configuration.');
+      handleError(error, error?.message || 'Failed to generate case. Check your API key configuration.');
     } finally {
       setGenerating(false);
     }
