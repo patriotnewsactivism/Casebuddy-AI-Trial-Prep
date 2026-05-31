@@ -63,7 +63,7 @@ export const CaseTimeline: React.FC<CaseTimelineProps> = ({ activeCase, updateCa
 
   const handleAddEvent = async () => {
     if (!newEvent.title || !newEvent.date || !activeCase) {
-      handleError('Please fill in title and date');
+      handleError('Please fill in title and date', 'Please fill in title and date');
       return;
     }
 
@@ -94,7 +94,7 @@ export const CaseTimeline: React.FC<CaseTimelineProps> = ({ activeCase, updateCa
 
   const handleExtractFromDocuments = async () => {
     if (!activeCase || !activeCase.evidence || activeCase.evidence.length === 0) {
-      handleError('No documents in case to extract from');
+      handleError('No documents in case to extract from', 'No documents in case to extract from');
       return;
     }
 
@@ -126,7 +126,7 @@ export const CaseTimeline: React.FC<CaseTimelineProps> = ({ activeCase, updateCa
       });
 
       if (!response.success || !response.text) {
-        handleError('Failed to extract events');
+        handleError('Failed to extract events', 'Failed to extract events');
         return;
       }
 
@@ -145,7 +145,7 @@ export const CaseTimeline: React.FC<CaseTimelineProps> = ({ activeCase, updateCa
       await updateCase(activeCase.id, { timelineEvents: merged });
       handleSuccess(`Extracted ${newEvents.length} events from documents`);
     } catch (error) {
-      handleError('Failed to extract events from documents');
+      handleError('Failed to extract events from documents', 'Failed to extract events from documents');
     } finally {
       setExtracting(false);
     }
