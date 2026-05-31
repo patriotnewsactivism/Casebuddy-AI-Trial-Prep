@@ -21,7 +21,7 @@ export const WitnessesTab: React.FC<WitnessesTabProps> = ({ activeCase, updateCa
 
   const handleAddFact = async () => {
     if (!newFact.name) {
-      handleError('Name is required');
+      handleError('Name is required', 'Name is required');
       return;
     }
     const witness: Witness = {
@@ -41,7 +41,7 @@ export const WitnessesTab: React.FC<WitnessesTabProps> = ({ activeCase, updateCa
 
   const handleAddExpert = async () => {
     if (!newExpert.name) {
-      handleError('Name is required');
+      handleError('Name is required', 'Name is required');
       return;
     }
     const expert: ExpertWitness = {
