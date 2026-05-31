@@ -404,7 +404,7 @@ Respond in character as opposing counsel / judge / witness as appropriate for th
 Return ONLY valid JSON matching the schema. No markdown, no explanation outside the JSON.`,
         systemPrompt,
         model: 'gemini-2.5-flash',
-        conversationHistory: conversationHistory.current.slice(-24),
+        conversationHistory: (conversationHistory.current.slice(-24) as { role: "user" | "model"; parts: { text: string }[] }[]),
         options: { temperature: 0.85 },
       });
 
