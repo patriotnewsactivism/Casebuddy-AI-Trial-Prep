@@ -54,7 +54,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ activeCase, updateCa
           text = ocrResult.text;
         }
 
-        const analysis = await analyzeDocument(file, text);
+        const analysis = await analyzeDocument(file.name, text);
         const docEntry = {
           id: crypto.randomUUID(),
           caseId: activeCase.id,
