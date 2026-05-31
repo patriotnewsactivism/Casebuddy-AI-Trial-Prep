@@ -42,12 +42,7 @@ const formatTimestamp = (seconds: number) => {
   return `${min}:${sec.toString().padStart(2, '0')}`;
 };
 
-interface RawTranscriptSegment {
-  start?: unknown;
-  end?: unknown;
-  speaker?: unknown;
-  text?: unknown;
-}
+// RawTranscriptSegment defined above
 
 export const parseSegmentsFromResponse = (rawText: string): TranscriptSegmentData[] => {
   const normalized = rawText.trim();
