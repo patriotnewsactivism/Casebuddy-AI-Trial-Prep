@@ -31,7 +31,7 @@ export const DiscoveryTab: React.FC<DiscoveryTabProps> = ({ activeCase, updateCa
 
   const handleAddRequest = async () => {
     if (!newRequest.number || !newRequest.question) {
-      handleError('Number and question are required');
+      handleError('Number and question are required', 'Number and question are required');
       return;
     }
 
