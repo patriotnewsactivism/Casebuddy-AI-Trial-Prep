@@ -92,7 +92,7 @@ export const processMediaFile = async (
     if (isVideo) {
       try {
         console.log(`[audioUtils] Extracting audio from video: ${file.name}`);
-        return await extractAudio(file, { onProgress });
+        return await extractAudio(file);
       } catch (ffmpegError) {
         console.warn(`[audioUtils] FFmpeg video extraction failed, falling back to original`, ffmpegError);
         return file;
@@ -113,7 +113,7 @@ export const processMediaFile = async (
     // 1. TRY FFmpeg (Best Quality & Reliability)
     try {
       console.log(`[audioUtils] Attempting FFmpeg optimization for ${file.name}`);
-      const audioBlob = await extractAudio(file, { onProgress });
+      const audioBlob = await extractAudio(file);
       console.log(`[audioUtils] FFmpeg optimization successful: ${audioBlob.size} bytes`);
       return audioBlob;
     } catch (ffmpegError) {
