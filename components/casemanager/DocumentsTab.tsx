@@ -40,7 +40,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ activeCase, updateCa
       for (const file of files) {
         const validation = validateFile(file);
         if (!validation.valid) {
-          handleError(`${file.name}: ${validation.error}`);
+          handleError(new Error(`${file.name}: ${validation.error}`), `${file.name}: ${validation.error}`);
           continue;
         }
 
@@ -48,7 +48,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ activeCase, updateCa
         if (useAzureOCR && azureConfigured) {
           const ocrResult = await performAzureOCR(file);
           if (ocrResult.error) {
-            handleError(`OCR failed: ${ocrResult.error}`);
+            handleError(new Error(`OCR failed: ${ocrResult.error}`), `OCR failed: ${ocrResult.error}`);
             continue;
           }
           text = ocrResult.text;
