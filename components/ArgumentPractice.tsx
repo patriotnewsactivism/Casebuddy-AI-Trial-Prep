@@ -261,6 +261,7 @@ const ArgumentPractice: React.FC = () => {
 
   // ── Refs ──
   const recognitionRef = useRef<any>(null);
+  const accumulatedFinalRef = useRef<string>('');
   const streamRef = useRef<MediaStream | null>(null);
   const playbackRef = useRef<HTMLAudioElement | null>(null);
   const isLiveRef = useRef(false);
@@ -502,6 +503,7 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
   // ── Speech Recognition ────────────────────────────────────────────────────────
   const processTranscript = useCallback((text: string) => {
     if (!text.trim() || isProcessingRef.current || isSpeakingRef.current) return;
+    accumulatedFinalRef.current = '';
     setUserTranscript(text);
     getAIResponse(text);
   }, [getAIResponse]);
@@ -549,7 +551,8 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
           const data = new Uint8Array(analyser.frequencyBinCount);
           analyser.getByteFrequencyData(data);
           const avg = data.reduce((a, b) => a + b, 0) / data.length;
-          if (avg > 5) setIsListening(true); // Audio detected
+          // Mic level visual feedback only — don't set isListening here
+          // isListening is managed by SpeechRecognition events
           requestAnimationFrame(checkLevel);
         };
         checkLevel();
@@ -574,7 +577,7 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
       recognitionRef.current = recognition;
 
       let restartDelay = 200;
-      let accumulatedFinal = '';
+      accumulatedFinalRef.current = ''; // reset on each session start
 
       recognition.onresult = (event: any) => {
         // Always show captions even while AI speaks
@@ -588,28 +591,27 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
 
         if (interim) setInterimTranscript(interim);
         if (final) {
-          accumulatedFinal += ' ' + final;
-          setUserTranscript(accumulatedFinal.trim());
+          accumulatedFinalRef.current = (accumulatedFinalRef.current + ' ' + final).trim();
+          setUserTranscript(accumulatedFinalRef.current);
           setInterimTranscript('');
         }
 
-        // Always show that we're hearing the user, even while AI is busy
+        // Show that we're hearing the user
         setIsListening(true);
 
         // Clear previous silence timer
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        // Wait for silence then send — but ONLY if AI is idle
-        // Mobile browsers often have shorter recognition bursts, so use shorter timeout on mobile
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        const silenceMs = isMobile ? 2200 : 1800; // Slightly longer on mobile for flaky mic
-        const textToSend = (accumulatedFinal + ' ' + (interim || '')).trim();
-        if (textToSend.length > 2) {
+        // Only start silence timer if there's actually something to send
+        const textToSend = (accumulatedFinalRef.current + ' ' + interim).trim();
+        if (textToSend.length > 3) {
+          const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+          const silenceMs = isMobile ? 2200 : 1800;
           silenceTimerRef.current = setTimeout(() => {
             if (isSpeakingRef.current || isProcessingRef.current || !isLiveRef.current) return;
-            const text = accumulatedFinal.trim() || interim.trim();
-            if (text.length > 2) {
-              accumulatedFinal = '';
+            const text = accumulatedFinalRef.current.trim();
+            if (text.length > 3) {
+              accumulatedFinalRef.current = '';
               setUserTranscript('');
               setInterimTranscript('');
               getAIResponse(text);
@@ -666,15 +668,19 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
                   try {
                     const SRC = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
                     if (SRC) {
+                      const prev = recognitionRef.current;
                       const fresh = new SRC();
                       fresh.continuous = true;
                       fresh.interimResults = true;
                       fresh.lang = 'en-US';
                       fresh.maxAlternatives = 1;
-                      fresh.onresult = recognition.onresult;
-                      fresh.onerror = recognition.onerror;
-                      fresh.onstart = recognition.onstart;
-                      fresh.onend = recognition.onend;
+                      // Copy handlers from current ref, not stale closure
+                      if (prev) {
+                        fresh.onresult = prev.onresult;
+                        fresh.onerror = prev.onerror;
+                        fresh.onstart = prev.onstart;
+                        fresh.onend = prev.onend;
+                      }
                       recognitionRef.current = fresh;
                       fresh.start();
                     }
