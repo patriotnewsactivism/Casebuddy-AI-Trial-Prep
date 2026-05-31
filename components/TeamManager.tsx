@@ -71,7 +71,7 @@ const TeamManager = () => {
   const handleCreateTeam = async () => {
     if (!newTeamName.trim()) return;
     try {
-      const team = await createTeam(newTeamName.trim(), newTeamFirm.trim() || undefined);
+      const team = await createTeam(newTeamName.trim());
       if (team) {
         setTeams(prev => [team, ...prev]);
         setSelectedTeam(team);
@@ -88,7 +88,7 @@ const TeamManager = () => {
   const handleInvite = async () => {
     if (!selectedTeam || !inviteEmail.trim()) return;
     try {
-      await inviteToTeam(selectedTeam.id, inviteEmail.trim(), inviteRole);
+      await inviteToTeam(selectedTeam.id, inviteEmail.trim(), inviteRole as 'owner' | 'admin' | 'attorney' | 'paralegal' | 'viewer');
       toast.success(`Invitation sent to ${inviteEmail}`);
       setShowInviteForm(false);
       setInviteEmail('');
