@@ -18,7 +18,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ activeCase, updateCase
 
   const handleSaveProfile = async () => {
     if (!draftProfile.fullName) {
-      handleError('Client full name is required');
+      handleError('Client full name is required', 'Client full name is required');
       return;
     }
     await updateCase(activeCase.id, { clientProfile: draftProfile });
