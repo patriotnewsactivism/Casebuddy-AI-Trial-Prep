@@ -22,6 +22,7 @@ export interface Team {
   name: string;
   owner_id: string;
   created_at: string;
+  firm_name?: string;
 }
 
 export interface TeamMember {
@@ -43,6 +44,7 @@ export interface TeamInvitation {
   role: TeamMember['role'];
   status: 'pending' | 'accepted' | 'declined';
   created_at: string;
+  expires_at?: string;
 }
 
 // ── Case Sharing ─────────────────────────────────────────────────────────────
