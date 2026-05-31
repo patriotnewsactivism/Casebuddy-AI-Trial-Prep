@@ -122,7 +122,7 @@ async function checkDatabaseCache(promptHash: string, analysisType: string): Pro
     }
 
     // Record cache hit
-    client.rpc('record_cache_hit', { p_cache_id: data.id }).then(() => {}).catch(() => {});
+    void Promise.resolve(client.rpc('record_cache_hit', { p_cache_id: data.id })).catch(() => {});
 
     // Promote to L1
     const key = `${promptHash}:${analysisType}`;
