@@ -148,7 +148,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           .from('profiles')
           .select('*')
           .eq('id', sUser.id)
-          .single() as unknown as Promise<any>,
+          .single() as any,
         5000,
         'Profile fetch'
       );
@@ -165,7 +165,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           };
           
           const { error: insertError } = await withTimeout(
-            supabase.from('profiles').insert(newProfile) as unknown as Promise<any>,
+            supabase.from('profiles').insert(newProfile) as any,
             5000,
             'Profile creation'
           );
