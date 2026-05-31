@@ -351,7 +351,7 @@ const App = () => {
       setSyncStatus('error');
       syncQueueRef.current.push({ fn, label });
       // Only toast if this is a new failure (cloud was previously working)
-      if (cloudReachableRef.current !== false) {
+      if ((cloudReachableRef.current as boolean) !== false) {
         toast.error(`Cloud sync failed: ${label}. Will retry automatically.`, { toastId: 'sync-fail' });
       }
       console.error(`[CloudSync] ${label} failed:`, error);
