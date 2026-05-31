@@ -73,7 +73,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ activeCase, updateCa
         handleSuccess(`${file.name} uploaded and analyzed`);
       }
     } catch (error) {
-      handleError('Upload failed');
+      handleError('Upload failed', 'Upload failed');
     } finally {
       setUploading(false);
     }
