@@ -60,7 +60,7 @@ const CaseManager = () => {
 
   const handleCreateCase = async () => {
     if (!newCaseData.title || !newCaseData.client) {
-      handleError('Title and client are required');
+      handleError('Title and client are required', 'Title and client are required');
       return;
     }
 
@@ -91,7 +91,7 @@ const CaseManager = () => {
 
   const handleAiGenerate = async () => {
     if (!aiGenPrompt.trim()) {
-      handleError('Please enter a case description');
+      handleError('Please enter a case description', 'Please enter a case description');
       return;
     }
 
