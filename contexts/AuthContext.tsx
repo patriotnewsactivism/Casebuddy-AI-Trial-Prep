@@ -143,15 +143,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const fetchProfile = async (sUser: SupabaseUser) => {
     try {
-      const { data, error: profileError } = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', sUser.id)
-          .single() as any,
-        5000,
-        'Profile fetch'
-      );
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', sUser.id)
+        .single();
 
       if (profileError) {
         if (profileError.code === 'PGRST116') {
@@ -164,11 +160,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             preferences: { plan: 'free', usage: DEFAULT_USAGE }
           };
           
-          const { error: insertError } = await withTimeout(
-            supabase.from('profiles').insert(newProfile) as any,
-            5000,
-            'Profile creation'
-          );
+          const { error: insertError } = await supabase.from('profiles').insert(newProfile);
           if (insertError) throw insertError;
           
           setUser({
