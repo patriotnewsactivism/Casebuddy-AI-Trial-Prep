@@ -37,6 +37,7 @@ const TeamManager = lazy(() => import('./components/TeamManager'));
 const LiveTrialSim = lazy(() => import('./components/LiveTrialSim'));
 const DiscoveryNuke = lazy(() => import('./components/DiscoveryNuke'));
 const AgentCenter = lazy(() => import('./components/AgentCenter'));
+const AIPartner = lazy(() => import('./components/AIPartner'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -137,6 +138,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
 
           <NavItem path="/app" icon={LayoutDashboard} label="Dashboard" />
           <NavItem path="/app/agents" icon={Bot} label="Agent Command" />
+          <NavItem path="/app/partner" icon={BrainCircuit} label="AI Partner" />
           <NavItem path="/app/cases" icon={Gavel} label="Case Files" />
 
           <div className="pt-1" />
@@ -550,6 +552,7 @@ const App = () => {
               <Route path="/app/team" element={<AuthenticatedLayout><TeamManager /></AuthenticatedLayout>} />
               <Route path="/app/discovery-nuke" element={<AuthenticatedLayout><DiscoveryNuke /></AuthenticatedLayout>} />
               <Route path="/app/agents" element={<AuthenticatedLayout><AgentCenter /></AuthenticatedLayout>} />
+              <Route path="/app/partner" element={<AuthenticatedLayout><AIPartner /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
