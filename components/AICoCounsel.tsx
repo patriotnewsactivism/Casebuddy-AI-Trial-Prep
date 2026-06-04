@@ -26,7 +26,7 @@ const quickActions = [
   { label: 'Strategy Room',      icon: Brain,        path: '/app/strategy',    color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
   { label: 'Draft Document',     icon: FileText,     path: '/app/docs',        color: 'text-green-400 bg-green-500/10 border-green-500/20' },
   { label: 'Mock Jury',          icon: Scale,        path: '/app/mock-jury',   color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
-  { label: 'DiscoveryLens',      icon: ScanLine,     path: 'https://discovery.casebuddy.live', color: 'text-gold-400 bg-gold-500/10 border-gold-500/20' },
+  { label: 'Discovery Nuke',      icon: ScanLine,     path: '/app/discovery-nuke', color: 'text-red-400 bg-red-500/10 border-red-500/20' },
 ];
 
 const suggestedPrompts = [
@@ -414,8 +414,8 @@ Keep responses focused and professional. Lead with your most important point. Us
               <ScanLine size={18} className="text-gold-500" />
             </div>
             <div>
-              <p className="text-sm font-bold text-white">AI Paralegal · DiscoveryLens</p>
-              <p className="text-xs text-slate-500">Upload case documents — AI will OCR, analyze, and auto-populate your case</p>
+              <p className="text-sm font-bold text-white">AI Paralegal</p>
+              <p className="text-xs text-slate-500">Discovery requests, privilege logs, document analysis, and deadline tracking</p>
             </div>
             {activeCase && (
               <div className="ml-auto flex items-center gap-2 text-xs text-slate-400">
@@ -424,19 +424,56 @@ Keep responses focused and professional. Lead with your most important point. Us
               </div>
             )}
           </div>
-          <div className="flex-1 overflow-hidden flex flex-col items-center justify-center gap-4 p-6">
-            <ScanLine size={40} className="text-gold-400 opacity-60" />
-            <div className="text-center">
-              <p className="text-white font-semibold mb-1">DiscoveryLens is a standalone app</p>
-              <p className="text-slate-400 text-sm mb-4">Upload and OCR your case documents, then AI extracts key facts, timeline events, witnesses, and tasks automatically.</p>
-              <a
-                href="https://discovery.casebuddy.live"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 text-slate-900 font-bold rounded-lg text-sm transition-all"
+          <div className="flex-1 overflow-hidden flex flex-col items-center justify-center gap-6 p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
+              <Link
+                to="/app/discovery-nuke"
+                className="flex items-center gap-3 p-4 bg-red-500/5 border border-red-500/20 rounded-xl hover:bg-red-500/10 transition-colors group"
               >
-                <ScanLine size={15} /> Open DiscoveryLens
-              </a>
+                <div className="p-2 rounded-lg bg-red-500/10">
+                  <AlertCircle size={18} className="text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white group-hover:text-red-300 transition-colors">Discovery Nuke</p>
+                  <p className="text-xs text-slate-500">Bulk document analysis</p>
+                </div>
+              </Link>
+              <Link
+                to="/app/discovery"
+                className="flex items-center gap-3 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl hover:bg-blue-500/10 transition-colors group"
+              >
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <ScanLine size={18} className="text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors">Discovery Manager</p>
+                  <p className="text-xs text-slate-500">Track requests & deadlines</p>
+                </div>
+              </Link>
+              <Link
+                to="/app/timeline"
+                className="flex items-center gap-3 p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl hover:bg-purple-500/10 transition-colors group"
+              >
+                <div className="p-2 rounded-lg bg-purple-500/10">
+                  <Scale size={18} className="text-purple-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">Evidence Timeline</p>
+                  <p className="text-xs text-slate-500">Visual timeline builder</p>
+                </div>
+              </Link>
+              <Link
+                to="/app/admissibility"
+                className="flex items-center gap-3 p-4 bg-green-500/5 border border-green-500/20 rounded-xl hover:bg-green-500/10 transition-colors group"
+              >
+                <div className="p-2 rounded-lg bg-green-500/10">
+                  <Shield size={18} className="text-green-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white group-hover:text-green-300 transition-colors">Evidence Analyzer</p>
+                  <p className="text-xs text-slate-500">FRE admissibility analysis</p>
+                </div>
+              </Link>
             </div>
           </div>
         </div>

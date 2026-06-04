@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -35,6 +35,7 @@ const AICoCounsel = lazy(() => import('./components/AICoCounsel'));
 const PricingPage = lazy(() => import('./components/PricingPage'));
 const TeamManager = lazy(() => import('./components/TeamManager'));
 const LiveTrialSim = lazy(() => import('./components/LiveTrialSim'));
+const DiscoveryNuke = lazy(() => import('./components/DiscoveryNuke'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -149,7 +150,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <div className="pt-1" />
           <NavGroup title="Tools" icon={BrainCircuit} isOpen={showTools} toggle={() => setShowTools(!showTools)}>
             <NavItem path="/app/strategy" icon={BrainCircuit} label="Strategy & AI" />
-            <NavItem path="/app/discovery-lens" icon={ScanLine} label="DiscoveryLens" />
+            <NavItem path="/app/discovery-nuke" icon={Bomb} label="Discovery Nuke" />
             <NavItem path="/app/settlement" icon={Calculator} label="Settlement" />
             <NavItem path="/app/discovery" icon={FileSearch} label="Discovery Manager" />
             <NavItem path="/app/case-law" icon={BookOpen} label="Case Law Research" />
@@ -545,6 +546,7 @@ const App = () => {
               <Route path="/app/ai-counsel" element={<AuthenticatedLayout><AICoCounsel /></AuthenticatedLayout>} />
               <Route path="/app/pricing" element={<AuthenticatedLayout><PricingPage /></AuthenticatedLayout>} />
               <Route path="/app/team" element={<AuthenticatedLayout><TeamManager /></AuthenticatedLayout>} />
+              <Route path="/app/discovery-nuke" element={<AuthenticatedLayout><DiscoveryNuke /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
