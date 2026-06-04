@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -36,6 +36,7 @@ const PricingPage = lazy(() => import('./components/PricingPage'));
 const TeamManager = lazy(() => import('./components/TeamManager'));
 const LiveTrialSim = lazy(() => import('./components/LiveTrialSim'));
 const DiscoveryNuke = lazy(() => import('./components/DiscoveryNuke'));
+const AgentCenter = lazy(() => import('./components/AgentCenter'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -135,6 +136,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <div className="border-t border-slate-800/60 pt-2" />
 
           <NavItem path="/app" icon={LayoutDashboard} label="Dashboard" />
+          <NavItem path="/app/agents" icon={Bot} label="Agent Command" />
           <NavItem path="/app/cases" icon={Gavel} label="Case Files" />
 
           <div className="pt-1" />
@@ -547,6 +549,7 @@ const App = () => {
               <Route path="/app/pricing" element={<AuthenticatedLayout><PricingPage /></AuthenticatedLayout>} />
               <Route path="/app/team" element={<AuthenticatedLayout><TeamManager /></AuthenticatedLayout>} />
               <Route path="/app/discovery-nuke" element={<AuthenticatedLayout><DiscoveryNuke /></AuthenticatedLayout>} />
+              <Route path="/app/agents" element={<AuthenticatedLayout><AgentCenter /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
