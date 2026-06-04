@@ -13,10 +13,19 @@ import { TrialPhase, SimulationMode } from '../types';
 
 // ─── Audio Context Setup ─────────────────────────────────────────────────────
 
-export const setupAudioContexts = (inputRate = 16000, outputRate = 24000) => {
+export const setupAudioContexts = async (inputRate = 16000, outputRate = 24000) => {
   const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
   const inputAudioContext = new AudioContextClass({ sampleRate: inputRate });
   const outputAudioContext = new AudioContextClass({ sampleRate: outputRate });
+
+  // Mobile fix: AudioContext starts suspended on iOS/Android — must resume after user gesture
+  if (inputAudioContext.state === 'suspended') {
+    try { await inputAudioContext.resume(); } catch { /* non-fatal */ }
+  }
+  if (outputAudioContext.state === 'suspended') {
+    try { await outputAudioContext.resume(); } catch { /* non-fatal */ }
+  }
+
   return { inputAudioContext, outputAudioContext };
 };
 
@@ -71,6 +80,26 @@ export async function decodeAudioData(
   }
   return buffer;
 }
+
+// ─── Mobile Audio Helpers ────────────────────────────────────────────────────
+
+/**
+ * On mobile, AudioContext suspends when the browser tab/app goes to background
+ * or the phone locks. Call this once to auto-resume when the user returns.
+ */
+export const keepAudioAlive = (
+  inputCtx: AudioContext,
+  outputCtx: AudioContext,
+) => {
+  const handler = () => {
+    if (document.visibilityState === 'visible') {
+      if (inputCtx.state === 'suspended') inputCtx.resume().catch(() => {});
+      if (outputCtx.state === 'suspended') outputCtx.resume().catch(() => {});
+    }
+  };
+  document.addEventListener('visibilitychange', handler);
+  return () => document.removeEventListener('visibilitychange', handler);
+};
 
 // ─── System Prompt Builder ───────────────────────────────────────────────────
 

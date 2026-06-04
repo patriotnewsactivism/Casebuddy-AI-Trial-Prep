@@ -14,7 +14,7 @@ interface StatCardProps {
 }
 
 const StatCard = ({ icon: Icon, title, value, subtext, color = 'text-slate-400' }: StatCardProps) => (
-  <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+  <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-shadow">
     <div className="flex items-start justify-between">
       <div>
         <p className="text-slate-400 text-sm font-medium mb-1">{title}</p>
@@ -51,7 +51,7 @@ const Dashboard = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
         <StatCard 
           icon={Briefcase} 
           title="Active Cases" 
@@ -83,7 +83,7 @@ const Dashboard = () => {
       </div>
 
       {/* Main Content Split */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
         
         {/* Left: Activity Chart / Empty State */}
         <div className="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-xl p-6 flex flex-col">
