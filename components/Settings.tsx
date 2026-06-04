@@ -129,8 +129,7 @@ const Settings = () => {
     setAvailableVoices(browserTTS.getVoices());
 
     // Load Azure OCR config (from env vars or localStorage)
-    const { loadAzureOCRConfig } = require('../services/azureOcrService');
-    const azureConfig = loadAzureOCRConfig();
+        const azureConfig = loadAzureOCRConfig();
     if (azureConfig) {
       // If loaded from env, mark as OK
       if (process.env.AZURE_VISION_ENDPOINT) {
