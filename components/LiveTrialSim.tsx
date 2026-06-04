@@ -110,8 +110,8 @@ const LiveTrialSim: React.FC = () => {
   const [activeEvent, setActiveEvent] = useState<CourtroomEvent | null>(null);
   const [eventHistory, setEventHistory] = useState<CourtroomEvent[]>([]);
   const [juryMood, setJuryMood] = useState<JuryMood>({ attention: 60, sympathy: 50, confusion: 10, engagement: 50, leaningToward: 'neutral', notableReactions: [] });
-  const eventTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const eventCheckRef = useRef<ReturnType<typeof setInterval>>();
+  const eventTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const eventCheckRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // ── Clipboard ──
   const [activeClipTab, setActiveClipTab] = useState<'script' | 'notes'>('script');
@@ -125,7 +125,7 @@ const LiveTrialSim: React.FC = () => {
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyzerRef = useRef<AnalyserNode | null>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const isConnectedRef = useRef(false);
 
