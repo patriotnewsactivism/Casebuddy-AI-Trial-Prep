@@ -126,8 +126,6 @@ export const selectProvider = (
     return 'google-document-ai';
   }
   
-  }
-  
   if (available.includes('aws-textract')) {
     return 'aws-textract';
   }
