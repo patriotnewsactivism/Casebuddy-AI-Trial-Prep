@@ -766,79 +766,31 @@ const Settings = () => {
         </div>
       </div>
 
-      {/* Azure Computer Vision OCR */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Cloud className="text-gold-500" size={24} />
-          <h2 className="text-xl font-semibold text-white">Azure Computer Vision</h2>
-        </div>
-
-        <div className="space-y-4">
-          <p className="text-sm text-slate-400">Configure Azure Computer Vision for OCR processing of scanned documents and images.</p>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Endpoint URL</label>
-            <input
-              type="url"
-              placeholder="https://[region].api.cognitive.microsoft.com"
-              value={azureEndpoint}
-              onChange={(e) => setAzureEndpoint(e.target.value)}
-              onBlur={() => saveAzureConfig()}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-gold-500"
-            />
-            <p className="text-xs text-slate-400 mt-1">Your Azure Computer Vision resource endpoint</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">API Key</label>
-            <input
-              type="password"
-              placeholder="Your API key"
-              value={azureApiKey}
-              onChange={(e) => setAzureApiKey(e.target.value)}
-              onBlur={() => saveAzureConfig()}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-gold-500"
-            />
-            <p className="text-xs text-slate-400 mt-1">Your Azure Computer Vision API key (kept in browser localStorage only)</p>
-          </div>
-
-          <button
-            onClick={handleTestAzure}
-            disabled={testingAzure || !azureEndpoint || !azureApiKey}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-              testingAzure
-                ? 'bg-slate-700 text-slate-400'
-                : azureStatus === 'ok'
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : azureStatus === 'error'
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : 'bg-slate-700 hover:bg-slate-600 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed'
-            }`}
-          >
-            {testingAzure && <Loader2 size={18} className="animate-spin" />}
-            {testingAzure ? 'Testing...' : azureStatus === 'ok' ? 'Connected' : azureStatus === 'error' ? 'Failed' : 'Test Connection'}
-          </button>
-
-          {azureMessage && (
-            <div className={`flex items-start gap-2 p-3 rounded-lg ${
-              azureStatus === 'ok'
-                ? 'bg-green-900/30 border border-green-700'
-                : 'bg-red-900/30 border border-red-700'
-            }`}>
-              {azureStatus === 'ok' ? (
-                <Check className="text-green-500 flex-shrink-0 mt-0.5" size={18} />
-              ) : (
-                <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={18} />
-              )}
-              <p className={azureStatus === 'ok' ? 'text-green-400 text-sm' : 'text-red-400 text-sm'}>
-                {azureMessage}
-              </p>
+      {/* AWS Textract OCR */}
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <span className="text-orange-400 text-sm font-bold">AWS</span>
+              </div>
+              <h2 className="text-xl font-semibold text-white">AWS Textract OCR</h2>
             </div>
-          )}
-        </div>
-      </div>
+            <p className="text-sm text-slate-400 mb-4">
+              Amazon Textract is your primary OCR provider — handles scanned documents, PDFs, forms, and tables with high accuracy. Configured via environment variables.
+            </p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-700/50 border border-slate-600">
+              <div className={`w-2 h-2 rounded-full ${process.env.AWS_ACCESS_KEY_ID ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              <span className="text-sm text-slate-300">
+                {process.env.AWS_ACCESS_KEY_ID
+                  ? '✅ AWS credentials configured — Textract ready'
+                  : '⚠️ Set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in Vercel environment variables'}
+              </span>
+            </div>
+            <div className="mt-3 text-xs text-slate-500">
+              Fallback: Google Document AI → Tesseract (local, free, no API required)
+            </div>
+          </div>
 
-      {/* Appearance */}
+          {/* Appearance */}
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <Palette className="text-gold-500" size={24} />
