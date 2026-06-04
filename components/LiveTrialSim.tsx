@@ -35,6 +35,14 @@ import {
   evaluateLiveTurn,
   LiveTurnGrade,
 } from '../services/geminiLiveService';
+import {
+  evaluateForEvents,
+  evaluateJuryMood,
+  QUICK_OBJECTION_EVENTS,
+  JUDGE_INTERRUPTIONS,
+  CourtroomEvent,
+  JuryMood,
+} from '../services/courtroomEventsService';
 import { toast } from 'react-toastify';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -96,6 +104,13 @@ const LiveTrialSim: React.FC = () => {
   // ── Grading ──
   const [currentScore, setCurrentScore] = useState(50);
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
+
+  // ── Courtroom Events ──
+  const [activeEvent, setActiveEvent] = useState<CourtroomEvent | null>(null);
+  const [eventHistory, setEventHistory] = useState<CourtroomEvent[]>([]);
+  const [juryMood, setJuryMood] = useState<JuryMood>({ attention: 60, sympathy: 50, confusion: 10, engagement: 50, leaningToward: 'neutral', notableReactions: [] });
+  const eventTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const eventCheckRef = useRef<ReturnType<typeof setInterval>>();
 
   // ── Clipboard ──
   const [activeClipTab, setActiveClipTab] = useState<'script' | 'notes'>('script');
@@ -177,9 +192,88 @@ const LiveTrialSim: React.FC = () => {
     };
   }, [isConnected]);
 
+  // ── Courtroom Events Loop — check for interruptions/objections periodically ──
+  useEffect(() => {
+    if (!isConnected) {
+      if (eventCheckRef.current) clearInterval(eventCheckRef.current);
+      return;
+    }
+
+    const caseCtx = activeCase
+      ? `${activeCase.title} — ${activeCase.summary || ''}`
+      : 'Generic legal practice';
+
+    eventCheckRef.current = setInterval(async () => {
+      if (transcript.length < 2 || activeEvent) return;
+
+      try {
+        const event = await evaluateForEvents(transcript, phase, mode, caseCtx, eventHistory);
+        if (event) {
+          setActiveEvent(event);
+          setEventHistory(prev => [...prev, event]);
+
+          // Auto-dismiss after duration
+          eventTimerRef.current = setTimeout(() => {
+            setActiveEvent(null);
+          }, event.duration);
+        }
+      } catch (err) {
+        console.warn('[LiveTrialSim] Event evaluation error:', err);
+      }
+
+      // Update jury mood every ~3 checks
+      if (transcript.length > 4 && Math.random() < 0.33) {
+        try {
+          const mood = await evaluateJuryMood(transcript, phase, caseCtx);
+          setJuryMood(mood);
+        } catch {}
+      }
+    }, 12000); // Check every 12 seconds
+
+    return () => {
+      if (eventCheckRef.current) clearInterval(eventCheckRef.current);
+      if (eventTimerRef.current) clearTimeout(eventTimerRef.current);
+    };
+  }, [isConnected, transcript.length, phase, mode, activeCase, activeEvent]);
+
+  // ── Fire Quick Objection (user clicks objection button) ──
+  const fireQuickObjection = useCallback((objectionType: string) => {
+    const key = objectionType.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_');
+    const eventData = QUICK_OBJECTION_EVENTS[key];
+    if (!eventData) return;
+
+    const event: CourtroomEvent = {
+      ...eventData,
+      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      timestamp: Date.now(),
+    };
+
+    setActiveEvent(event);
+    setEventHistory(prev => [...prev, event]);
+
+    // Randomly follow up with judge ruling
+    setTimeout(() => {
+      const isOverruled = Math.random() > 0.5;
+      const ruling = isOverruled ? JUDGE_INTERRUPTIONS.overruled : JUDGE_INTERRUPTIONS.sustained;
+      const rulingEvent: CourtroomEvent = {
+        ...ruling,
+        id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        timestamp: Date.now(),
+      };
+      setActiveEvent(rulingEvent);
+      setEventHistory(prev => [...prev, rulingEvent]);
+
+      eventTimerRef.current = setTimeout(() => setActiveEvent(null), rulingEvent.duration);
+    }, eventData.duration);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
-    return () => stopSession();
+    return () => {
+      stopSession();
+      if (eventCheckRef.current) clearInterval(eventCheckRef.current);
+      if (eventTimerRef.current) clearTimeout(eventTimerRef.current);
+    };
   }, []);
 
   // ── Start Session ──
@@ -541,6 +635,52 @@ OPPOSING COUNSEL: ${activeCase.opposingCounsel || 'Opposing Counsel'}`;
             </div>
           </div>
 
+          {/* Courtroom Event Overlay */}
+          {activeEvent && (
+            <div className={`mb-3 rounded-xl border p-4 transition-all animate-pulse-once ${
+              activeEvent.severity === 'critical'
+                ? 'bg-red-500/10 border-red-500/40 shadow-lg shadow-red-900/20'
+                : activeEvent.severity === 'warning'
+                ? 'bg-yellow-500/10 border-yellow-500/30'
+                : 'bg-blue-500/10 border-blue-500/20'
+            }`}>
+              <div className="flex items-start gap-3">
+                <span className="text-2xl flex-shrink-0">{activeEvent.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs font-black uppercase tracking-wider ${
+                      activeEvent.speaker === 'judge' ? 'text-yellow-400'
+                      : activeEvent.speaker === 'opposing_counsel' ? 'text-red-400'
+                      : activeEvent.speaker === 'jury' ? 'text-blue-400'
+                      : 'text-slate-400'
+                    }`}>
+                      {activeEvent.speaker === 'judge' ? 'THE COURT'
+                        : activeEvent.speaker === 'opposing_counsel' ? 'OPPOSING COUNSEL'
+                        : activeEvent.speaker === 'jury' ? 'JURY BOX'
+                        : 'COURTROOM'}
+                    </span>
+                  </div>
+                  <p className="text-white font-medium text-sm italic">{activeEvent.text}</p>
+                  {activeEvent.subtext && (
+                    <p className="text-slate-400 text-xs mt-1">{activeEvent.subtext}</p>
+                  )}
+                  {activeEvent.requiresResponse && activeEvent.suggestedResponse && mode !== 'trial' && (
+                    <div className="mt-2 p-2 bg-slate-900/60 rounded-lg border border-slate-700/50">
+                      <p className="text-xs text-slate-500">💡 Suggested response:</p>
+                      <p className="text-xs text-emerald-400 italic mt-0.5">{activeEvent.suggestedResponse}</p>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setActiveEvent(null)}
+                  className="text-slate-600 hover:text-white text-xs flex-shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Live Transcript */}
           <div className="flex-1 bg-slate-900 rounded-xl border border-slate-800 p-4 overflow-y-auto space-y-3 shadow-inner min-h-[180px]">
             <h3 className="text-xs font-bold text-slate-500 uppercase sticky top-0 bg-slate-900 py-2 border-b border-slate-800 mb-2 z-10">
@@ -638,20 +778,81 @@ OPPOSING COUNSEL: ${activeCase.opposingCounsel || 'Opposing Counsel'}`;
                   </ul>
                 </div>
 
-                {/* Quick Objections */}
+                {/* Quick Objections (now functional) */}
                 <div>
                   <h4 className="text-slate-500 text-xs font-bold uppercase mb-3">Quick Objections</h4>
                   <div className="grid grid-cols-2 gap-2">
                     {QUICK_OBJECTIONS.map(obj => (
                       <button
                         key={obj}
-                        className="px-3 py-2.5 bg-slate-900 border border-slate-800 hover:border-red-500 hover:text-red-400 text-slate-400 rounded-lg text-xs font-bold transition-all text-center"
+                        onClick={() => fireQuickObjection(obj)}
+                        className="px-3 py-2.5 bg-slate-900 border border-slate-800 hover:border-red-500 hover:text-red-400 text-slate-400 rounded-lg text-xs font-bold transition-all text-center active:scale-95"
                       >
-                        {obj}
+                        🚫 {obj}
                       </button>
                     ))}
                   </div>
                 </div>
+
+                {/* Jury Mood Panel */}
+                {isConnected && (
+                  <div className="p-4 bg-slate-900/70 border border-slate-800 rounded-xl">
+                    <h4 className="text-slate-500 text-xs font-bold uppercase mb-3 flex items-center gap-1.5">
+                      👥 Jury Reading
+                    </h4>
+                    <div className="space-y-2">
+                      {[
+                        { label: 'Attention', value: juryMood.attention, color: 'bg-blue-500' },
+                        { label: 'Sympathy', value: juryMood.sympathy, color: 'bg-emerald-500' },
+                        { label: 'Engagement', value: juryMood.engagement, color: 'bg-purple-500' },
+                        { label: 'Confusion', value: juryMood.confusion, color: 'bg-red-500' },
+                      ].map(m => (
+                        <div key={m.label}>
+                          <div className="flex justify-between text-[10px] mb-0.5">
+                            <span className="text-slate-400">{m.label}</span>
+                            <span className="text-slate-500">{m.value}%</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-1000 ${m.color}`}
+                              style={{ width: `${m.value}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <div className="mt-2 flex items-center gap-1.5 text-[10px]">
+                        <span className="text-slate-500">Leaning:</span>
+                        <span className={`font-bold uppercase ${
+                          juryMood.leaningToward === 'plaintiff' ? 'text-emerald-400'
+                          : juryMood.leaningToward === 'defense' ? 'text-red-400'
+                          : 'text-slate-400'
+                        }`}>{juryMood.leaningToward}</span>
+                      </div>
+                      {juryMood.notableReactions.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {juryMood.notableReactions.slice(-2).map((r, i) => (
+                            <p key={i} className="text-[10px] text-slate-500 italic">👁️ {r}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Event History (recent) */}
+                {eventHistory.length > 0 && (
+                  <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl">
+                    <h4 className="text-slate-500 text-xs font-bold uppercase mb-2">Recent Events</h4>
+                    <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                      {eventHistory.slice(-5).reverse().map(evt => (
+                        <div key={evt.id} className="flex items-center gap-2 text-[10px]">
+                          <span>{evt.emoji}</span>
+                          <span className="text-slate-400 truncate">{evt.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Mode indicator */}
                 <div className="p-3 bg-slate-900/50 border border-slate-800 rounded-xl">
