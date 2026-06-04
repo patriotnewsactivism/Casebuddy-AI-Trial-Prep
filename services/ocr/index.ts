@@ -115,7 +115,7 @@ export const selectProvider = (
   }
   
   if (options?.enableTableExtraction) {
-    for (const providerId of tableProviders) {
+    for (const providerId of (['aws-textract', 'google-document-ai', 'mathpix'] as OCRProvider[])) {
       if (available.includes(providerId)) {
         return providerId;
       }
