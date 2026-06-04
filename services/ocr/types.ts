@@ -113,12 +113,12 @@ export const PROVIDER_INFO: Record<OCRProvider, OCRProviderInfo> = {
 
 export const DOCUMENT_CATEGORY_RECOMMENDATIONS: Record<LegalDocumentCategory, OCRProvider[]> = {
   'general': ['tesseract', 'google-document-ai'],
-  'deposition': ['aws-textract', 'google-document-ai', 'azure-document-intelligence'],
-  'contract': ['azure-document-intelligence', 'google-document-ai'],
-  'court-filing': ['aws-textract', 'google-document-ai', 'azure-document-intelligence'],
+  'deposition': ['aws-textract', 'google-document-ai'],
+  'contract': ['google-document-ai'],
+  'court-filing': ['aws-textract', 'google-document-ai'],
   'financial-records': ['aws-textract', 'mathpix', 'google-document-ai'],
-  'medical-records': ['aws-textract', 'azure-document-intelligence'],
+  'medical-records': ['aws-textract'],
   'handwritten-evidence': ['mathpix', 'aws-textract', 'google-document-ai'],
-  'form': ['aws-textract', 'azure-document-intelligence', 'google-document-ai'],
-  'table-heavy': ['aws-textract', 'mathpix', 'azure-document-intelligence']
+  'form': ['aws-textract', 'google-document-ai'],
+  'table-heavy': ['aws-textract', 'mathpix']
 };
