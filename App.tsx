@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -34,6 +34,7 @@ const OfficerDatabase = lazy(() => import('./components/OfficerDatabase'));
 const AICoCounsel = lazy(() => import('./components/AICoCounsel'));
 const PricingPage = lazy(() => import('./components/PricingPage'));
 const TeamManager = lazy(() => import('./components/TeamManager'));
+const LiveTrialSim = lazy(() => import('./components/LiveTrialSim'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -138,6 +139,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <div className="pt-1" />
           <NavGroup title="Trial Preparation" icon={FolderOpen} isOpen={showPrep} toggle={() => setShowPrep(!showPrep)}>
             <NavItem path="/app/practice" icon={Mic} label="Trial Simulator" />
+            <NavItem path="/app/live-sim" icon={Radio} label="Live Voice Sim" />
             <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
             <NavItem path="/app/mock-jury" icon={Scale} label="Mock Jury" />
             <NavItem path="/app/deposition" icon={FileText} label="Deposition Outlines" />
@@ -524,6 +526,7 @@ const App = () => {
               <Route path="/app/cases" element={<AuthenticatedLayout><CaseManager /></AuthenticatedLayout>} />
               <Route path="/app/witness-lab" element={<AuthenticatedLayout><WitnessLab /></AuthenticatedLayout>} />
               <Route path="/app/practice" element={<AuthenticatedLayout><ArgumentPractice /></AuthenticatedLayout>} />
+              <Route path="/app/live-sim" element={<AuthenticatedLayout><LiveTrialSim /></AuthenticatedLayout>} />
               <Route path="/app/strategy" element={<AuthenticatedLayout><StrategyRoom /></AuthenticatedLayout>} />
               <Route path="/app/transcriber" element={<AuthenticatedLayout><Transcriber /></AuthenticatedLayout>} />
               <Route path="/app/docs" element={<AuthenticatedLayout><DraftingAssistant /></AuthenticatedLayout>} />
