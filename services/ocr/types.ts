@@ -88,20 +88,7 @@ export const PROVIDER_INFO: Record<OCRProvider, OCRProviderInfo> = {
     recommendedFor: ['financial-records', 'medical-records', 'table-heavy', 'form'],
     setupRequired: ['AWS Account', 'Textract permissions', 'Access key ID', 'Secret access key']
   },
-  'azure-document-intelligence': {
-    id: 'azure-document-intelligence',
-    name: 'Azure Document Intelligence',
-    description: 'Best for contracts with prebuilt models. Strong form and layout analysis.',
-    capabilities: {
-      printedTextAccuracy: 98,
-      handwritingSupport: true,
-      tableExtraction: true,
-      multiColumnSupport: true,
-      lowQualitySupport: true,
-      formRecognition: true,
-      clientSide: false
-    },
-    pricingInfo: '$1.50/1K pages',
+  pricingInfo: '$1.50/1K pages',
     recommendedFor: ['contract', 'court-filing', 'deposition'],
     setupRequired: ['Azure Account', 'Document Intelligence resource', 'Endpoint URL', 'API key']
   },
