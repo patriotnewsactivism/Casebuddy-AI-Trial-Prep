@@ -11,7 +11,8 @@ import { PROVIDER_INFO } from '../types';
 import { BaseServerProvider, calculatePageCount } from './baseProvider';
 
 export class AzureDocumentIntelligenceProvider extends BaseServerProvider {
-  readonly id: OCRProvider = 'azure-document-intelligence';
+  // @ts-ignore — azure provider deprecated, kept for compatibility only
+  readonly id: any = 'azure-document-intelligence';
   readonly name = 'Azure Document Intelligence';
   readonly capabilities: OCRCapabilities = PROVIDER_INFO['azure-document-intelligence'].capabilities;
   
