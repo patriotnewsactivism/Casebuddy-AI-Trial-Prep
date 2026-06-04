@@ -95,7 +95,7 @@ const AIPartner = () => {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/50">
+      <div className="px-3 sm:px-4 md:px-6 py-3 md:py-4 border-b border-slate-800 bg-slate-950/50">
         <div className="flex items-center gap-3 mb-3">
           <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500/20 to-red-500/20 border border-purple-500/30">
             <Brain size={20} className="text-purple-400" />
@@ -107,7 +107,7 @@ const AIPartner = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
 
         {/* Analysis Selector */}
         {!activeTab && (
@@ -124,7 +124,7 @@ const AIPartner = () => {
                   key={tab.id}
                   onClick={() => runAnalysis(tab.id)}
                   disabled={!!loading}
-                  className="flex items-center gap-4 p-5 bg-slate-800/40 border border-slate-700/50 rounded-xl hover:bg-slate-800/70 hover:border-slate-600 transition-all text-left group"
+                  className="flex items-center gap-3 sm:gap-4 p-4 sm:p-5 bg-slate-800/40 border border-slate-700/50 rounded-xl hover:bg-slate-800/70 hover:border-slate-600 transition-all text-left group"
                 >
                   <div className={`p-2.5 rounded-xl bg-slate-800 border border-slate-700 group-hover:border-slate-600 transition-colors`}>
                     <Icon size={22} className={tab.color} />
@@ -383,7 +383,7 @@ const AIPartner = () => {
 
                 <p className="text-sm text-slate-300 leading-relaxed">{settlement.reasoning}</p>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-4">
                     <p className="text-xs text-purple-400 font-bold uppercase mb-2">Settlement Range</p>
                     <div className="space-y-1">

@@ -204,7 +204,7 @@ const DiscoveryNuke = () => {
 
   if (!result && !isAnalyzing) {
     return (
-      <div className="flex-1 flex flex-col p-6 overflow-y-auto">
+      <div className="flex-1 flex flex-col p-3 sm:p-4 md:p-6 overflow-y-auto">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30">
@@ -228,7 +228,7 @@ const DiscoveryNuke = () => {
           onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all ${
+          className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 md:p-12 text-center cursor-pointer transition-all ${
             isDragging
               ? 'border-red-500 bg-red-500/5 scale-[1.01]'
               : 'border-slate-700 hover:border-slate-500 bg-slate-900/50'
@@ -377,7 +377,7 @@ const DiscoveryNuke = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mt-4 overflow-x-auto pb-1">
+        <div className="flex gap-1 mt-4 overflow-x-auto pb-1 -mx-1 px-1">
           {tabs.map(tab => (
             <button
               key={tab.id}

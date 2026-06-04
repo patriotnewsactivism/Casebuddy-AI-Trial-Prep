@@ -262,11 +262,11 @@ const AgentCenter = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
 
         {/* ── Settings View ──────────────────────────────────────────── */}
         {viewMode === 'settings' && (
-          <div className="max-w-lg space-y-4">
+          <div className="max-w-lg mx-auto space-y-4">
             <h3 className="text-sm font-bold text-white mb-4">Agent Configuration</h3>
             <p className="text-xs text-slate-400 mb-6">Configure how your AI agents identify themselves in emails and communications.</p>
 
@@ -384,8 +384,8 @@ const AgentCenter = () => {
 
                 return (
                   <div key={role} className={`border rounded-xl overflow-hidden ${info.bgColor}`}>
-                    <div className="p-5">
-                      <div className="flex items-start gap-3">
+                    <div className="p-3 sm:p-4 md:p-5">
+                      <div className="flex flex-col sm:flex-row items-start gap-3">
                         <div className={`p-2.5 rounded-xl ${info.bgColor}`}>
                           <Icon size={22} className={info.color} />
                         </div>
@@ -404,7 +404,7 @@ const AgentCenter = () => {
                         <button
                           onClick={() => runAgent(role)}
                           disabled={isAnalyzing}
-                          className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                          className={`w-full sm:w-auto px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
                             isAnalyzing
                               ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                               : `${info.bgColor} ${info.color} hover:brightness-125`

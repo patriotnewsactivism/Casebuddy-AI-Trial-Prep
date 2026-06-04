@@ -33,6 +33,7 @@ import {
   decodeAudio,
   decodeAudioData,
   evaluateLiveTurn,
+  keepAudioAlive,
   LiveTurnGrade,
 } from '../services/geminiLiveService';
 import {
@@ -280,18 +281,29 @@ const LiveTrialSim: React.FC = () => {
   const startSession = useCallback(async () => {
     try {
       // Set up audio contexts
-      const { inputAudioContext, outputAudioContext } = setupAudioContexts();
+      const { inputAudioContext, outputAudioContext } = await setupAudioContexts();
       audioCtxRef.current = { input: inputAudioContext, output: outputAudioContext };
       nextStartTimeRef.current = 0;
+
+      // Mobile: auto-resume audio when returning from background/lock
+      const cleanupAudioKeepAlive = keepAudioAlive(inputAudioContext, outputAudioContext);
+      // Store cleanup so stopSession can remove it
+      (audioCtxRef.current as any)._cleanupKeepAlive = cleanupAudioKeepAlive;
 
       // Set up analyzer for visualizer
       const analyzer = inputAudioContext.createAnalyser();
       analyzer.fftSize = 256;
       analyzerRef.current = analyzer;
 
-      // Get microphone
+      // Get microphone — mobile-optimized constraints
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          ...(isMobile ? { sampleRate: 16000, channelCount: 1 } : {}),
+        },
       });
       streamRef.current = stream;
 
@@ -402,6 +414,7 @@ OPPOSING COUNSEL: ${activeCase.opposingCounsel || 'Opposing Counsel'}`;
       processorRef.current.disconnect();
       processorRef.current = null;
     }
+    (audioCtxRef.current as any)?._cleanupKeepAlive?.();
     audioCtxRef.current?.input.close().catch(() => {});
     audioCtxRef.current?.output.close().catch(() => {});
     audioCtxRef.current = null;
@@ -578,13 +591,13 @@ OPPOSING COUNSEL: ${activeCase.opposingCounsel || 'Opposing Counsel'}`;
           </header>
 
           {/* Main Visualizer Stage */}
-          <div className="flex-shrink-0 h-56 md:h-72 relative bg-slate-900/50 rounded-2xl border border-slate-800 flex flex-col items-center justify-center overflow-hidden mb-4 shadow-2xl">
+          <div className="flex-shrink-0 h-40 sm:h-56 md:h-72 relative bg-slate-900/50 rounded-2xl border border-slate-800 flex flex-col items-center justify-center overflow-hidden mb-3 sm:mb-4 shadow-2xl">
             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-950/80 pointer-events-none" />
 
             {/* Score HUD */}
-            <div className="absolute top-4 right-4 md:top-6 md:right-6 flex flex-col items-end z-20">
+            <div className="absolute top-2 right-2 sm:top-4 sm:right-4 md:top-6 md:right-6 flex flex-col items-end z-20">
               <div className="flex items-baseline gap-1">
-                <span className={`text-4xl md:text-5xl font-black tracking-tighter ${getScoreColor(currentScore)} drop-shadow-lg transition-colors duration-700`}>
+                <span className={`text-2xl sm:text-4xl md:text-5xl font-black tracking-tighter ${getScoreColor(currentScore)} drop-shadow-lg transition-colors duration-700`}>
                   {currentScore}
                 </span>
                 <span className="text-xs text-slate-500 font-bold">/100</span>
@@ -605,7 +618,7 @@ OPPOSING COUNSEL: ${activeCase.opposingCounsel || 'Opposing Counsel'}`;
             </div>
 
             {/* Central Mic Button + Visualizer */}
-            <div className="relative z-10 w-40 h-40 md:w-56 md:h-56 flex items-center justify-center">
+            <div className="relative z-10 w-28 h-28 sm:w-40 sm:h-40 md:w-56 md:h-56 flex items-center justify-center">
               <div className={`absolute inset-0 rounded-full border-2 ${getScoreBorder(currentScore)} opacity-20 ${
                 isConnected ? 'animate-ping' : ''
               }`} style={{ animationDuration: '2s' }} />
@@ -614,15 +627,15 @@ OPPOSING COUNSEL: ${activeCase.opposingCounsel || 'Opposing Counsel'}`;
 
               <button
                 onClick={isConnected ? () => { stopSession(); setView('setup'); } : startSession}
-                className={`relative z-30 p-5 md:p-7 rounded-full border shadow-2xl transition-all duration-300 ${
+                className={`relative z-30 p-4 sm:p-5 md:p-7 rounded-full border shadow-2xl transition-all duration-300 ${
                   isConnected
                     ? 'bg-slate-950 border-red-500/50 shadow-red-900/20 hover:bg-red-950/30'
                     : 'bg-slate-950 border-slate-700 hover:border-indigo-500 hover:scale-105'
                 }`}
               >
                 {isConnected
-                  ? <Square className="w-7 h-7 md:w-9 md:h-9 text-red-500 fill-current" />
-                  : <Mic className="w-9 h-9 md:w-11 md:h-11 text-indigo-500" />
+                  ? <Square className="w-6 h-6 sm:w-7 sm:h-7 md:w-9 md:h-9 text-red-500 fill-current" />
+                  : <Mic className="w-7 h-7 sm:w-9 sm:h-9 md:w-11 md:h-11 text-indigo-500" />
                 }
               </button>
             </div>
