@@ -115,7 +115,6 @@ export const selectProvider = (
   }
   
   if (options?.enableTableExtraction) {
-    const tableProviders: OCRProvider[] = ['aws-textract', 'mathpix', 'azure-document-intelligence'];
     for (const providerId of tableProviders) {
       if (available.includes(providerId)) {
         return providerId;
@@ -127,8 +126,6 @@ export const selectProvider = (
     return 'google-document-ai';
   }
   
-  if (available.includes('azure-document-intelligence')) {
-    return 'azure-document-intelligence';
   }
   
   if (available.includes('aws-textract')) {
@@ -217,7 +214,6 @@ export const estimateCost = (
     'tesseract': 0,
     'google-document-ai': 0.0015,
     'aws-textract': 0.0015,
-    'azure-document-intelligence': 0.0015,
     'mathpix': 0.005
   };
   
