@@ -88,10 +88,7 @@ export const PROVIDER_INFO: Record<OCRProvider, OCRProviderInfo> = {
     recommendedFor: ['financial-records', 'medical-records', 'table-heavy', 'form'],
     setupRequired: ['AWS Account', 'Textract permissions', 'Access key ID', 'Secret access key']
   },
-  pricingInfo: '$1.50/1K pages',
-    recommendedFor: ['contract', 'court-filing', 'deposition'],
-    setupRequired: ['Azure Account', 'Document Intelligence resource', 'Endpoint URL', 'API key']
-  },
+
   'mathpix': {
     id: 'mathpix',
     name: 'Mathpix',
