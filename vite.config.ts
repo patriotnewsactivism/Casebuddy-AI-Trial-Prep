@@ -42,11 +42,15 @@ export default defineConfig(({ mode }) => {
         'process.env.SUPABASE_ANON_KEY': JSON.stringify(
           env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || ''
         ),
-        'process.env.AZURE_VISION_ENDPOINT': JSON.stringify(
-          env.VITE_AZURE_VISION_ENDPOINT || env.AZURE_VISION_ENDPOINT || env.AZURE_DOC_INTELLIGENCE_ENDPOINT || ''
+        // Azure removed — using AWS Textract + Google Document AI
+        'process.env.AWS_ACCESS_KEY_ID': JSON.stringify(
+          env.VITE_AWS_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID || ''
         ),
-        'process.env.AZURE_VISION_KEY': JSON.stringify(
-          env.VITE_AZURE_VISION_KEY || env.AZURE_VISION_KEY || env.AZURE_DOC_INTELLIGENCE_KEY || ''
+        'process.env.AWS_SECRET_ACCESS_KEY': JSON.stringify(
+          env.VITE_AWS_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY || ''
+        ),
+        'process.env.AWS_REGION': JSON.stringify(
+          env.VITE_AWS_REGION || env.AWS_REGION || 'us-east-1'
         ),
         'process.env.ASSEMBLYAI_API_KEY': JSON.stringify(
           env.VITE_ASSEMBLYAI_API_KEY || env.ASSEMBLYAI_API_KEY || ''
