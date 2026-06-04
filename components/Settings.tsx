@@ -132,12 +132,8 @@ const Settings = () => {
     const { loadAzureOCRConfig } = require('../services/azureOcrService');
     const azureConfig = loadAzureOCRConfig();
     if (azureConfig) {
-      setAzureEndpoint(azureConfig.endpoint);
-      setAzureApiKey(azureConfig.apiKey);
       // If loaded from env, mark as OK
       if (process.env.AZURE_VISION_ENDPOINT) {
-        setAzureStatus('ok');
-        setAzureMessage('Azure Computer Vision configured from environment');
       }
     }
   }, []);
