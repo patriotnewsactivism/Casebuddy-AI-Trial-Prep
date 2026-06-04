@@ -128,12 +128,7 @@ const Settings = () => {
     setAudioSettings(loadAudioSettings());
     setAvailableVoices(browserTTS.getVoices());
 
-    // Load Azure OCR config (from env vars or localStorage)
-        const azureConfig = loadAzureOCRConfig();
-    if (azureConfig) {
-      // If loaded from env, mark as OK
-      if (process.env.AZURE_VISION_ENDPOINT) {
-      }
+    // AWS Textract — no local config needed, uses Vercel env vars
     }
   }, []);
 
