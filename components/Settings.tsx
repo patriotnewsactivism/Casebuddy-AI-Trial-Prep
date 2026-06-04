@@ -128,8 +128,7 @@ const Settings = () => {
     setAudioSettings(loadAudioSettings());
     setAvailableVoices(browserTTS.getVoices());
 
-    // AWS Textract — no local config needed, uses Vercel env vars
-    }
+    // AWS Textract — configured via Vercel env vars
   }, []);
 
   useEffect(() => {
