@@ -111,11 +111,8 @@ const Settings = () => {
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(DEFAULT_AUDIO_SETTINGS);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isTestingAudio, setIsTestingAudio] = useState(false);
-  const [azureEndpoint, setAzureEndpoint] = useState('');
-  const [azureApiKey, setAzureApiKey] = useState('');
-  const [azureStatus, setAzureStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
-  const [azureMessage, setAzureMessage] = useState<string | null>(null);
-  const [testingAzure, setTestingAzure] = useState(false);
+  // Azure removed — using AWS Textract
+  const awsConfigured = !!(process.env.AWS_ACCESS_KEY_ID || import.meta.env.VITE_AWS_ACCESS_KEY_ID);
 
   const currentApiKey = process.env.API_KEY || '';
   const isApiKeyConfigured = currentApiKey && currentApiKey !== '';
@@ -234,32 +231,7 @@ const Settings = () => {
     }
   };
 
-  const saveAzureConfig = () => {
-    const { saveAzureOCRConfig } = require('../services/azureOcrService');
-    saveAzureOCRConfig({ endpoint: azureEndpoint, apiKey: azureApiKey });
-  };
 
-  const handleTestAzure = async () => {
-    setTestingAzure(true);
-    setAzureStatus('testing');
-    setAzureMessage(null);
-    try {
-      const { testAzureOCRConnection } = require('../services/azureOcrService');
-      const result = await testAzureOCRConnection(azureEndpoint, azureApiKey);
-      if (result.ok) {
-        setAzureStatus('ok');
-        setAzureMessage(result.message);
-      } else {
-        setAzureStatus('error');
-        setAzureMessage(result.message);
-      }
-    } catch (error) {
-      setAzureStatus('error');
-      setAzureMessage(`Test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setTestingAzure(false);
-    }
-  };
 
   const handleSupabaseCheck = async () => {
     if (!supabaseConfigured) {
