@@ -391,7 +391,6 @@ export type OCRProvider =
   | 'tesseract' 
   | 'google-document-ai' 
   | 'aws-textract' 
-  | 'azure-document-intelligence' 
   | 'mathpix';
 
 export type LegalDocumentCategory = 
@@ -687,14 +686,7 @@ export interface ExpertWitness {
   side: 'ours' | 'opposing';
 }
 
-export interface AzureOCRResult {
-  text: string;
-  confidence: number;
-  pageCount: number;
-  language?: string;
-  wordCount: number;
-  error?: string;
-}
+
 
 // Discovery Types
 export interface DiscoveryRequest {
