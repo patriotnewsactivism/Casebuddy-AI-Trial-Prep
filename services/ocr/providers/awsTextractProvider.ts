@@ -23,13 +23,15 @@ export class AWSTextractProvider extends BaseServerProvider {
     return !!(
       (this.accessKeyId && this.secretAccessKey) ||
       (this.config.apiKey) ||
-      import.meta.env.VITE_AWS_ACCESS_KEY_ID
+      import.meta.env.VITE_AWS_ACCESS_KEY_ID ||
+      process.env.AWS_ACCESS_KEY_ID
     );
   }
 
   configure(config: Partial<OCRProviderConfig>): void {
     super.configure(config);
     if (config.region) this.region = config.region;
+    // Support apiKey as "accessKeyId:secretKey" format
     if (this.config.apiKey) {
       const parts = this.config.apiKey.split(':');
       if (parts.length === 2) {
@@ -37,6 +39,15 @@ export class AWSTextractProvider extends BaseServerProvider {
         this.secretAccessKey = parts[1];
       }
     }
+    // Also read from env vars directly (server-side or Vite-injected)
+    const envKey = (import.meta as any).env?.VITE_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+    const envSecret = (import.meta as any).env?.VITE_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+    const envRegion = (import.meta as any).env?.VITE_AWS_REGION || process.env.AWS_REGION;
+    if (envKey && envSecret) {
+      this.accessKeyId = envKey;
+      this.secretAccessKey = envSecret;
+    }
+    if (envRegion) this.region = envRegion;
   }
 
   async process(file: File, options?: OCROptions): Promise<EnhancedOCRResult> {
