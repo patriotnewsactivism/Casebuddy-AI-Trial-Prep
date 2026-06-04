@@ -13,7 +13,6 @@ import {
 import { TesseractProvider } from './providers/tesseractProvider';
 import { GoogleDocumentAIProvider } from './providers/googleDocumentAIProvider';
 import { AWSTextractProvider } from './providers/awsTextractProvider';
-import { AzureDocumentIntelligenceProvider } from './providers/azureDocumentIntelligenceProvider';
 import { MathpixProvider } from './providers/mathpixProvider';
 
 class OCRProviderFactory {
@@ -25,7 +24,6 @@ class OCRProviderFactory {
     this.providers.set('tesseract', new TesseractProvider());
     this.providers.set('google-document-ai', new GoogleDocumentAIProvider());
     this.providers.set('aws-textract', new AWSTextractProvider());
-    this.providers.set('azure-document-intelligence', new AzureDocumentIntelligenceProvider());
     this.providers.set('mathpix', new MathpixProvider());
   }
   
