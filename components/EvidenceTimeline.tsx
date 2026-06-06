@@ -2,8 +2,10 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
 import { DocumentType, Evidence, EvidenceStatus, TimelineEvent, TimelineEventImportance, TimelineEventType } from '../types';
-import { Calendar, Clock, Plus, Edit2, Trash2, AlertCircle, FileText, Filter, Download } from 'lucide-react';
+import { Calendar, Clock, Plus, Edit2, Trash2, AlertCircle, FileText, Filter, Download, Sparkles, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { callGeminiProxy } from '../services/apiProxy';
+import { toast } from 'react-toastify';
 
 const EvidenceTimeline = () => {
   const { activeCase, updateCase } = useContext(AppContext);
@@ -33,6 +35,80 @@ const EvidenceTimeline = () => {
     status: 'pending',
     dateObtained: new Date().toISOString().split('T')[0]
   });
+  const [aiGenerating, setAiGenerating] = useState(false);
+
+  const handleAIGenerateTimeline = async () => {
+    if (!activeCase) return;
+    setAiGenerating(true);
+    try {
+      const evidenceSummary = (activeCase.evidence || [])
+        .map(e => `- ${e.title} (${e.type}): ${e.summary}`)
+        .join('\n');
+      const witnessSummary = (activeCase.witnesses || [])
+        .map(w => `- ${w.name} (${w.role})`)
+        .join('\n');
+
+      const prompt = `You are a litigation attorney. Based on this case information, generate a comprehensive timeline of key events.
+
+Case: ${activeCase.title}
+Summary: ${activeCase.summary}
+${activeCase.keyIssues?.length ? `Key Issues: ${activeCase.keyIssues.join(', ')}` : ''}
+${evidenceSummary ? `Evidence:\n${evidenceSummary}` : ''}
+${witnessSummary ? `Witnesses:\n${witnessSummary}` : ''}
+
+Generate 8-15 timeline events covering: incident dates, filing dates, discovery deadlines, depositions, motions, hearings, and trial dates. Use realistic dates relative to a case that was filed recently.
+
+Return JSON array of objects with: title, date (YYYY-MM-DD), description, type (one of: incident, filing, hearing, deposition, discovery, motion, ruling, deadline, other), importance (critical/high/medium/low).`;
+
+      const response = await callGeminiProxy({
+        prompt,
+        model: 'gemini-2.5-flash',
+        options: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                title: { type: 'STRING' },
+                date: { type: 'STRING' },
+                description: { type: 'STRING' },
+                type: { type: 'STRING' },
+                importance: { type: 'STRING' }
+              }
+            }
+          }
+        }
+      });
+
+      if (!response.success) throw new Error(response.error?.message || 'AI generation failed');
+      const generated = JSON.parse(response.text || '[]');
+
+      const newEvents: TimelineEvent[] = generated.map((g: any) => ({
+        id: crypto.randomUUID(),
+        title: g.title,
+        date: g.date,
+        description: g.description,
+        type: g.type as TimelineEventType,
+        importance: g.importance as TimelineEventImportance,
+        tags: [],
+        linkedEvidence: [],
+        linkedWitnesses: []
+      }));
+
+      const merged = [...events, ...newEvents].sort((a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      setEvents(merged);
+      await updateCase(activeCase.id, { timelineEvents: merged });
+      toast.success(`Generated ${newEvents.length} timeline events`);
+    } catch (error) {
+      console.error('AI timeline generation failed:', error);
+      toast.error('Failed to generate timeline. Try again.');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   const handleAddEvent = async () => {
     if (!newEvent.title || !newEvent.date || !activeCase) return;
@@ -175,6 +251,14 @@ const EvidenceTimeline = () => {
           <p className="text-slate-400 mt-2">Organize case events and exhibits chronologically</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={handleAIGenerateTimeline}
+            disabled={aiGenerating}
+            className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+          >
+            {aiGenerating ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+            {aiGenerating ? 'Generating...' : 'AI Generate Timeline'}
+          </button>
           <button
             onClick={() => setShowAddEvent(true)}
             className="bg-gold-500 hover:bg-gold-600 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-2"

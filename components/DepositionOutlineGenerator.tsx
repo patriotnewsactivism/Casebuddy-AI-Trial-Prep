@@ -6,7 +6,7 @@ import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
 
 const DepositionOutlineGenerator = () => {
-  const { activeCase } = useContext(AppContext);
+  const { activeCase, updateCase } = useContext(AppContext);
   const [outlines, setOutlines] = useState<DepositionOutline[]>([]);
   const [selectedOutline, setSelectedOutline] = useState<DepositionOutline | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -19,20 +19,20 @@ const DepositionOutlineGenerator = () => {
     notes: ''
   });
 
+  // Load from case (cloud-synced) instead of localStorage
   useEffect(() => {
     if (activeCase) {
-      const saved = localStorage.getItem(`depositions_${activeCase.id}`);
-      if (saved) {
-        setOutlines(JSON.parse(saved));
-      }
+      setOutlines(activeCase.depositionOutlines || []);
     }
   }, [activeCase]);
 
-  useEffect(() => {
-    if (activeCase && outlines.length > 0) {
-      localStorage.setItem(`depositions_${activeCase.id}`, JSON.stringify(outlines));
+  // Save to case (cloud-synced) whenever outlines change
+  const saveOutlines = async (updated: DepositionOutline[]) => {
+    setOutlines(updated);
+    if (activeCase) {
+      await updateCase(activeCase.id, { depositionOutlines: updated });
     }
-  }, [outlines, activeCase]);
+  };
 
   const generateOutline = async () => {
     if (!activeCase || !newOutlineData.deponentName.trim()) {
@@ -135,7 +135,7 @@ Return JSON with:
         notes: newOutlineData.notes
       };
 
-      setOutlines([...outlines, outline]);
+      saveOutlines([...outlines, outline]);
       setSelectedOutline(outline);
       setShowCreateModal(false);
       setNewOutlineData({ deponentName: '', deponentRole: '', notes: '' });
@@ -171,7 +171,7 @@ Return JSON with:
     };
 
     setSelectedOutline(updatedOutline);
-    setOutlines(outlines.map(o => o.id === updatedOutline.id ? updatedOutline : o));
+    saveOutlines(outlines.map(o => o.id === updatedOutline.id ? updatedOutline : o));
   };
 
   const updateQuestion = (topicId: string, questionId: string, updates: Partial<DepositionQuestion>) => {
@@ -192,7 +192,7 @@ Return JSON with:
     };
 
     setSelectedOutline(updatedOutline);
-    setOutlines(outlines.map(o => o.id === updatedOutline.id ? updatedOutline : o));
+    saveOutlines(outlines.map(o => o.id === updatedOutline.id ? updatedOutline : o));
   };
 
   const deleteQuestion = (topicId: string, questionId: string) => {
@@ -208,12 +208,12 @@ Return JSON with:
     };
 
     setSelectedOutline(updatedOutline);
-    setOutlines(outlines.map(o => o.id === updatedOutline.id ? updatedOutline : o));
+    saveOutlines(outlines.map(o => o.id === updatedOutline.id ? updatedOutline : o));
   };
 
   const deleteOutline = (id: string) => {
     if (window.confirm('Delete this deposition outline?')) {
-      setOutlines(outlines.filter(o => o.id !== id));
+      saveOutlines(outlines.filter(o => o.id !== id));
       if (selectedOutline?.id === id) {
         setSelectedOutline(null);
       }

@@ -4,6 +4,7 @@ import { PerformanceSession, PerformanceTrend, PerformanceSummary, SessionMetric
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { TrendingUp, TrendingDown, Target, Award, AlertTriangle, Clock, Mic, BarChart2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { fetchSessions } from '../services/dataService';
 
 const PerformanceAnalytics = () => {
   const { activeCase } = useContext(AppContext);
@@ -12,16 +13,16 @@ const PerformanceAnalytics = () => {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('month');
 
   useEffect(() => {
-    if (activeCase) {
-      // 1. Load from trial_sessions (The source of truth for live sessions)
-      const trialSessionsRaw = localStorage.getItem(`trial_sessions_${activeCase.id}`);
-      const trialSessions: TrialSession[] = trialSessionsRaw ? JSON.parse(trialSessionsRaw) : [];
+    if (!activeCase) return;
+    let cancelled = false;
 
-      // 2. Load from performance (Historical/manual analytics)
-      const performanceRaw = localStorage.getItem(`performance_${activeCase.id}`);
-      const perfSessions: PerformanceSession[] = performanceRaw ? JSON.parse(performanceRaw) : [];
+    const loadSessions = async () => {
+      // Load from cloud (Supabase) with localStorage fallback via fetchSessions
+      const trialSessions: TrialSession[] = await fetchSessions(activeCase.id);
 
-      // 3. Map TrialSessions to PerformanceSessions
+      if (cancelled) return;
+
+      // Map TrialSessions to PerformanceSessions
       const mappedTrialSessions: PerformanceSession[] = trialSessions.map(ts => ({
         id: ts.id,
         caseId: ts.caseId,
@@ -29,12 +30,14 @@ const PerformanceAnalytics = () => {
         phase: ts.phase as any,
         mode: ts.mode as any,
         duration: ts.duration / 60, // Convert to minutes
-        transcript: ts.transcript.map(m => `${m.sender}: ${m.text}`).join('\n'),
+        transcript: Array.isArray(ts.transcript)
+          ? ts.transcript.map((m: any) => `${m.sender}: ${m.text}`).join('\n')
+          : '',
         audioUrl: ts.audioUrl,
         metrics: {
           objectionsReceived: ts.metrics?.objectionsReceived || 0,
-          objectionsSustained: 0, // Not currently tracked in live sessions
-          objectionsOverruled: 0, // Not currently tracked in live sessions
+          objectionsSustained: 0,
+          objectionsOverruled: 0,
           rhetoricalScore: ts.metrics?.avgRhetoricalScore || ts.score || 50,
           legalAccuracyScore: ts.score || 50,
           overallScore: ts.score || 50,
@@ -47,13 +50,16 @@ const PerformanceAnalytics = () => {
         }
       }));
 
-      // Combine and sort by date descending
-      const combined = [...mappedTrialSessions, ...perfSessions].sort((a, b) => 
+      // Sort by date descending
+      const sorted = mappedTrialSessions.sort((a, b) =>
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
 
-      setSessions(combined);
-    }
+      setSessions(sorted);
+    };
+
+    loadSessions();
+    return () => { cancelled = true; };
   }, [activeCase]);
 
   const generateMockSessions = () => {
@@ -91,7 +97,25 @@ const PerformanceAnalytics = () => {
     }
     
     setSessions(prev => [...mockSessions, ...prev]);
-    localStorage.setItem(`performance_${activeCase.id}`, JSON.stringify(mockSessions));
+    // Save mock sessions to cloud via upsertSession
+    import('../services/dataService').then(({ upsertSession }) => {
+      mockSessions.forEach(ms => {
+        const trialSession = {
+          id: ms.id,
+          caseId: ms.caseId,
+          caseTitle: activeCase.title,
+          phase: ms.phase,
+          mode: ms.mode,
+          date: ms.date,
+          duration: ms.duration * 60,
+          transcript: [],
+          score: ms.metrics.overallScore,
+          feedback: 'Demo session',
+          metrics: ms.metrics
+        };
+        upsertSession(trialSession as any).catch(console.error);
+      });
+    });
   };
 
   const getSummary = (): PerformanceSummary => {

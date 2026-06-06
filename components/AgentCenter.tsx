@@ -57,7 +57,7 @@ const PRIORITY_STYLES: Record<string, string> = {
 };
 
 const AgentCenter = () => {
-  const { activeCase } = useContext(AppContext);
+  const { activeCase, updateCase } = useContext(AppContext);
 
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
@@ -75,14 +75,30 @@ const AgentCenter = () => {
   // Config
   const [config, setConfig] = useState<AgentConfig>(loadAgentConfig());
 
-  // Load tasks
+  // Load tasks - from cloud (case metadata) with localStorage fallback
   const refreshTasks = useCallback(() => {
     if (activeCase) {
-      setTasks(getAllTasks(activeCase.id));
+      // Prefer cloud-stored agent tasks, fall back to localStorage
+      const cloudTasks = activeCase.agentTasks;
+      if (cloudTasks && cloudTasks.length > 0) {
+        setTasks(cloudTasks);
+        // Sync to localStorage so agentService functions work
+        localStorage.setItem(`agent_tasks_${activeCase.id}`, JSON.stringify(cloudTasks));
+      } else {
+        setTasks(getAllTasks(activeCase.id));
+      }
     }
-  }, [activeCase?.id]);
+  }, [activeCase?.id, activeCase?.agentTasks]);
 
   useEffect(() => { refreshTasks(); }, [refreshTasks]);
+
+  // Sync tasks to cloud after any modification
+  const refreshAndSync = useCallback(() => {
+    if (!activeCase) return;
+    const latest = getAllTasks(activeCase.id);
+    setTasks(latest);
+    updateCase(activeCase.id, { agentTasks: latest });
+  }, [activeCase, updateCase]);
 
   // ── Agent Analysis ─────────────────────────────────────────────────────────
 
@@ -118,7 +134,7 @@ const AgentCenter = () => {
   const handleCreateTask = (rec: RecommendedTask, agent: AgentRole) => {
     if (!activeCase) return;
     const task = createTask(rec, activeCase.id, agent);
-    refreshTasks();
+    refreshAndSync();
     toast.success(`Task created: ${task.title}`);
   };
 
@@ -127,14 +143,14 @@ const AgentCenter = () => {
     for (const rec of recommendations.recommendedTasks) {
       createTask(rec, activeCase.id, recommendations.agent);
     }
-    refreshTasks();
+    refreshAndSync();
     toast.success(`${recommendations.recommendedTasks.length} tasks created`);
     setRecommendations(null);
   };
 
   const handleApprove = (taskId: string) => {
     approveTask(taskId);
-    refreshTasks();
+    refreshAndSync();
     toast.success('Task approved');
   };
 
@@ -142,7 +158,7 @@ const AgentCenter = () => {
     setExecutingTask(taskId);
     try {
       const result = await executeTask(taskId);
-      refreshTasks();
+      refreshAndSync();
       if (result?.status === 'sent') {
         toast.success('Email sent successfully');
       } else if (result?.status === 'failed') {
@@ -162,7 +178,7 @@ const AgentCenter = () => {
 
   const handleCancel = (taskId: string) => {
     cancelTask(taskId);
-    refreshTasks();
+    refreshAndSync();
     toast.info('Task cancelled');
   };
 
@@ -177,7 +193,7 @@ const AgentCenter = () => {
         allTasks[idx] = task;
         localStorage.setItem(`agent_tasks_${task.caseId}`, JSON.stringify(allTasks));
       }
-      refreshTasks();
+      refreshAndSync();
       setEditingEmail(null);
       toast.success('Email updated');
     }

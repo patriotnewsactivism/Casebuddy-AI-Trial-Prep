@@ -86,6 +86,10 @@ export interface Case {
   citations?: CaseLawCitation[];
   discoveryRequests?: DiscoveryRequest[];
   settlementAnalyses?: SettlementAnalysis[];
+  depositionOutlines?: DepositionOutline[];
+  strategyInsights?: StrategyInsight[];
+  agentTasks?: any[];
+  performanceData?: any;
 
   // Case Management Full Suite
   clientProfile?: ClientProfile;

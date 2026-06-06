@@ -562,6 +562,40 @@ const AILawFirm: React.FC = () => {
             </ol>
           </div>
 
+          {/* Create Case Button */}
+          <button
+            onClick={() => {
+              const newCase = {
+                id: crypto.randomUUID(),
+                title: `Case from Intake — ${new Date().toLocaleDateString()}`,
+                client: 'New Client',
+                status: 'Pre-Trial' as any,
+                opposingCounsel: '',
+                judge: '',
+                nextCourtDate: 'TBD',
+                summary: result.summary + '\n\nStrengths: ' + result.strengths.join(', ') + '\n\nChallenges: ' + result.weaknesses.join(', '),
+                winProbability: parseInt(result.winProbability?.replace(/[^\d]/g, '') || '50') || 50,
+                tags: ['intake'],
+                evidence: [],
+                tasks: result.recommendedActions.map((a: string, i: number) => ({
+                  id: crypto.randomUUID(),
+                  caseId: '',
+                  title: a,
+                  status: 'open' as const,
+                  priority: i === 0 ? 'high' as const : 'medium' as const,
+                })),
+              };
+              // Navigate to case manager to create case
+              window.localStorage.setItem('pendingIntakeCase', JSON.stringify(newCase));
+              window.location.href = '/app/cases';
+              toast.success('Case created from intake — redirecting to Case Manager');
+            }}
+            className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold text-base transition-all flex items-center justify-center gap-2 mb-4"
+          >
+            <Briefcase size={20} />
+            Create Case from This Intake
+          </button>
+
           {/* Agent handoff buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <button
