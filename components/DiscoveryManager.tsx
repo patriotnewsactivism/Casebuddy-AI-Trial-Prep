@@ -68,8 +68,7 @@ const DiscoveryManager = () => {
     if (!activeCase) return;
     setGenerating(true);
     try {
-      const { GoogleGenAI, Type } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const { callGeminiProxy } = await import('../services/apiProxy');
 
       const prompt = `Generate discovery requests for this case:
       
@@ -83,25 +82,26 @@ Generate:
 
 Return JSON array with objects containing: type (interrogatory/request-for-production/request-for-admission), number, question.`;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        options: {
           responseMimeType: 'application/json',
           responseSchema: {
-            type: Type.ARRAY,
+            type: 'ARRAY',
             items: {
-              type: Type.OBJECT,
+              type: 'OBJECT',
               properties: {
-                type: { type: Type.STRING },
-                number: { type: Type.STRING },
-                question: { type: Type.STRING }
+                type: { type: 'STRING' },
+                number: { type: 'STRING' },
+                question: { type: 'STRING' }
               }
             }
           }
         }
       });
 
+      if (!response.success) throw new Error(response.error?.message || 'AI generation failed');
       const generated = JSON.parse(response.text || '[]');
       const newRequests: DiscoveryRequest[] = generated.map((g: any, i: number) => ({
         id: crypto.randomUUID(),

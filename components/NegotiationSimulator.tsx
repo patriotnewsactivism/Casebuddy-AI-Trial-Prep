@@ -2,11 +2,8 @@ import React, { useState, useContext, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
 import { NegotiationScenario, NegotiationRound } from '../types';
 import { Handshake, TrendingUp, TrendingDown, DollarSign, Send, RefreshCw, User, Building, AlertTriangle, CheckCircle, Link } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 const NegotiationSimulator = () => {
   const { activeCase } = useContext(AppContext);
@@ -44,24 +41,25 @@ Return JSON with:
 - initialOffer: number
 - opponentPersona: brief description of who you're negotiating with`;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        options: {
           responseMimeType: 'application/json',
           responseSchema: {
-            type: Type.OBJECT,
+            type: 'OBJECT',
             properties: {
-              opponentType: { type: Type.STRING },
-              opponentTactics: { type: Type.ARRAY, items: { type: Type.STRING } },
-              settlementRange: { type: Type.ARRAY, items: { type: Type.NUMBER } },
-              initialOffer: { type: Type.NUMBER },
-              opponentPersona: { type: Type.STRING }
+              opponentType: { type: 'STRING' },
+              opponentTactics: { type: 'ARRAY', items: { type: 'STRING' } },
+              settlementRange: { type: 'ARRAY', items: { type: 'NUMBER' } },
+              initialOffer: { type: 'NUMBER' },
+              opponentPersona: { type: 'STRING' }
             }
           }
         }
       });
 
+      if (!response.success) throw new Error(response.error?.message || 'AI failed');
       const result = JSON.parse(response.text || '{}');
 
       const newScenario: NegotiationScenario = {
@@ -118,22 +116,23 @@ Return JSON with:
 - newOffer: your new offer number (if any, otherwise same as current)
 - reaction: one of "interested", "firm", "frustrated", "willing", "walking away"`;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        options: {
           responseMimeType: 'application/json',
           responseSchema: {
-            type: Type.OBJECT,
+            type: 'OBJECT',
             properties: {
-              response: { type: Type.STRING },
-              newOffer: { type: Type.NUMBER },
-              reaction: { type: Type.STRING }
+              response: { type: 'STRING' },
+              newOffer: { type: 'NUMBER' },
+              reaction: { type: 'STRING' }
             }
           }
         }
       });
 
+      if (!response.success) throw new Error(response.error?.message || 'AI failed');
       const result = JSON.parse(response.text || '{}');
 
       const newRound: NegotiationRound = {

@@ -2,11 +2,8 @@ import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
 import { AdmissibilityAnalysis, AdmissibilityIssue, CaseLawCitation } from '../types';
 import { Shield, AlertTriangle, CheckCircle, XCircle, FileSearch, Lightbulb, Link } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 const EvidenceAdmissibility = () => {
   const { activeCase } = useContext(AppContext);
@@ -46,44 +43,44 @@ Return JSON with:
 - suggestedFoundations: array of foundation questions or steps needed
 - caseLawSupport: array of {caseName, citation, court, date, summary, holding, favorableTo: "plaintiff"/"defendant"/"neutral", stillGoodLaw: boolean, url}`;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        options: {
           responseMimeType: 'application/json',
           responseSchema: {
-            type: Type.OBJECT,
+            type: 'OBJECT',
             properties: {
-              overallAdmissibility: { type: Type.STRING, enum: ['admissible', 'conditionally_admissible', 'inadmissible'] },
-              confidenceScore: { type: Type.NUMBER },
+              overallAdmissibility: { type: 'STRING' },
+              confidenceScore: { type: 'NUMBER' },
               issues: {
-                type: Type.ARRAY,
+                type: 'ARRAY',
                 items: {
-                  type: Type.OBJECT,
+                  type: 'OBJECT',
                   properties: {
-                    type: { type: Type.STRING },
-                    severity: { type: Type.STRING },
-                    rule: { type: Type.STRING },
-                    explanation: { type: Type.STRING },
-                    potentialCure: { type: Type.STRING }
+                    type: { type: 'STRING' },
+                    severity: { type: 'STRING' },
+                    rule: { type: 'STRING' },
+                    explanation: { type: 'STRING' },
+                    potentialCure: { type: 'STRING' }
                   }
                 }
               },
-              suggestedFoundations: { type: Type.ARRAY, items: { type: Type.STRING } },
+              suggestedFoundations: { type: 'ARRAY', items: { type: 'STRING' } },
               caseLawSupport: {
-                type: Type.ARRAY,
+                type: 'ARRAY',
                 items: {
-                  type: Type.OBJECT,
+                  type: 'OBJECT',
                   properties: {
-                    caseName: { type: Type.STRING },
-                    citation: { type: Type.STRING },
-                    court: { type: Type.STRING },
-                    date: { type: Type.STRING },
-                    summary: { type: Type.STRING },
-                    holding: { type: Type.STRING },
-                    favorableTo: { type: Type.STRING },
-                    stillGoodLaw: { type: Type.BOOLEAN },
-                    url: { type: Type.STRING }
+                    caseName: { type: 'STRING' },
+                    citation: { type: 'STRING' },
+                    court: { type: 'STRING' },
+                    date: { type: 'STRING' },
+                    summary: { type: 'STRING' },
+                    holding: { type: 'STRING' },
+                    favorableTo: { type: 'STRING' },
+                    stillGoodLaw: { type: 'BOOLEAN' },
+                    url: { type: 'STRING' }
                   }
                 }
               }
@@ -92,6 +89,7 @@ Return JSON with:
         }
       });
 
+      if (!response.success) throw new Error(response.error?.message || 'Analysis failed');
       const result = JSON.parse(response.text || '{}');
       setAnalysis(result);
       toast.success('Analysis complete');

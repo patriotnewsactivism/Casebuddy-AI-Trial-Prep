@@ -2,11 +2,8 @@ import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../App';
 import { SettlementAnalysis, SettlementFactor, EconomicDamages, NonEconomicDamages } from '../types';
 import { Calculator, DollarSign, TrendingUp, TrendingDown, AlertCircle, RefreshCw, Save, Download, Info, Link } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 const SettlementCalculator = () => {
   const { activeCase, updateCase } = useContext(AppContext);
@@ -145,55 +142,56 @@ Provide:
 
 Return JSON with: economicDamages, nonEconomicDamages (with multiplier), comparativeNegligence, settlementRange [low, high], recommendedDemand, factors (array of {factor, impact, weight, description}), negotiationStrategy, confidenceScore.`;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        options: {
           responseMimeType: 'application/json',
           responseSchema: {
-            type: Type.OBJECT,
+            type: 'OBJECT',
             properties: {
               economicDamages: {
-                type: Type.OBJECT,
+                type: 'OBJECT',
                 properties: {
-                  medicalExpenses: { type: Type.NUMBER },
-                  medicalExpensesFuture: { type: Type.NUMBER },
-                  lostWages: { type: Type.NUMBER },
-                  lostWagesFuture: { type: Type.NUMBER },
-                  propertyDamage: { type: Type.NUMBER },
-                  otherEconomic: { type: Type.NUMBER },
-                  total: { type: Type.NUMBER }
+                  medicalExpenses: { type: 'NUMBER' },
+                  medicalExpensesFuture: { type: 'NUMBER' },
+                  lostWages: { type: 'NUMBER' },
+                  lostWagesFuture: { type: 'NUMBER' },
+                  propertyDamage: { type: 'NUMBER' },
+                  otherEconomic: { type: 'NUMBER' },
+                  total: { type: 'NUMBER' }
                 }
               },
               nonEconomicDamages: {
-                type: Type.OBJECT,
+                type: 'OBJECT',
                 properties: {
-                  multiplier: { type: Type.NUMBER },
-                  total: { type: Type.NUMBER }
+                  multiplier: { type: 'NUMBER' },
+                  total: { type: 'NUMBER' }
                 }
               },
-              comparativeNegligence: { type: Type.NUMBER },
-              settlementRange: { type: Type.ARRAY, items: { type: Type.NUMBER } },
-              recommendedDemand: { type: Type.NUMBER },
+              comparativeNegligence: { type: 'NUMBER' },
+              settlementRange: { type: 'ARRAY', items: { type: 'NUMBER' } },
+              recommendedDemand: { type: 'NUMBER' },
               factors: {
-                type: Type.ARRAY,
+                type: 'ARRAY',
                 items: {
-                  type: Type.OBJECT,
+                  type: 'OBJECT',
                   properties: {
-                    factor: { type: Type.STRING },
-                    impact: { type: Type.STRING },
-                    weight: { type: Type.NUMBER },
-                    description: { type: Type.STRING }
+                    factor: { type: 'STRING' },
+                    impact: { type: 'STRING' },
+                    weight: { type: 'NUMBER' },
+                    description: { type: 'STRING' }
                   }
                 }
               },
-              negotiationStrategy: { type: Type.STRING },
-              confidenceScore: { type: Type.NUMBER }
+              negotiationStrategy: { type: 'STRING' },
+              confidenceScore: { type: 'NUMBER' }
             }
           }
         }
       });
 
+      if (!response.success) throw new Error(response.error?.message || 'AI analysis failed');
       const result = JSON.parse(response.text || '{}');
       const newAnalysis: SettlementAnalysis = {
         id: crypto.randomUUID(),

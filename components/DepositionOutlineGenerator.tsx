@@ -2,11 +2,8 @@ import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../App';
 import { DepositionOutline, DepositionTopic, DepositionQuestion } from '../types';
 import { FileText, Plus, Trash2, Download, BrainCircuit, ChevronDown, ChevronUp, GripVertical, Link } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 const DepositionOutlineGenerator = () => {
   const { activeCase } = useContext(AppContext);
@@ -66,62 +63,63 @@ Return JSON with:
 - anticipatedObjections: array of {ground, likelihood, responseStrategy, caseLaw}
 - keyDocuments: array of document names`;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        options: {
           responseMimeType: 'application/json',
           responseSchema: {
-            type: Type.OBJECT,
+            type: 'OBJECT',
             properties: {
               topics: {
-                type: Type.ARRAY,
+                type: 'ARRAY',
                 items: {
-                  type: Type.OBJECT,
+                  type: 'OBJECT',
                   properties: {
-                    id: { type: Type.STRING },
-                    title: { type: Type.STRING },
-                    order: { type: Type.NUMBER },
-                    notes: { type: Type.STRING },
+                    id: { type: 'STRING' },
+                    title: { type: 'STRING' },
+                    order: { type: 'NUMBER' },
+                    notes: { type: 'STRING' },
                     questions: {
-                      type: Type.ARRAY,
+                      type: 'ARRAY',
                       items: {
-                        type: Type.OBJECT,
+                        type: 'OBJECT',
                         properties: {
-                          id: { type: Type.STRING },
-                          text: { type: Type.STRING },
-                          type: { type: Type.STRING },
-                          purpose: { type: Type.STRING },
-                          anticipatedAnswer: { type: Type.STRING },
-                          followUpQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                          linkedExhibit: { type: Type.STRING },
-                          anticipatedObjection: { type: Type.STRING },
-                          notes: { type: Type.STRING }
+                          id: { type: 'STRING' },
+                          text: { type: 'STRING' },
+                          type: { type: 'STRING' },
+                          purpose: { type: 'STRING' },
+                          anticipatedAnswer: { type: 'STRING' },
+                          followUpQuestions: { type: 'ARRAY', items: { type: 'STRING' } },
+                          linkedExhibit: { type: 'STRING' },
+                          anticipatedObjection: { type: 'STRING' },
+                          notes: { type: 'STRING' }
                         }
                       }
                     }
                   }
                 }
               },
-              exhibitList: { type: Type.ARRAY, items: { type: Type.STRING } },
+              exhibitList: { type: 'ARRAY', items: { type: 'STRING' } },
               anticipatedObjections: {
-                type: Type.ARRAY,
+                type: 'ARRAY',
                 items: {
-                  type: Type.OBJECT,
+                  type: 'OBJECT',
                   properties: {
-                    ground: { type: Type.STRING },
-                    likelihood: { type: Type.STRING },
-                    responseStrategy: { type: Type.STRING },
-                    caseLaw: { type: Type.STRING }
+                    ground: { type: 'STRING' },
+                    likelihood: { type: 'STRING' },
+                    responseStrategy: { type: 'STRING' },
+                    caseLaw: { type: 'STRING' }
                   }
                 }
               },
-              keyDocuments: { type: Type.ARRAY, items: { type: Type.STRING } }
+              keyDocuments: { type: 'ARRAY', items: { type: 'STRING' } }
             }
           }
         }
       });
 
+      if (!response.success) throw new Error(response.error?.message || 'AI generation failed');
       const result = JSON.parse(response.text || '{}');
       
       const outline: DepositionOutline = {

@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -39,6 +39,7 @@ const DiscoveryNuke = lazy(() => import('./components/DiscoveryNuke'));
 const AgentCenter = lazy(() => import('./components/AgentCenter'));
 const AIPartner = lazy(() => import('./components/AIPartner'));
 const AILawFirm = lazy(() => import('./components/AILawFirm'));
+const CasePipeline = lazy(() => import('./components/CasePipeline'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -112,6 +113,29 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
         </div>
 
         <nav className="py-3 flex flex-col overflow-y-auto h-[calc(100vh-3.5rem)] space-y-0.5">
+          {/* Case Pipeline — primary CTA */}
+          <div className="px-2 pb-1">
+            <Link
+              to="/app/pipeline"
+              onClick={() => setIsOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 border
+                ${isActive('/app/pipeline')
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                  : 'bg-gradient-to-r from-gold-500/5 to-emerald-500/5 border-gold-500/30 text-slate-300 hover:bg-gold-500/10 hover:border-gold-500/40 hover:text-white'}`}
+            >
+              <div className={`p-1.5 rounded-lg ${isActive('/app/pipeline') ? 'bg-emerald-500/20' : 'bg-gold-500/10 border border-gold-500/20'}`}>
+                <ListChecks size={14} className={isActive('/app/pipeline') ? 'text-emerald-400' : 'text-gold-400'} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold leading-none">Case Pipeline</p>
+                <p className="text-xs text-slate-500 mt-0.5 truncate">Step-by-step guided workflow</p>
+              </div>
+              {isActive('/app/pipeline') && (
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              )}
+            </Link>
+          </div>
+
           {/* AI Co-Counsel — featured */}
           <div className="px-2 pb-2">
             <Link
@@ -556,6 +580,7 @@ const App = () => {
               <Route path="/app/agents" element={<AuthenticatedLayout><AgentCenter /></AuthenticatedLayout>} />
               <Route path="/app/partner" element={<AuthenticatedLayout><AIPartner /></AuthenticatedLayout>} />
               <Route path="/app/law-firm" element={<AuthenticatedLayout><AILawFirm /></AuthenticatedLayout>} />
+              <Route path="/app/pipeline" element={<AuthenticatedLayout><CasePipeline /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

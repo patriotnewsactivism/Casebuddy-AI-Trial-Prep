@@ -3,10 +3,7 @@ import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
 import { useKnowledge } from '../contexts/KnowledgeContext';
 import { FileText, Sparkles, Download, Copy, Check, AlertCircle, Loader2 } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+import { callGeminiProxy } from '../services/apiProxy';
 
 type DocumentTemplate =
   | 'motion-to-dismiss'
@@ -149,14 +146,15 @@ Requirements:
 
 Generate the complete document ready for attorney review.`;
 
-      const response = await ai.models.generateContent({
+      const response = await callGeminiProxy({
+        prompt,
         model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
+        options: {
           temperature: 0.7,
         }
       });
 
+      if (!response.success) throw new Error(response.error?.message || 'AI generation failed');
       const generatedText = response.text || '';
       setGeneratedContent(generatedText);
 
