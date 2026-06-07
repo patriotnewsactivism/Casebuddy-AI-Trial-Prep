@@ -68,50 +68,44 @@ const LandingPage = () => {
 
   const pricingTiers = [
     {
-      name: 'Free',
-      price: '$0',
-      period: 'forever',
-      features: [
-        '1 case maximum',
-        '3 AI generations/month',
-        '1 trial session/month',
-        'Basic analytics',
-        'Community support'
-      ],
-      cta: 'Get Started Free',
-      highlight: false
-    },
-    {
-      name: 'Pro',
-      price: '$129',
+      name: 'CaseBuddy Pro',
+      price: '$499',
       period: '/month',
       features: [
-        'Unlimited cases',
-        'Unlimited AI generations',
-        'Unlimited trial sessions',
-        'Advanced analytics',
-        'Session recording & history',
-        'Mock jury simulation',
+        'All 23+ AI-powered legal tools',
+        'Unlimited cases & AI generations',
+        'Unlimited trial simulator sessions',
+        'Full case pipeline — intake to resolution',
+        'Court deadline engine (FRCP)',
+        'Motion/brief writer (15 document types)',
+        'Mock jury deliberation',
+        'Settlement calculator & negotiation sim',
+        'Predictive analytics & win probability',
+        'Cloud case storage & sync',
+        'ROI & billable hours tracker',
+        'Premium AI voices (ElevenLabs)',
         'Priority support',
-        'All features unlocked',
-        'Export & share reports'
       ],
       cta: 'Start Pro Trial',
       highlight: true
     },
     {
-      name: 'Firm',
-      price: '$299',
-      period: '/month/attorney',
+      name: 'Enterprise BYOK',
+      price: '$5,000',
+      period: ' one-time',
       features: [
-        'Everything in Pro',
-        'Multi-user collaboration',
-        'Shared case library',
-        'Admin dashboard',
-        'Custom branding',
-        'API access',
-        'Dedicated support',
-        'Volume discounts'
+        'Everything in CaseBuddy Pro',
+        'One-time purchase — no monthly fees',
+        'Bring your own API keys (OpenAI, Gemini, ElevenLabs)',
+        'White-label branding & custom domain',
+        'Self-hosted deployment option',
+        'Unlimited seats — entire firm',
+        'Team collaboration & case sharing',
+        'Firm-wide analytics dashboard',
+        'Source code access',
+        'SSO / SAML authentication',
+        'API access for integrations',
+        'Dedicated setup & onboarding',
       ],
       cta: 'Contact Sales',
       highlight: false
@@ -119,7 +113,7 @@ const LandingPage = () => {
   ];
 
   const comparisonData = [
-    { feature: 'Cost per trial', casebuddy: '$129/mo', consultant: '$5K–$25K', chatgpt: '$20/mo', manual: 'Your time' },
+    { feature: 'Cost per trial', casebuddy: '$499/mo', consultant: '$5K–$25K', chatgpt: '$20/mo', manual: 'Your time' },
     { feature: '24/7 availability', casebuddy: true, consultant: false, chatgpt: true, manual: false },
     { feature: 'Voice simulation', casebuddy: true, consultant: false, chatgpt: false, manual: false },
     { feature: 'AI jury prediction', casebuddy: true, consultant: false, chatgpt: false, manual: false },
@@ -182,8 +176,8 @@ const LandingPage = () => {
       answer: 'Our voice simulation uses real-time AI to play the role of opposing counsel, witnesses, or the judge. You speak naturally, and the AI responds with realistic objections, cross-examination questions, and courtroom dialogue — just like practicing with a real partner, but available anytime.'
     },
     {
-      question: 'Do you offer discounts for solo practitioners?',
-      answer: 'Our Free tier gives solo practitioners a chance to try CaseBuddy at no cost. The Pro plan at $129/month is designed to be accessible — less than the cost of a single billable hour for most attorneys. Contact us for special arrangements if you\'re a public defender or legal aid attorney.'
+      question: 'Why $499/month?',
+      answer: 'CaseBuddy Pro costs less than two billable hours for most attorneys — and it replaces $15,000–$25,000/year in jury consultant fees alone. Prefer to own it outright? The $5,000 lifetime BYOK option gives your entire firm permanent access with no recurring fees. Contact us for special arrangements if you\'re a public defender or legal aid attorney.'
     }
   ];
 
@@ -453,11 +447,11 @@ const LandingPage = () => {
               Choose the plan that fits your practice
             </p>
             <p className="text-sm text-slate-500">
-              Less than the cost of one billable hour — a fraction of what jury consultants charge
+              Less than the cost of two billable hours — a fraction of what jury consultants charge
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {pricingTiers.map((tier, i) => (
               <div
                 key={i}
