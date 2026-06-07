@@ -5,7 +5,7 @@
  *   User speaks → AI hears in real-time → AI speaks back immediately
  *
  * Features ported from CaseBuddy Trial-Preparation + enhancements from
- * the main Casebuddy-AI-Trial-Prep architecture:
+ * the main CaseBuddy architecture:
  *   - 8 trial phases (pre-trial motions → sentencing)
  *   - 3 difficulty modes (learn / practice / trial)
  *   - Live audio visualizer
