@@ -19,77 +19,58 @@ interface PlanConfig {
 
 const plans: PlanConfig[] = [
   {
-    tier: 'free',
-    name: 'Starter',
-    price: '$0',
-    period: 'forever',
-    description: 'Get started with essential trial prep tools',
-    icon: Zap,
-    highlight: false,
-    features: [
-      'Up to 5 trial simulator sessions/month',
-      '100 AI requests/month',
-      '50 OCR document pages',
-      '10 minutes transcription',
-      '1 GB storage',
-      'AI Co-Counsel chat',
-      'Case management',
-      'Evidence timeline',
-    ],
-    limitations: [
-      'Basic voice (browser TTS)',
-      'No settlement calculator',
-      'No mock jury deliberation',
-      'No deposition outlines',
-    ],
-  },
-  {
     tier: 'pro',
-    name: 'Professional',
-    price: '$49',
+    name: 'CaseBuddy Pro',
+    price: '$499',
     period: '/month',
-    description: 'Full trial prep suite for practicing attorneys',
+    description: 'Complete AI-powered legal trial preparation platform',
     icon: Crown,
     highlight: true,
     features: [
-      '100 trial simulator sessions/month',
-      '1,000 AI requests/month',
-      '1,000 OCR document pages',
-      '5 hours transcription',
-      '50 GB storage',
-      'Premium AI voices (ElevenLabs)',
-      'Settlement calculator',
+      'All 23+ AI-powered legal tools',
+      'Full case pipeline — intake to resolution',
+      'Unlimited AI requests',
+      'Unlimited trial simulator sessions',
+      'Unlimited OCR document pages',
+      'Unlimited transcription',
+      'Cloud case storage & sync',
+      'ROI & billable hours tracker',
+      'Court deadline engine (FRCP)',
+      'Settlement calculator & negotiation sim',
+      'Motion/brief writer (15 document types)',
+      'Predictive analytics & win probability',
+      'Evidence admissibility analyzer',
       'Mock jury deliberation',
+      'AI Co-Counsel & Strategy Room',
       'Deposition outline generator',
       'Case law research',
-      'Evidence admissibility analyzer',
-      'Negotiation simulator',
-      'Performance analytics',
+      'Premium AI voices (ElevenLabs)',
       'Priority support',
     ],
   },
   {
     tier: 'enterprise',
-    name: 'Firm',
-    price: '$199',
-    period: '/month',
-    description: 'For law firms with team collaboration needs',
+    name: 'Enterprise BYOK',
+    price: '$5,000',
+    period: 'one-time',
+    description: 'Bring your own API keys — own it forever',
     icon: Building2,
     highlight: false,
     features: [
-      'Unlimited trial simulator sessions',
-      '10,000 AI requests/month',
-      'Unlimited OCR pages',
-      '50 hours transcription',
-      '500 GB storage',
-      'Everything in Professional',
+      'Everything in CaseBuddy Pro',
+      'One-time purchase — no monthly fees',
+      'Bring your own API keys (OpenAI, Gemini, ElevenLabs)',
+      'White-label branding & custom domain',
+      'Self-hosted deployment option',
+      'Unlimited seats — entire firm',
       'Team collaboration & case sharing',
-      'Multi-user access (up to 10 seats)',
-      'Firm-wide analytics',
-      'Custom AI training on firm data',
-      'Dedicated account manager',
+      'Client portal with secure messaging',
+      'Firm-wide analytics dashboard',
+      'Custom AI training on your firm data',
+      'Source code access',
       'SSO / SAML authentication',
-      'API access',
+      'API access for integrations',
+      'Dedicated setup & onboarding',
     ],
   },
 ];
@@ -114,7 +95,7 @@ const PricingPage = () => {
   const handleUpgrade = (targetTier: UserTier) => {
     if (targetTier === currentTier) return;
     toast.info(
-      'Subscription management is being set up. Contact support@casebuddy.ai to upgrade your plan.',
+      'Subscription management is being set up. Contact support@casebuddy.live to upgrade your plan.',
       { autoClose: 5000, toastId: 'upgrade-info' }
     );
   };
@@ -242,8 +223,16 @@ const PricingPage = () => {
             <p className="text-sm text-slate-400">All data is encrypted at rest and in transit. We use Supabase with row-level security for strict data isolation.</p>
           </div>
           <div>
-            <h3 className="font-semibold text-white mb-2">Do you offer a free trial of Pro?</h3>
-            <p className="text-sm text-slate-400">Yes! Contact us at support@casebuddy.ai for a 14-day Pro trial with full access to all features.</p>
+            <h3 className="font-semibold text-white mb-2">Do you offer a free trial?</h3>
+            <p className="text-sm text-slate-400">Yes! Contact us at support@casebuddy.live for a 14-day trial with full access to all features.</p>
+          </div>
+          <div>
+            <h3 className="font-semibold text-white mb-2">What does BYOK mean?</h3>
+            <p className="text-sm text-slate-400">Bring Your Own Keys — use your own OpenAI, Gemini, or ElevenLabs API keys. You pay one time for the platform and control your own AI costs. No monthly subscription.</p>
+          </div>
+          <div>
+            <h3 className="font-semibold text-white mb-2">How much can CaseBuddy save a firm?</h3>
+            <p className="text-sm text-slate-400">CaseBuddy replaces $15,000–$25,000/year in legal software subscriptions and saves 10–15 billable hours per case. The built-in ROI tracker shows exact savings.</p>
           </div>
         </div>
       </div>

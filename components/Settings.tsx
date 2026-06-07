@@ -254,7 +254,7 @@ const Settings = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `lexsim-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `casebuddy-backup-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
 
@@ -300,7 +300,7 @@ const Settings = () => {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white font-serif">Settings</h1>
-          <p className="text-slate-400 mt-2">Configure your LexSim preferences and API settings</p>
+          <p className="text-slate-400 mt-2">Configure your CaseBuddy preferences and API settings</p>
         </div>
         {saveMessage && (
           <div className="flex items-center gap-2 px-4 py-2 bg-green-900/30 border border-green-700 rounded-lg">
@@ -865,9 +865,9 @@ const Settings = () => {
 
       {/* About */}
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-3">About LexSim</h2>
+        <h2 className="text-lg font-semibold text-white mb-3">About CaseBuddy</h2>
         <p className="text-sm text-slate-300 mb-2">
-          LexSim is an AI-powered legal trial preparation platform built with Google Gemini AI.
+          CaseBuddy is an AI-powered legal trial preparation platform built with Google Gemini AI.
         </p>
         <div className="flex gap-4 text-xs text-slate-400">
           <span>Version 1.0.0</span>

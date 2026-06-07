@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -45,6 +45,7 @@ const MotionWriter = lazy(() => import('./components/MotionWriter'));
 const DeadlineEngine = lazy(() => import('./components/DeadlineEngine'));
 const WhiteLabelSettings = lazy(() => import('./components/WhiteLabelSettings'));
 const ClientPortal = lazy(() => import('./components/ClientPortal'));
+const DemoCaseLoader = lazy(() => import('./components/DemoCaseLoader'));
 const PredictiveAnalytics = lazy(() => import('./components/PredictiveAnalytics'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
@@ -107,11 +108,14 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
       `}>
         {/* Logo */}
         <div className="h-14 flex items-center px-4 border-b border-slate-800">
-          <Link to="/app" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <div className="w-7 h-7 rounded-lg bg-gold-500/15 border border-gold-500/30 flex items-center justify-center">
-              <Gavel size={14} className="text-gold-500" />
+          <Link to="/app" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500/20 to-yellow-600/10 border border-amber-400/30 flex items-center justify-center shadow-lg shadow-amber-500/5">
+              <Gavel size={15} className="text-amber-400" />
             </div>
-            <span className="text-base font-serif font-bold text-white">CaseBuddy</span>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold tracking-tight text-white leading-none">CaseBuddy</span>
+              <span className="text-[9px] font-mono tracking-widest text-amber-400/60 uppercase leading-none mt-0.5">casebuddy.live</span>
+            </div>
           </Link>
           <button className="ml-auto md:hidden text-slate-400 hover:text-white" onClick={() => setIsOpen(false)}>
             <X size={20} />
@@ -208,6 +212,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <div className="mt-auto pt-2 border-t border-slate-800/60">
             <NavItem path="/app/client-portal" icon={UserCircle} label="Client Portal" />
             <NavItem path="/app/white-label" icon={Palette} label="White-Label" />
+            <NavItem path="/app/demo" icon={Rocket} label="Load Demo Case" />
             <NavItem path="/app/team" icon={Users} label="Team" />
             <NavItem path="/app/pricing" icon={Sparkles} label="Upgrade Plan" />
           </div>
@@ -599,6 +604,7 @@ const App = () => {
               <Route path="/app/predictive" element={<AuthenticatedLayout><PredictiveAnalytics /></AuthenticatedLayout>} />
               <Route path="/app/white-label" element={<AuthenticatedLayout><WhiteLabelSettings /></AuthenticatedLayout>} />
               <Route path="/app/client-portal" element={<AuthenticatedLayout><ClientPortal /></AuthenticatedLayout>} />
+              <Route path="/app/demo" element={<AuthenticatedLayout><DemoCaseLoader /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
