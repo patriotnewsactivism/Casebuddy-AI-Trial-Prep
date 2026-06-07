@@ -56,8 +56,12 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean, setIsOpen: (v: boolean) => void, syncStatus: 'synced' | 'syncing' | 'error', retrySync: () => void }) => {
   const location = useLocation();
-  const [showTools, setShowTools] = useState(true);
-  const [showPrep, setShowPrep] = useState(true);
+  const [showFrontDesk, setShowFrontDesk] = useState(false);
+  const [showCaseMgmt, setShowCaseMgmt] = useState(false);
+  const [showResearch, setShowResearch] = useState(false);
+  const [showCourtroom, setShowCourtroom] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(false);
+  const [showStrategy, setShowStrategy] = useState(false);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -123,7 +127,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
         </div>
 
         <nav className="py-3 flex flex-col overflow-y-auto h-[calc(100vh-3.5rem)] space-y-0.5">
-          {/* Case Pipeline — primary CTA */}
+          {/* Case Pipeline — always visible primary CTA */}
           <div className="px-2 pb-1">
             <Link
               to="/app/pipeline"
@@ -146,74 +150,65 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
             </Link>
           </div>
 
-          {/* AI Co-Counsel — featured */}
-          <div className="px-2 pb-2">
-            <Link
-              to="/app/ai-counsel"
-              onClick={() => setIsOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 border
-                ${isActive('/app/ai-counsel')
-                  ? 'bg-gold-500/10 border-gold-500/30 text-gold-400'
-                  : 'bg-slate-800/40 border-slate-700/50 text-slate-300 hover:bg-slate-800 hover:border-slate-600 hover:text-white'}`}
-            >
-              <div className={`p-1.5 rounded-lg ${isActive('/app/ai-counsel') ? 'bg-gold-500/20' : 'bg-slate-700'}`}>
-                <Scale size={14} className={isActive('/app/ai-counsel') ? 'text-gold-400' : 'text-slate-400'} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold leading-none">AI Co-Counsel</p>
-                <p className="text-xs text-slate-500 mt-0.5 truncate">Your AI law partner</p>
-              </div>
-              {isActive('/app/ai-counsel') && (
-                <div className="w-1.5 h-1.5 rounded-full bg-gold-500 animate-pulse shrink-0" />
-              )}
-            </Link>
-          </div>
-
-          <div className="border-t border-slate-800/60 pt-2" />
-
-          <NavItem path="/app/law-firm" icon={Scale} label="AI Law Firm" />
+          {/* Dashboard — always visible */}
           <NavItem path="/app" icon={LayoutDashboard} label="Dashboard" />
-          <NavItem path="/app/roi" icon={DollarSign} label="ROI Tracker" />
-          <NavItem path="/app/agents" icon={Bot} label="Agent Command" />
-          <NavItem path="/app/partner" icon={BrainCircuit} label="AI Partner" />
-          <NavItem path="/app/cases" icon={Gavel} label="Case Files" />
 
-          <div className="pt-1" />
-          <NavGroup title="Trial Preparation" icon={FolderOpen} isOpen={showPrep} toggle={() => setShowPrep(!showPrep)}>
-            <NavItem path="/app/practice" icon={Mic} label="Trial Simulator" />
-            <NavItem path="/app/live-sim" icon={Radio} label="Live Voice Sim" />
-            <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
-            <NavItem path="/app/mock-jury" icon={Scale} label="Mock Jury" />
-            <NavItem path="/app/deposition" icon={FileText} label="Deposition Outlines" />
-            <NavItem path="/app/performance" icon={BarChart2} label="Performance" />
+          <div className="border-t border-slate-800/60 pt-2 mt-1" />
+
+          {/* ── Department groups (all collapsed by default) ── */}
+
+          <NavGroup title="Front Desk" icon={UserCircle} isOpen={showFrontDesk} toggle={() => setShowFrontDesk(!showFrontDesk)}>
+            <NavItem path="/app/law-firm" icon={Scale} label="AI Law Firm (Maya)" />
+            <NavItem path="/app/client-portal" icon={UserCircle} label="Client Portal" />
+            <NavItem path="/app/demo" icon={Rocket} label="Load Demo Case" />
           </NavGroup>
 
-          <div className="pt-1" />
-          <NavGroup title="Tools" icon={BrainCircuit} isOpen={showTools} toggle={() => setShowTools(!showTools)}>
-            <NavItem path="/app/strategy" icon={BrainCircuit} label="Strategy & AI" />
-            <NavItem path="/app/discovery-nuke" icon={Bomb} label="Discovery Nuke" />
-            <NavItem path="/app/settlement" icon={Calculator} label="Settlement" />
-            <NavItem path="/app/discovery" icon={FileSearch} label="Discovery Manager" />
+          <NavGroup title="Case Management" icon={FolderOpen} isOpen={showCaseMgmt} toggle={() => setShowCaseMgmt(!showCaseMgmt)}>
+            <NavItem path="/app/cases" icon={Gavel} label="Case Files" />
+            <NavItem path="/app/deadlines" icon={CalendarClock} label="Deadlines" />
+            <NavItem path="/app/agents" icon={Bot} label="Agent Command" />
+            <NavItem path="/app/roi" icon={DollarSign} label="ROI Tracker" />
+          </NavGroup>
+
+          <NavGroup title="Research & Discovery" icon={FileSearch} isOpen={showResearch} toggle={() => setShowResearch(!showResearch)}>
+            <NavItem path="/app/ai-counsel" icon={Scale} label="AI Co-Counsel" />
             <NavItem path="/app/case-law" icon={BookOpen} label="Case Law Research" />
+            <NavItem path="/app/discovery" icon={FileSearch} label="Discovery Manager" />
+            <NavItem path="/app/discovery-nuke" icon={Bomb} label="Discovery Nuke" />
             <NavItem path="/app/admissibility" icon={Target} label="Evidence Analyzer" />
             <NavItem path="/app/timeline" icon={Scale} label="Evidence Timeline" />
             <NavItem path="/app/foia" icon={FileText} label="Public Records / FOIA" />
             <NavItem path="/app/officers" icon={Shield} label="Officer Database" />
           </NavGroup>
 
-          <div className="pt-1" />
-          <NavItem path="/app/transcriber" icon={FileAudio} label="Transcriber" />
-          <NavItem path="/app/motion-writer" icon={ScrollText} label="Motion Writer" />
-          <NavItem path="/app/deadlines" icon={CalendarClock} label="Deadlines" />
-          <NavItem path="/app/predictive" icon={TrendingUp} label="Predictive Analytics" />
-          <NavItem path="/app/docs" icon={FileText} label="Drafting Assistant" />
-          <NavItem path="/app/negotiation" icon={Handshake} label="Negotiation Sim" />
+          <NavGroup title="Courtroom" icon={Gavel} isOpen={showCourtroom} toggle={() => setShowCourtroom(!showCourtroom)}>
+            <NavItem path="/app/practice" icon={Mic} label="Trial Simulator" />
+            <NavItem path="/app/live-sim" icon={Radio} label="Live Voice Sim" />
+            <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
+            <NavItem path="/app/mock-jury" icon={Scale} label="Mock Jury" />
+            <NavItem path="/app/deposition" icon={FileText} label="Deposition Outlines" />
+            <NavItem path="/app/negotiation" icon={Handshake} label="Negotiation Sim" />
+          </NavGroup>
 
+          <NavGroup title="Documents" icon={ScrollText} isOpen={showDocuments} toggle={() => setShowDocuments(!showDocuments)}>
+            <NavItem path="/app/motion-writer" icon={ScrollText} label="Motion Writer" />
+            <NavItem path="/app/docs" icon={FileText} label="Drafting Assistant" />
+            <NavItem path="/app/transcriber" icon={FileAudio} label="Transcriber" />
+          </NavGroup>
+
+          <NavGroup title="Strategy & Analytics" icon={BrainCircuit} isOpen={showStrategy} toggle={() => setShowStrategy(!showStrategy)}>
+            <NavItem path="/app/strategy" icon={BrainCircuit} label="Strategy & AI" />
+            <NavItem path="/app/partner" icon={BrainCircuit} label="AI Partner" />
+            <NavItem path="/app/settlement" icon={Calculator} label="Settlement Calculator" />
+            <NavItem path="/app/predictive" icon={TrendingUp} label="Predictive Analytics" />
+            <NavItem path="/app/performance" icon={BarChart2} label="Performance" />
+          </NavGroup>
+
+          {/* ── Bottom section ── */}
           <div className="mt-auto pt-2 border-t border-slate-800/60">
-            <NavItem path="/app/client-portal" icon={UserCircle} label="Client Portal" />
-            <NavItem path="/app/white-label" icon={Palette} label="White-Label" />
-            <NavItem path="/app/demo" icon={Rocket} label="Load Demo Case" />
+            <NavItem path="/app/settings" icon={SettingsIcon} label="Settings" />
             <NavItem path="/app/team" icon={Users} label="Team" />
+            <NavItem path="/app/white-label" icon={Palette} label="White-Label" />
             <NavItem path="/app/pricing" icon={Sparkles} label="Upgrade Plan" />
           </div>
 
@@ -230,7 +225,6 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
                 {syncStatus === 'synced' ? 'Cloud synced' : syncStatus === 'syncing' ? 'Syncing...' : 'Sync failed \u2013 tap to retry'}
               </span>
             </button>
-            <NavItem path="/app/settings" icon={SettingsIcon} label="Settings" />
           </div>
         </nav>
       </aside>
