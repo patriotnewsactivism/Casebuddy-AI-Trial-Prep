@@ -18,6 +18,7 @@ import {
 } from '../services/elevenLabsService';
 import { isBrowserTTSAvailable, speakWithFallback } from '../services/browserTTSService';
 import { toast } from 'react-toastify';
+import { trackAICompletion } from '../services/roiIntegration';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -528,7 +529,10 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation outside 
     setIsListening(false);
     setIsProcessing(false);
     setView('setup');
-  }, []);
+    if (messages.length > 1) {
+      trackAICompletion('Trial Simulator', `Practice session: ${phase} (${mode})`, { taskType: 'trial_prep' });
+    }
+  }, [messages, phase, mode]);
 
   const startSession = useCallback(async () => {
     if (!phase || !mode) return;

@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import { DiscoveryRequest, DiscoveryDeadline } from '../types';
 import { FileSearch, Plus, Calendar, Clock, AlertTriangle, CheckCircle, XCircle, Filter, Download, Upload, Send, Link } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { trackAICompletion } from '../services/roiIntegration';
 
 const DiscoveryManager = () => {
   const { activeCase, updateCase } = useContext(AppContext);
@@ -115,6 +116,7 @@ Return JSON array with objects containing: type (interrogatory/request-for-produ
       const nextRequests = [...requests, ...newRequests];
       await updateCase(activeCase.id, { discoveryRequests: nextRequests });
       toast.success(`Generated ${newRequests.length} discovery requests`);
+      trackAICompletion('Discovery Manager', `Generated ${newRequests.length} discovery requests`, { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'discovery' });
     } catch (error) {
       console.error('AI generation failed', error);
       toast.error('Failed to generate requests');

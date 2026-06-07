@@ -4,6 +4,7 @@ import { NegotiationScenario, NegotiationRound } from '../types';
 import { Handshake, TrendingUp, TrendingDown, DollarSign, Send, RefreshCw, User, Building, AlertTriangle, CheckCircle, Link } from 'lucide-react';
 import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
+import { trackAICompletion } from '../services/roiIntegration';
 
 const NegotiationSimulator = () => {
   const { activeCase } = useContext(AppContext);
@@ -78,6 +79,7 @@ Return JSON with:
       setOpponentPersona(result.opponentPersona || 'Insurance adjuster');
       setCurrentPosition(result.settlementRange?.[1] || 150000);
       toast.success('Negotiation started');
+      trackAICompletion('Negotiation Sim', 'Started negotiation simulation', { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'negotiation_prep' });
     } catch (error) {
       console.error('Failed to start negotiation', error);
       toast.error('Failed to initialize negotiation');

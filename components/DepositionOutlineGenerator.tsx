@@ -4,6 +4,7 @@ import { DepositionOutline, DepositionTopic, DepositionQuestion } from '../types
 import { FileText, Plus, Trash2, Download, BrainCircuit, ChevronDown, ChevronUp, GripVertical, Link } from 'lucide-react';
 import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
+import { trackAICompletion } from '../services/roiIntegration';
 
 const DepositionOutlineGenerator = () => {
   const { activeCase, updateCase } = useContext(AppContext);
@@ -140,6 +141,7 @@ Return JSON with:
       setShowCreateModal(false);
       setNewOutlineData({ deponentName: '', deponentRole: '', notes: '' });
       toast.success('Deposition outline generated');
+      trackAICompletion('Deposition Generator', `Generated deposition outline for ${witnessName}`, { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'deposition_prep' });
     } catch (error) {
       console.error('Generation failed', error);
       toast.error('Failed to generate outline');

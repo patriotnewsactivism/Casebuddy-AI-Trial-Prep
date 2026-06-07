@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import { useKnowledge } from '../contexts/KnowledgeContext';
 import { MOCK_OPPONENT } from '../constants';
 import { predictStrategy } from '../services/geminiService';
+import { trackAICompletion } from '../services/roiIntegration';
 import { callGeminiProxy } from '../services/apiProxy';
 import { StrategyInsight } from '../types';
 import { BrainCircuit, Target, Shield, AlertOctagon, Lightbulb, RefreshCw, Loader2, Save, CheckCircle, Scale, FileText, TrendingUp, Crosshair } from 'lucide-react';
@@ -91,6 +92,7 @@ const StrategyRoom = () => {
       );
       setInsights(result);
       toast.success('Strategy insights generated');
+      trackAICompletion('Strategy Room', 'Generated strategy insights', { caseId: activeCase?.id, caseName: activeCase?.title });
     } catch (err) {
       toast.error('Failed to generate strategy');
     } finally {
@@ -133,6 +135,7 @@ Return JSON with: strengths (array of 4-6 strings), weaknesses (array of 4-6 str
       if (!response.success) throw new Error(response.error?.message || 'SWOT generation failed');
       setSwot(JSON.parse(response.text || '{}'));
       toast.success('SWOT analysis complete');
+      trackAICompletion('Strategy Room', 'Generated SWOT analysis', { caseId: activeCase?.id, caseName: activeCase?.title });
     } catch (err) {
       toast.error('SWOT analysis failed');
     } finally {
@@ -179,6 +182,7 @@ For each theory, provide: theory (one-line name), strengths (array), weaknesses 
       if (!response.success) throw new Error(response.error?.message || 'Theory generation failed');
       setCaseTheories(JSON.parse(response.text || '[]'));
       toast.success('Case theories generated');
+      trackAICompletion('Strategy Room', 'Generated case theories with win probabilities', { caseId: activeCase?.id, caseName: activeCase?.title });
     } catch (err) {
       toast.error('Case theory generation failed');
     } finally {

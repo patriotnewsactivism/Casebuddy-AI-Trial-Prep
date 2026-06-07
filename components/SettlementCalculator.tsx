@@ -4,6 +4,7 @@ import { SettlementAnalysis, SettlementFactor, EconomicDamages, NonEconomicDamag
 import { Calculator, DollarSign, TrendingUp, TrendingDown, AlertCircle, RefreshCw, Save, Download, Info, Link } from 'lucide-react';
 import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
+import { trackAICompletion } from '../services/roiIntegration';
 
 const SettlementCalculator = () => {
   const { activeCase, updateCase } = useContext(AppContext);
@@ -116,6 +117,7 @@ const SettlementCalculator = () => {
     await updateCase(activeCase.id, { settlementAnalyses: nextAnalyses });
     setAnalysis(result);
     toast.success('Settlement calculated successfully');
+    trackAICompletion('Settlement Calculator', 'Calculated settlement range', { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'settlement_analysis' });
   };
 
   const analyzeWithAI = async () => {

@@ -6,6 +6,7 @@ import { Users, Play, AlertCircle, TrendingUp, TrendingDown, Minus, CheckCircle,
 import { callGeminiProxy } from '../services/apiProxy';
 import { Type } from "@google/genai";
 import { Link } from 'react-router-dom';
+import { trackAICompletion } from '../services/roiIntegration';
 import { handleError, handleSuccess } from '../utils/errorHandler';
 
 // Generate diverse jury pool
@@ -228,6 +229,7 @@ Return JSON with:
       setVerdict(verdictData);
       setPhase('verdict');
       setIsDeliberating(false);
+      trackAICompletion('Mock Jury', 'Completed jury deliberation simulation', { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'trial_prep' });
 
     } catch (error) {
       handleError(error, 'Verdict generation failed', 'MockJury');

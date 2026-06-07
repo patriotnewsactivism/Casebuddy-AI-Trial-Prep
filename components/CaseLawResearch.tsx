@@ -6,6 +6,7 @@ import { callGeminiProxy } from '../services/apiProxy';
 import { Type } from "@google/genai";
 import { toast } from 'react-toastify';
 import { handleError, handleSuccess } from '../utils/errorHandler';
+import { trackAICompletion } from '../services/roiIntegration';
 
 const CaseLawResearch = () => {
   const { activeCase, updateCase } = useContext(AppContext);
@@ -82,6 +83,8 @@ Return 5-8 relevant cases as JSON array.`;
       
       if (data.length === 0) {
         toast.info('No cases found. Try a different query.');
+      } else {
+        trackAICompletion('Case Law Research', `Researched: ${query}`, { taskType: 'legal_research' });
       }
     } catch (error) {
       handleError(error, 'Search failed. Check your configuration.', 'CaseLawResearch');

@@ -6,6 +6,7 @@ import { Calendar, Clock, Plus, Edit2, Trash2, AlertCircle, FileText, Filter, Do
 import { Link } from 'react-router-dom';
 import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
+import { trackAICompletion } from '../services/roiIntegration';
 
 const EvidenceTimeline = () => {
   const { activeCase, updateCase } = useContext(AppContext);
@@ -102,6 +103,7 @@ Return JSON array of objects with: title, date (YYYY-MM-DD), description, type (
       setEvents(merged);
       await updateCase(activeCase.id, { timelineEvents: merged });
       toast.success(`Generated ${newEvents.length} timeline events`);
+      trackAICompletion('Evidence Timeline', `Generated ${newEvents.length} timeline events`, { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'timeline_creation' });
     } catch (error) {
       console.error('AI timeline generation failed:', error);
       toast.error('Failed to generate timeline. Try again.');

@@ -4,6 +4,7 @@ import { AppContext } from '../App';
 import { useKnowledge } from '../contexts/KnowledgeContext';
 import { FileText, Sparkles, Download, Copy, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { callGeminiProxy } from '../services/apiProxy';
+import { trackAICompletion } from '../services/roiIntegration';
 
 type DocumentTemplate =
   | 'motion-to-dismiss'
@@ -157,6 +158,7 @@ Generate the complete document ready for attorney review.`;
       if (!response.success) throw new Error(response.error?.message || 'AI generation failed');
       const generatedText = response.text || '';
       setGeneratedContent(generatedText);
+      trackAICompletion('Drafting Assistant', `Generated ${template?.label || 'document'}`, { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'document_drafting' });
 
       if (activeCase?.id && generatedText && template) {
         try {

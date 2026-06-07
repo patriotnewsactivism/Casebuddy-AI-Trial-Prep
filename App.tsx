@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -40,6 +40,7 @@ const AgentCenter = lazy(() => import('./components/AgentCenter'));
 const AIPartner = lazy(() => import('./components/AIPartner'));
 const AILawFirm = lazy(() => import('./components/AILawFirm'));
 const CasePipeline = lazy(() => import('./components/CasePipeline'));
+const ROITracker = lazy(() => import('./components/ROITracker'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -163,6 +164,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
 
           <NavItem path="/app/law-firm" icon={Scale} label="AI Law Firm" />
           <NavItem path="/app" icon={LayoutDashboard} label="Dashboard" />
+          <NavItem path="/app/roi" icon={DollarSign} label="ROI Tracker" />
           <NavItem path="/app/agents" icon={Bot} label="Agent Command" />
           <NavItem path="/app/partner" icon={BrainCircuit} label="AI Partner" />
           <NavItem path="/app/cases" icon={Gavel} label="Case Files" />
@@ -581,6 +583,7 @@ const App = () => {
               <Route path="/app/partner" element={<AuthenticatedLayout><AIPartner /></AuthenticatedLayout>} />
               <Route path="/app/law-firm" element={<AuthenticatedLayout><AILawFirm /></AuthenticatedLayout>} />
               <Route path="/app/pipeline" element={<AuthenticatedLayout><CasePipeline /></AuthenticatedLayout>} />
+              <Route path="/app/roi" element={<AuthenticatedLayout><ROITracker /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

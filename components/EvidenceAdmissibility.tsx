@@ -4,6 +4,7 @@ import { AdmissibilityAnalysis, AdmissibilityIssue, CaseLawCitation } from '../t
 import { Shield, AlertTriangle, CheckCircle, XCircle, FileSearch, Lightbulb, Link } from 'lucide-react';
 import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
+import { trackAICompletion } from '../services/roiIntegration';
 
 const EvidenceAdmissibility = () => {
   const { activeCase } = useContext(AppContext);
@@ -93,6 +94,7 @@ Return JSON with:
       const result = JSON.parse(response.text || '{}');
       setAnalysis(result);
       toast.success('Analysis complete');
+      trackAICompletion('Evidence Admissibility', 'Analyzed evidence admissibility', { taskType: 'evidence_analysis' });
     } catch (error) {
       console.error('Analysis failed', error);
       toast.error('Analysis failed. Check API key.');

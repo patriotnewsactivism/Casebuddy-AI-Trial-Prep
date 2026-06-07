@@ -10,6 +10,7 @@ import {
 import { Message } from '../types';
 import { callGeminiProxy } from '../services/apiProxy';
 import { toast } from 'react-toastify';
+import { trackAICompletion } from '../services/roiIntegration';
 
 type PersonaTab = 'cocounsel' | 'paralegal';
 type AIStatus = 'idle' | 'thinking' | 'responding';
@@ -151,6 +152,7 @@ Keep responses focused and professional. Lead with your most important point. Us
         timestamp: Date.now(),
       };
       setMessages(prev => [...prev, aiMsg]);
+      trackAICompletion('AI Co-Counsel', 'Legal counsel consultation', { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'legal_research' });
     } catch (err) {
       toast.error('AI Co-Counsel is unavailable — check your API configuration.');
       console.error('[AICoCounsel]', err);
