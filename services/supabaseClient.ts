@@ -160,15 +160,18 @@ export const checkSupabaseHealth = async (): Promise<boolean> => {
     return false;
   }
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/`, {
-      method: 'HEAD',
+    // Use the auth settings endpoint instead of /rest/v1/ because the REST
+    // root returns 401 for anon keys (requires service_role), which was
+    // incorrectly flagged as "unreachable".  The auth settings endpoint is
+    // lightweight, public, and returns 200 when the project is active.
+    const response = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+      method: 'GET',
       headers: {
         'apikey': supabaseAnonKey,
-        'Authorization': `Bearer ${supabaseAnonKey}`,
       },
       signal: AbortSignal.timeout(5000),
     });
-    healthStatus = response.ok || response.status === 400 ? 'reachable' : 'unreachable';
+    healthStatus = response.ok ? 'reachable' : 'unreachable';
     return healthStatus === 'reachable';
   } catch {
     healthStatus = 'unreachable';
