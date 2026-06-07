@@ -104,7 +104,7 @@ Analyze this case and respond with ONLY valid JSON (no markdown):
 Score rubric: 90-100=A (exceptional, take immediately), 80-89=B (strong case), 70-79=C (viable with work), 60-69=D (uphill battle), below 60=F (unlikely to succeed).`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -146,7 +146,7 @@ When you have enough info (at least 4-5 exchanges), say: "Thank you [name], I ha
   ];
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
