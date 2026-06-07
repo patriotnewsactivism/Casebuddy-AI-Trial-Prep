@@ -253,11 +253,11 @@ const LandingPage = () => {
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white font-serif mb-6 leading-tight">
-              Your AI-Powered{' '}
+              CaseBuddy{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-gold-400 to-gold-600">
-                Trial Preparation
+                Your AI-Powered
               </span>{' '}
-              Partner
+              Law Firm
             </h1>
 
             <p className="text-lg sm:text-xl text-slate-300 mb-10 leading-relaxed max-w-3xl mx-auto">
