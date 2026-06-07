@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -43,6 +43,9 @@ const CasePipeline = lazy(() => import('./components/CasePipeline'));
 const ROITracker = lazy(() => import('./components/ROITracker'));
 const MotionWriter = lazy(() => import('./components/MotionWriter'));
 const DeadlineEngine = lazy(() => import('./components/DeadlineEngine'));
+const WhiteLabelSettings = lazy(() => import('./components/WhiteLabelSettings'));
+const ClientPortal = lazy(() => import('./components/ClientPortal'));
+const PredictiveAnalytics = lazy(() => import('./components/PredictiveAnalytics'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -198,10 +201,13 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <NavItem path="/app/transcriber" icon={FileAudio} label="Transcriber" />
           <NavItem path="/app/motion-writer" icon={ScrollText} label="Motion Writer" />
           <NavItem path="/app/deadlines" icon={CalendarClock} label="Deadlines" />
+          <NavItem path="/app/predictive" icon={TrendingUp} label="Predictive Analytics" />
           <NavItem path="/app/docs" icon={FileText} label="Drafting Assistant" />
           <NavItem path="/app/negotiation" icon={Handshake} label="Negotiation Sim" />
 
           <div className="mt-auto pt-2 border-t border-slate-800/60">
+            <NavItem path="/app/client-portal" icon={UserCircle} label="Client Portal" />
+            <NavItem path="/app/white-label" icon={Palette} label="White-Label" />
             <NavItem path="/app/team" icon={Users} label="Team" />
             <NavItem path="/app/pricing" icon={Sparkles} label="Upgrade Plan" />
           </div>
@@ -590,6 +596,9 @@ const App = () => {
               <Route path="/app/roi" element={<AuthenticatedLayout><ROITracker /></AuthenticatedLayout>} />
               <Route path="/app/motion-writer" element={<AuthenticatedLayout><MotionWriter /></AuthenticatedLayout>} />
               <Route path="/app/deadlines" element={<AuthenticatedLayout><DeadlineEngine /></AuthenticatedLayout>} />
+              <Route path="/app/predictive" element={<AuthenticatedLayout><PredictiveAnalytics /></AuthenticatedLayout>} />
+              <Route path="/app/white-label" element={<AuthenticatedLayout><WhiteLabelSettings /></AuthenticatedLayout>} />
+              <Route path="/app/client-portal" element={<AuthenticatedLayout><ClientPortal /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
