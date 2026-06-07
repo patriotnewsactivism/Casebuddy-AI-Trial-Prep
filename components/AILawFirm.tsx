@@ -190,6 +190,8 @@ const AILawFirm: React.FC = () => {
 
   const recognitionRef = useRef<any>(null);
   const messagesEndRef  = useRef<HTMLDivElement>(null);
+  const startListeningRef = useRef<() => void>(() => {});
+  const wasSpeakingRef = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -304,6 +306,21 @@ const AILawFirm: React.FC = () => {
     recognitionRef.current?.stop();
     setListening(false);
   }, []);
+
+  // Keep ref in sync so the effect below can call it without circular deps
+  startListeningRef.current = startListening;
+
+  // Auto-activate mic after any agent finishes speaking during intake
+  useEffect(() => {
+    if (wasSpeakingRef.current && !speaking && !loading && phase === 'intake' && !muted) {
+      const timer = setTimeout(() => {
+        if (!listening) startListeningRef.current();
+      }, 500);
+      wasSpeakingRef.current = false;
+      return () => clearTimeout(timer);
+    }
+    if (speaking) wasSpeakingRef.current = true;
+  }, [speaking, loading, phase, muted, listening]);
 
   // ════════════════════════════════════════════════════════════════════════
   // RENDER — Lobby
