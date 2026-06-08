@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Swords, Clipboard, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket, Globe, ShieldAlert, Send, MessageCircle, Store, Play } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Swords, Clipboard, Inbox, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket, Globe, ShieldAlert, Send, MessageCircle, Store, Play } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -43,6 +43,8 @@ const JudgeProfiler = lazy(() => import('./components/JudgeProfiler'));
 const CourtroomSimulator = lazy(() => import('./components/CourtroomSimulator'));
 const OpposingCounselIntel = lazy(() => import('./components/OpposingCounselIntel'));
 const AIClientOnboarding = lazy(() => import('./components/AIClientOnboarding'));
+const PublicIntake = lazy(() => import('./components/PublicIntake'));
+const IntakeInbox = lazy(() => import('./components/IntakeInbox'));
 const CasePipeline = lazy(() => import('./components/CasePipeline'));
 const ROITracker = lazy(() => import('./components/ROITracker'));
 const MotionWriter = lazy(() => import('./components/MotionWriter'));
@@ -175,6 +177,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <NavGroup title="Front Desk" icon={UserCircle} isOpen={showFrontDesk} toggle={() => setShowFrontDesk(!showFrontDesk)}>
             <NavItem path="/app/law-firm" icon={Scale} label="AI Law Firm (Maya)" />
             <NavItem path="/app/intake" icon={Clipboard} label="Client Intake (AI)" />
+            <NavItem path="/app/intake-inbox" icon={Inbox} label="Intake Inbox" />
             <NavItem path="/app/client-portal" icon={UserCircle} label="Client Portal" />
             <NavItem path="/app/legal-secretary" icon={MessageCircle} label="AI Legal Secretary" />
             <NavItem path="/app/conflict-checker" icon={ShieldAlert} label="Conflict Checker" />
@@ -586,6 +589,8 @@ const App = () => {
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/intake" element={<PublicIntake />} />
+              <Route path="/intake/:firmId" element={<PublicIntake />} />
               <Route path="/tos" element={<TermsOfService />} />
               
               <Route path="/auth/login" element={<LoginPage />} />
@@ -624,6 +629,7 @@ const App = () => {
               <Route path="/app/courtroom" element={<AuthenticatedLayout><CourtroomSimulator /></AuthenticatedLayout>} />
               <Route path="/app/opp-counsel" element={<AuthenticatedLayout><OpposingCounselIntel /></AuthenticatedLayout>} />
               <Route path="/app/intake" element={<AuthenticatedLayout><AIClientOnboarding /></AuthenticatedLayout>} />
+              <Route path="/app/intake-inbox" element={<AuthenticatedLayout><IntakeInbox /></AuthenticatedLayout>} />
               <Route path="/app/pipeline" element={<AuthenticatedLayout><CasePipeline /></AuthenticatedLayout>} />
               <Route path="/app/roi" element={<AuthenticatedLayout><ROITracker /></AuthenticatedLayout>} />
               <Route path="/app/motion-writer" element={<AuthenticatedLayout><MotionWriter /></AuthenticatedLayout>} />
