@@ -86,11 +86,11 @@ const PredictiveAnalytics: React.FC = () => {
 
 CASE: ${activeCase.title}
 CLIENT: ${activeCase.client}
-TYPE: ${activeCase.caseType || 'Civil Rights'}
+TYPE: ${(activeCase as any).caseType || 'Civil Rights'}
 SUMMARY: ${activeCase.summary}
 JUDGE: ${activeCase.judge || 'Unknown'}
 OPPOSING COUNSEL: ${activeCase.opposingCounsel || 'Unknown'}
-KEY FACTS: ${activeCase.keyFacts?.join('; ') || 'See summary'}
+KEY FACTS: ${(activeCase as any).keyFacts?.join('; ') || 'See summary'}
 ${knowledge ? `\nCASE KNOWLEDGE:\n${knowledge}` : ''}
 
 Respond in VALID JSON only (no markdown, no code blocks) with this exact structure:
