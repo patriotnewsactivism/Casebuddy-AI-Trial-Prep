@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket, Globe, ShieldAlert, Send, MessageCircle, Store, Play } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Swords, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket, Globe, ShieldAlert, Send, MessageCircle, Store, Play } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -41,6 +41,7 @@ const AIPartner = lazy(() => import('./components/AIPartner'));
 const AILawFirm = lazy(() => import('./components/AILawFirm'));
 const JudgeProfiler = lazy(() => import('./components/JudgeProfiler'));
 const CourtroomSimulator = lazy(() => import('./components/CourtroomSimulator'));
+const OpposingCounselIntel = lazy(() => import('./components/OpposingCounselIntel'));
 const CasePipeline = lazy(() => import('./components/CasePipeline'));
 const ROITracker = lazy(() => import('./components/ROITracker'));
 const MotionWriter = lazy(() => import('./components/MotionWriter'));
@@ -204,6 +205,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
             <NavItem path="/app/live-sim" icon={Radio} label="Live Voice Sim" />
             <NavItem path="/app/courtroom" icon={Gavel} label="AI Courtroom Sim" />
             <NavItem path="/app/judge-profiler" icon={BrainCircuit} label="Judge Profiler" />
+            <NavItem path="/app/opp-counsel" icon={Swords} label="Opposing Counsel Intel" />
             <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
             <NavItem path="/app/mock-jury" icon={Scale} label="Mock Jury" />
             <NavItem path="/app/deposition" icon={FileText} label="Deposition Outlines" />
@@ -618,6 +620,7 @@ const App = () => {
               <Route path="/app/law-firm" element={<AuthenticatedLayout><AILawFirm /></AuthenticatedLayout>} />
               <Route path="/app/judge-profiler" element={<AuthenticatedLayout><JudgeProfiler /></AuthenticatedLayout>} />
               <Route path="/app/courtroom" element={<AuthenticatedLayout><CourtroomSimulator /></AuthenticatedLayout>} />
+              <Route path="/app/opp-counsel" element={<AuthenticatedLayout><OpposingCounselIntel /></AuthenticatedLayout>} />
               <Route path="/app/pipeline" element={<AuthenticatedLayout><CasePipeline /></AuthenticatedLayout>} />
               <Route path="/app/roi" element={<AuthenticatedLayout><ROITracker /></AuthenticatedLayout>} />
               <Route path="/app/motion-writer" element={<AuthenticatedLayout><MotionWriter /></AuthenticatedLayout>} />
