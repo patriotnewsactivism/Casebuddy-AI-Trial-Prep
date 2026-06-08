@@ -39,6 +39,8 @@ const DiscoveryNuke = lazy(() => import('./components/DiscoveryNuke'));
 const AgentCenter = lazy(() => import('./components/AgentCenter'));
 const AIPartner = lazy(() => import('./components/AIPartner'));
 const AILawFirm = lazy(() => import('./components/AILawFirm'));
+const JudgeProfiler = lazy(() => import('./components/JudgeProfiler'));
+const CourtroomSimulator = lazy(() => import('./components/CourtroomSimulator'));
 const CasePipeline = lazy(() => import('./components/CasePipeline'));
 const ROITracker = lazy(() => import('./components/ROITracker'));
 const MotionWriter = lazy(() => import('./components/MotionWriter'));
@@ -200,6 +202,8 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <NavGroup title="Courtroom" icon={Gavel} isOpen={showCourtroom} toggle={() => setShowCourtroom(!showCourtroom)}>
             <NavItem path="/app/practice" icon={Mic} label="Trial Simulator" />
             <NavItem path="/app/live-sim" icon={Radio} label="Live Voice Sim" />
+            <NavItem path="/app/courtroom" icon={Gavel} label="AI Courtroom Sim" />
+            <NavItem path="/app/judge-profiler" icon={Brain} label="Judge Profiler" />
             <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
             <NavItem path="/app/mock-jury" icon={Scale} label="Mock Jury" />
             <NavItem path="/app/deposition" icon={FileText} label="Deposition Outlines" />
@@ -612,6 +616,8 @@ const App = () => {
               <Route path="/app/agents" element={<AuthenticatedLayout><AgentCenter /></AuthenticatedLayout>} />
               <Route path="/app/partner" element={<AuthenticatedLayout><AIPartner /></AuthenticatedLayout>} />
               <Route path="/app/law-firm" element={<AuthenticatedLayout><AILawFirm /></AuthenticatedLayout>} />
+              <Route path="/app/judge-profiler" element={<AuthenticatedLayout><JudgeProfiler /></AuthenticatedLayout>} />
+              <Route path="/app/courtroom" element={<AuthenticatedLayout><CourtroomSimulator /></AuthenticatedLayout>} />
               <Route path="/app/pipeline" element={<AuthenticatedLayout><CasePipeline /></AuthenticatedLayout>} />
               <Route path="/app/roi" element={<AuthenticatedLayout><ROITracker /></AuthenticatedLayout>} />
               <Route path="/app/motion-writer" element={<AuthenticatedLayout><MotionWriter /></AuthenticatedLayout>} />
