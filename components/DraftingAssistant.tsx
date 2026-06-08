@@ -111,11 +111,6 @@ const DraftingAssistant = () => {
       return;
     }
 
-    if (!apiKey || apiKey === '') {
-      setError('API key not configured. Please set GEMINI_API_KEY in .env.local');
-      return;
-    }
-
     setIsGenerating(true);
     setError('');
     setGeneratedContent('');
