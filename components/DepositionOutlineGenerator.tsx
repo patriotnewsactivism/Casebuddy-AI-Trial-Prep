@@ -141,7 +141,7 @@ Return JSON with:
       setShowCreateModal(false);
       setNewOutlineData({ deponentName: '', deponentRole: '', notes: '' });
       toast.success('Deposition outline generated');
-      trackAICompletion('Deposition Generator', `Generated deposition outline for ${witnessName}`, { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'deposition_prep' });
+      trackAICompletion('Deposition Generator', `Generated deposition outline for ${newOutlineData.deponentName}`, { caseId: activeCase?.id, caseName: activeCase?.title, taskType: 'deposition_prep' });
     } catch (error) {
       console.error('Generation failed', error);
       toast.error('Failed to generate outline');
