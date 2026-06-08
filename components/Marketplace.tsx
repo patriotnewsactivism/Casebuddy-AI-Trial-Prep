@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Store, Search, Star, Download, Tag, Filter, ShoppingCart,
+  Store, Search, Star, Download, Tag, Filter, ShoppingCart, CheckCircle,
   FileText, Scale, Users, Sparkles, TrendingUp, Clock, Shield,
   ChevronRight, Eye, Heart, DollarSign, Award, BookOpen
 } from 'lucide-react';
