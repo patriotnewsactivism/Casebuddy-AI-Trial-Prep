@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket, Globe, ShieldAlert, Send, MessageCircle, Store, Play } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -47,6 +47,17 @@ const WhiteLabelSettings = lazy(() => import('./components/WhiteLabelSettings'))
 const ClientPortal = lazy(() => import('./components/ClientPortal'));
 const DemoCaseLoader = lazy(() => import('./components/DemoCaseLoader'));
 const PredictiveAnalytics = lazy(() => import('./components/PredictiveAnalytics'));
+const DocumentScanner = lazy(() => import('./components/DocumentScanner'));
+const JurisdictionEngine = lazy(() => import('./components/JurisdictionEngine'));
+const ConflictChecker = lazy(() => import('./components/ConflictChecker'));
+const EFilingIntegration = lazy(() => import('./components/EFilingIntegration'));
+const LegalSecretary = lazy(() => import('./components/LegalSecretary'));
+const Marketplace = lazy(() => import('./components/Marketplace'));
+const ContractReview = lazy(() => import('./components/ContractReview'));
+const VideoDemo = lazy(() => import('./components/VideoDemo'));
+const SEOLandingPages = lazy(() => import('./components/SEOLandingPages'));
+const SOLCalculator = lazy(() => import('./components/SOLCalculator'));
+const PWAInstallPrompt = lazy(() => import('./components/PWAInstallPrompt'));
 import { MOCK_CASES } from './constants';
 import { Case, EvidenceItem } from './types';
 import { loadActiveCaseId, loadPreferences, saveActiveCaseId, saveCases, savePreferences } from './utils/storage';
@@ -160,7 +171,10 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <NavGroup title="Front Desk" icon={UserCircle} isOpen={showFrontDesk} toggle={() => setShowFrontDesk(!showFrontDesk)}>
             <NavItem path="/app/law-firm" icon={Scale} label="AI Law Firm (Maya)" />
             <NavItem path="/app/client-portal" icon={UserCircle} label="Client Portal" />
+            <NavItem path="/app/legal-secretary" icon={MessageCircle} label="AI Legal Secretary" />
+            <NavItem path="/app/conflict-checker" icon={ShieldAlert} label="Conflict Checker" />
             <NavItem path="/app/demo" icon={Rocket} label="Load Demo Case" />
+            <NavItem path="/app/video-tour" icon={Play} label="Product Tour" />
           </NavGroup>
 
           <NavGroup title="Case Management" icon={FolderOpen} isOpen={showCaseMgmt} toggle={() => setShowCaseMgmt(!showCaseMgmt)}>
@@ -173,10 +187,12 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <NavGroup title="Research & Discovery" icon={FileSearch} isOpen={showResearch} toggle={() => setShowResearch(!showResearch)}>
             <NavItem path="/app/ai-counsel" icon={Scale} label="AI Co-Counsel" />
             <NavItem path="/app/case-law" icon={BookOpen} label="Case Law Research" />
+            <NavItem path="/app/jurisdiction" icon={Globe} label="Jurisdiction Engine" />
             <NavItem path="/app/discovery" icon={FileSearch} label="Discovery Manager" />
             <NavItem path="/app/discovery-nuke" icon={Bomb} label="Discovery Nuke" />
             <NavItem path="/app/admissibility" icon={Target} label="Evidence Analyzer" />
             <NavItem path="/app/timeline" icon={Scale} label="Evidence Timeline" />
+            <NavItem path="/app/e-filing" icon={Send} label="E-Filing & Courts" />
             <NavItem path="/app/foia" icon={FileText} label="Public Records / FOIA" />
             <NavItem path="/app/officers" icon={Shield} label="Officer Database" />
           </NavGroup>
@@ -193,6 +209,8 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
           <NavGroup title="Documents" icon={ScrollText} isOpen={showDocuments} toggle={() => setShowDocuments(!showDocuments)}>
             <NavItem path="/app/motion-writer" icon={ScrollText} label="Motion Writer" />
             <NavItem path="/app/docs" icon={FileText} label="Drafting Assistant" />
+            <NavItem path="/app/doc-scanner" icon={ScanLine} label="Document Scanner" />
+            <NavItem path="/app/contract-review" icon={FileSearch} label="Contract Review AI" />
             <NavItem path="/app/transcriber" icon={FileAudio} label="Transcriber" />
           </NavGroup>
 
@@ -200,12 +218,15 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
             <NavItem path="/app/strategy" icon={BrainCircuit} label="Strategy & AI" />
             <NavItem path="/app/partner" icon={BrainCircuit} label="AI Partner" />
             <NavItem path="/app/settlement" icon={Calculator} label="Settlement Calculator" />
+            <NavItem path="/app/sol-calculator" icon={Calculator} label="SOL Calculator" />
             <NavItem path="/app/predictive" icon={TrendingUp} label="Predictive Analytics" />
             <NavItem path="/app/performance" icon={BarChart2} label="Performance" />
           </NavGroup>
 
           {/* ── Bottom section ── */}
           <div className="mt-auto pt-2 border-t border-slate-800/60">
+            <NavItem path="/app/marketplace" icon={Store} label="Marketplace" />
+            <NavItem path="/app/seo-pages" icon={Globe} label="SEO Landing Pages" />
             <NavItem path="/app/settings" icon={SettingsIcon} label="Settings" />
             <NavItem path="/app/team" icon={Users} label="Team" />
             <NavItem path="/app/white-label" icon={Palette} label="White-Label" />
@@ -599,6 +620,16 @@ const App = () => {
               <Route path="/app/white-label" element={<AuthenticatedLayout><WhiteLabelSettings /></AuthenticatedLayout>} />
               <Route path="/app/client-portal" element={<AuthenticatedLayout><ClientPortal /></AuthenticatedLayout>} />
               <Route path="/app/demo" element={<AuthenticatedLayout><DemoCaseLoader /></AuthenticatedLayout>} />
+              <Route path="/app/doc-scanner" element={<AuthenticatedLayout><DocumentScanner /></AuthenticatedLayout>} />
+              <Route path="/app/jurisdiction" element={<AuthenticatedLayout><JurisdictionEngine /></AuthenticatedLayout>} />
+              <Route path="/app/conflict-checker" element={<AuthenticatedLayout><ConflictChecker /></AuthenticatedLayout>} />
+              <Route path="/app/e-filing" element={<AuthenticatedLayout><EFilingIntegration /></AuthenticatedLayout>} />
+              <Route path="/app/legal-secretary" element={<AuthenticatedLayout><LegalSecretary /></AuthenticatedLayout>} />
+              <Route path="/app/marketplace" element={<AuthenticatedLayout><Marketplace /></AuthenticatedLayout>} />
+              <Route path="/app/contract-review" element={<AuthenticatedLayout><ContractReview /></AuthenticatedLayout>} />
+              <Route path="/app/video-tour" element={<AuthenticatedLayout><VideoDemo /></AuthenticatedLayout>} />
+              <Route path="/app/seo-pages" element={<AuthenticatedLayout><SEOLandingPages /></AuthenticatedLayout>} />
+              <Route path="/app/sol-calculator" element={<AuthenticatedLayout><SOLCalculator /></AuthenticatedLayout>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
@@ -606,6 +637,7 @@ const App = () => {
         </BrowserRouter>
       </ErrorBoundary>
       <ToastContainer aria-label="Notifications" />
+      <Suspense fallback={null}><PWAInstallPrompt /></Suspense>
     </AppContext.Provider>
   );
 };
