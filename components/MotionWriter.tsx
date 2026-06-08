@@ -202,11 +202,11 @@ const MotionWriter: React.FC = () => {
         ? `CASE INFORMATION:
 - Case Title: ${activeCase.title}
 - Client: ${activeCase.client}
-- Case Type: ${activeCase.caseType || 'Civil'}
+- Case Type: ${(activeCase as any).caseType || 'Civil'}
 - Summary: ${activeCase.summary}
 - Opposing Counsel: ${activeCase.opposingCounsel || 'Unknown'}
 - Judge: ${courtConfig.judge || activeCase.judge || 'TBD'}
-- Key Facts: ${activeCase.keyFacts?.join('; ') || 'See summary'}
+- Key Facts: ${(activeCase as any).keyFacts?.join('; ') || 'See summary'}
 - Evidence: ${activeCase.evidence?.map((e: any) => e.description || e.title).join('; ') || 'See case file'}`
         : 'No active case — generate with placeholder facts.';
 
