@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Palette, Globe, Key, Upload, Save, Eye, RotateCcw,
-  Building, CheckCircle, AlertCircle, Lock, Sparkles,
+  Building, CheckCircle, AlertCircle, Lock, Sparkles, Scale,
   Image as ImageIcon, Type, Monitor,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
