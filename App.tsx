@@ -203,7 +203,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
             <NavItem path="/app/practice" icon={Mic} label="Trial Simulator" />
             <NavItem path="/app/live-sim" icon={Radio} label="Live Voice Sim" />
             <NavItem path="/app/courtroom" icon={Gavel} label="AI Courtroom Sim" />
-            <NavItem path="/app/judge-profiler" icon={Brain} label="Judge Profiler" />
+            <NavItem path="/app/judge-profiler" icon={BrainCircuit} label="Judge Profiler" />
             <NavItem path="/app/witness-lab" icon={Users} label="Witness Lab" />
             <NavItem path="/app/mock-jury" icon={Scale} label="Mock Jury" />
             <NavItem path="/app/deposition" icon={FileText} label="Deposition Outlines" />
