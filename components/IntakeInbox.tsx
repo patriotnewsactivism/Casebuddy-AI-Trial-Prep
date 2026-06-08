@@ -12,13 +12,8 @@ import {
   CheckCircle, Clock, AlertCircle, FileText, Copy, Share2,
   Loader2, Scale, RefreshCw, Plus, ExternalLink, Zap, ClipboardList
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import { toast } from 'react-toastify';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
+import { supabase } from '../services/supabaseClient';
 
 interface ClientIntake {
   id: string;

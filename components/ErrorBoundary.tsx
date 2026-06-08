@@ -49,7 +49,8 @@ class ErrorBoundary extends React.Component<Props, State> {
   };
 
   handleGoHome = (): void => {
-    window.location.href = '/';
+    // Navigate within the SPA to preserve sidebar/auth state
+    window.location.href = '/app';
   };
 
   render() {

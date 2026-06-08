@@ -71,14 +71,34 @@ import { appendEvidence, fetchCases, removeCase, supabaseReady, upsertCase } fro
 import { checkSupabaseHealth, getHealthStatus } from './services/supabaseClient';
 import ErrorBoundary from './components/ErrorBoundary';
 
+/** Read persisted sidebar group state from localStorage */
+const loadSidebarState = (): Record<string, boolean> => {
+  try {
+    const raw = localStorage.getItem('cb_sidebar_groups');
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+};
+const saveSidebarState = (state: Record<string, boolean>) => {
+  try { localStorage.setItem('cb_sidebar_groups', JSON.stringify(state)); } catch {}
+};
+
 const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean, setIsOpen: (v: boolean) => void, syncStatus: 'synced' | 'syncing' | 'error', retrySync: () => void }) => {
   const location = useLocation();
-  const [showFrontDesk, setShowFrontDesk] = useState(false);
-  const [showCaseMgmt, setShowCaseMgmt] = useState(false);
-  const [showResearch, setShowResearch] = useState(false);
-  const [showCourtroom, setShowCourtroom] = useState(false);
-  const [showDocuments, setShowDocuments] = useState(false);
-  const [showStrategy, setShowStrategy] = useState(false);
+  const saved = loadSidebarState();
+  const [showFrontDesk, _setShowFrontDesk] = useState(saved.frontDesk ?? false);
+  const [showCaseMgmt, _setShowCaseMgmt] = useState(saved.caseMgmt ?? false);
+  const [showResearch, _setShowResearch] = useState(saved.research ?? false);
+  const [showCourtroom, _setShowCourtroom] = useState(saved.courtroom ?? false);
+  const [showDocuments, _setShowDocuments] = useState(saved.documents ?? false);
+  const [showStrategy, _setShowStrategy] = useState(saved.strategy ?? false);
+
+  // Wrappers that persist state to localStorage
+  const setShowFrontDesk = (v: boolean | ((p: boolean) => boolean)) => { _setShowFrontDesk(prev => { const next = typeof v === 'function' ? v(prev) : v; saveSidebarState({ ...loadSidebarState(), frontDesk: next }); return next; }); };
+  const setShowCaseMgmt = (v: boolean | ((p: boolean) => boolean)) => { _setShowCaseMgmt(prev => { const next = typeof v === 'function' ? v(prev) : v; saveSidebarState({ ...loadSidebarState(), caseMgmt: next }); return next; }); };
+  const setShowResearch = (v: boolean | ((p: boolean) => boolean)) => { _setShowResearch(prev => { const next = typeof v === 'function' ? v(prev) : v; saveSidebarState({ ...loadSidebarState(), research: next }); return next; }); };
+  const setShowCourtroom = (v: boolean | ((p: boolean) => boolean)) => { _setShowCourtroom(prev => { const next = typeof v === 'function' ? v(prev) : v; saveSidebarState({ ...loadSidebarState(), courtroom: next }); return next; }); };
+  const setShowDocuments = (v: boolean | ((p: boolean) => boolean)) => { _setShowDocuments(prev => { const next = typeof v === 'function' ? v(prev) : v; saveSidebarState({ ...loadSidebarState(), documents: next }); return next; }); };
+  const setShowStrategy = (v: boolean | ((p: boolean) => boolean)) => { _setShowStrategy(prev => { const next = typeof v === 'function' ? v(prev) : v; saveSidebarState({ ...loadSidebarState(), strategy: next }); return next; }); };
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -308,7 +328,9 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
         </header>
 
         <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden">
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
         </main>
       </div>
     </div>

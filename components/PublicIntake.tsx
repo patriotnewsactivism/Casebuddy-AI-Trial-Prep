@@ -22,12 +22,7 @@ import {
   ChevronRight, Loader2, CheckCircle, Scale, Send,
   Shield, Lock, Clock, XCircle, ArrowRight
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL  || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
+import { supabase } from '../services/supabaseClient';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QUESTION BANK  —  fixed set Maya always asks, in order
