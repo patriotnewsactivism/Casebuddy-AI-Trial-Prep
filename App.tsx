@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Swords, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket, Globe, ShieldAlert, Send, MessageCircle, Store, Play } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, BrainCircuit, Gavel, Swords, Clipboard, Settings as SettingsIcon, Menu, X, Mic, FileAudio, Calculator, FileSearch, BookOpen, Target, BarChart2, Handshake, Scale, FolderOpen, ChevronDown, ChevronRight, LogOut, Shield, ScanLine, Sparkles, Cloud, CloudOff, Loader2, Radio, Bomb, Bot, ListChecks, DollarSign, ScrollText, CalendarClock, Palette, UserCircle, TrendingUp, Rocket, Globe, ShieldAlert, Send, MessageCircle, Store, Play } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { KnowledgeProvider } from './contexts/KnowledgeContext';
@@ -174,7 +174,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
 
           <NavGroup title="Front Desk" icon={UserCircle} isOpen={showFrontDesk} toggle={() => setShowFrontDesk(!showFrontDesk)}>
             <NavItem path="/app/law-firm" icon={Scale} label="AI Law Firm (Maya)" />
-            <NavItem path="/app/intake" icon={ClipboardList} label="Client Intake (AI)" />
+            <NavItem path="/app/intake" icon={Clipboard} label="Client Intake (AI)" />
             <NavItem path="/app/client-portal" icon={UserCircle} label="Client Portal" />
             <NavItem path="/app/legal-secretary" icon={MessageCircle} label="AI Legal Secretary" />
             <NavItem path="/app/conflict-checker" icon={ShieldAlert} label="Conflict Checker" />
