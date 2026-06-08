@@ -41,22 +41,54 @@ interface Q {
   skipIf?: (a: Record<string,string>) => boolean;
 }
 
+// ── Acknowledgments Maya says BEFORE asking the next question ───────────────
+// Keyed by the PREVIOUS question's id
+const ACKNOWLEDGMENTS: Record<string, string[]> = {
+  name:         ["Got it — nice to meet you.", "Great, thank you.", "Perfect."],
+  phone:        ["Got it.", "Thanks — I have that.", "Perfect, noted."],
+  email:        ["Great, I have your contact info.", "Got it, thank you."],
+  case_type:    [
+    "Understood — I want you to know you came to the right place.",
+    "Okay, thank you for sharing that with me.",
+    "I appreciate you trusting us with this.",
+  ],
+  what_happened:[
+    "Thank you for sharing that — I know it's not always easy to talk about these things.",
+    "I hear you. That sounds really difficult, and I appreciate you walking me through it.",
+    "Got it. I want you to know everything you've told me stays completely confidential.",
+  ],
+  when:         ["Okay, I have that noted.", "Thank you — timing can be really important in these cases.", "Got it."],
+  other_party:  ["Understood, I have that noted.", "Okay, good to know.", "Got it."],
+  damages:      [
+    "I'm sorry to hear that — those details are really important and I want to make sure the attorneys have the full picture.",
+    "Thank you for being so thorough. That really helps our team understand what you've been through.",
+    "Got it, I have all of that noted.",
+  ],
+  urgency:      ["Understood. I'll make sure that's flagged for the team.", "Got it — that's helpful context.", "Okay, noted."],
+};
+
+function pickAck(questionId: string): string {
+  const opts = ACKNOWLEDGMENTS[questionId];
+  if (!opts) return '';
+  return opts[Math.floor(Math.random() * opts.length)];
+}
+
 const QUESTIONS: Q[] = [
   {
     id: 'name', field: 'client_name', type: 'text',
-    maya: "First — what's your full legal name?",
+    maya: "First — what\'s your full legal name?",
   },
   {
     id: 'phone', field: 'client_phone', type: 'text',
-    maya: "What's the best phone number to reach you?",
+    maya: "What\'s the best phone number to reach you?",
   },
   {
     id: 'email', field: 'client_email', type: 'text',
-    maya: "And your email address?",
+    maya: "And your email address? That\'s just so the team can follow up with you.",
   },
   {
     id: 'case_type', field: 'case_type', type: 'choice',
-    maya: "What type of legal matter brings you to us today?",
+    maya: "Now — what type of legal matter brings you to us today? Go ahead and tap the one that fits best, or just tell me.",
     choices: [
       'Personal Injury',
       'Civil Rights / § 1983',
@@ -71,32 +103,32 @@ const QUESTIONS: Q[] = [
   },
   {
     id: 'what_happened', field: 'summary', type: 'multiline',
-    maya: "Tell me in your own words what happened. Take your time — as much detail as you can.",
+    maya: "I\'d like to hear what happened in your own words. There\'s no rush — take as much time as you need, and share as much detail as you\'re comfortable with.",
   },
   {
     id: 'when', field: 'incident_date', type: 'text',
-    maya: "When did this occur? An approximate date is fine.",
+    maya: "When did this happen? An approximate date is totally fine.",
   },
   {
     id: 'other_party', field: 'other_party', type: 'text',
-    maya: "Who is the other party — a person, a company, a government agency?",
+    maya: "Who is the other party involved — is it a person, a company, a government agency, or someone else?",
   },
   {
     id: 'damages', field: 'damages', type: 'multiline',
-    maya: "Were there any injuries, financial losses, or other damages? Describe them.",
+    maya: "Were there any injuries, financial losses, or other damages as a result of this? Please describe anything you\'ve experienced.",
   },
   {
     id: 'urgency', field: 'urgency', type: 'choice',
-    maya: "How urgent is this matter?",
+    maya: "I want to make sure the team prioritizes appropriately — how urgent is this situation for you?",
     choices: [
-      "There's an upcoming court date or legal deadline",
+      "There\'s an upcoming court date or legal deadline",
       "Moderately urgent — within the next few weeks",
       "No immediate deadline",
     ],
   },
   {
     id: 'outcome', field: 'desired_outcome', type: 'multiline',
-    maya: "Last question — what outcome are you hoping to achieve?",
+    maya: "And the last question — what outcome are you hoping for? What would a good resolution look like to you?",
   },
 ];
 
@@ -184,7 +216,7 @@ const ResultScreen: React.FC<{ route: RouteResult; name: string }> = ({ route, n
       icon: '✅',
       color: 'border-emerald-500/30 bg-emerald-500/5',
       title: "We're On It",
-      body: `Thank you, ${name || 'there'}. Given the urgency of your situation, your matter has been flagged for priority review. An attorney will be in touch with you very shortly — often within the same business day.`,
+      body: `You did the right thing reaching out, ${name ? name.split(' ')[0] : 'there'}. Given the urgency of your situation, your matter has been flagged for priority review. An attorney will be in touch with you very shortly — often within the same business day. We've got this.`,
       badge: 'text-emerald-400',
       badgeText: 'Priority Review',
     },
@@ -192,7 +224,7 @@ const ResultScreen: React.FC<{ route: RouteResult; name: string }> = ({ route, n
       icon: '📋',
       color: 'border-blue-500/30 bg-blue-500/5',
       title: 'Intake Submitted',
-      body: `Thank you, ${name || 'there'}. Your information has been received and is under review by our legal team. We will contact you within 1–2 business days to discuss your options.`,
+      body: `Thank you, ${name ? name.split(' ')[0] : 'there'}. It takes courage to take this step, and we want you to know your situation will be reviewed carefully by our legal team. We'll be in touch within 1–2 business days. You don't have to navigate this alone.`,
       badge: 'text-blue-400',
       badgeText: 'Under Review',
     },
@@ -200,7 +232,7 @@ const ResultScreen: React.FC<{ route: RouteResult; name: string }> = ({ route, n
       icon: '🙏',
       color: 'border-slate-600 bg-slate-800/40',
       title: 'Thank You for Reaching Out',
-      body: `Thank you, ${name || 'there'}, for sharing your situation with us. After review, we are unfortunately unable to take on this type of matter at this time. We encourage you to seek representation from another firm.`,
+      body: `Thank you, ${name ? name.split(' ')[0] : 'there'}, for sharing your situation with us. After careful review, we're unfortunately not able to take on this particular matter right now — but that doesn't mean you don't have options. We genuinely encourage you to consult with another attorney, and we wish you the very best.`,
       badge: 'text-slate-400',
       badgeText: 'Not a Current Fit',
     },
@@ -292,9 +324,9 @@ const PublicIntake: React.FC = () => {
       setRouteResult(route);
 
       const sayings: Record<RouteResult, string> = {
-        accept: "That's everything I need. Given the urgency here, I'm flagging this for priority review right now. An attorney will be in touch very shortly.",
-        review: "Perfect — that's all the information I need. Your intake has been submitted and our legal team will review it and reach out within 1 to 2 business days.",
-        decline: "Thank you for sharing all of that with me. I've passed your information along to our team for review.",
+        accept: `That's everything I need, and I want you to know — you did great. Given the urgency of your situation, I'm flagging this for priority review right now. An attorney will personally reach out to you very shortly. Hang tight — you're in good hands.`,
+        review: `That's all I need — thank you so much for taking the time to walk me through everything. I know that's not always easy. Your intake is now with our legal team, and someone will be in touch within one to two business days. We genuinely appreciate you trusting us with this.`,
+        decline: `Thank you for sharing all of that with me — I really mean it. I've passed everything along to our team. They'll review your information and if there's anything they can do to help, they'll reach out. Please don't hesitate to consult with another attorney as well — your situation matters.`,
       };
 
       setMayaTalking(true);
@@ -324,12 +356,14 @@ const PublicIntake: React.FC = () => {
       return;
     }
 
-    // Advance to next question
+    // Advance to next question — Maya acknowledges first
     setQIndex(nextIdx);
     const nextQ = QUESTIONS[nextIdx];
     busyRef.current = true;
     setMayaTalking(true);
-    await mayaSpeak(nextQ.maya, muted);
+    const ack = pickAck(q.id);
+    const fullSpeech = ack ? `${ack} ${nextQ.maya}` : nextQ.maya;
+    await mayaSpeak(fullSpeech, muted);
     setMayaTalking(false);
     busyRef.current = false;
 
@@ -421,7 +455,7 @@ const PublicIntake: React.FC = () => {
     setQIndex(0);
     setAnswers({});
     setTranscript([]);
-    const greeting = `Hi, I'm Maya. I'll ask you a few quick questions so our legal team can review your situation. Everything you share is completely confidential. Let's begin — ${QUESTIONS[0].maya}`;
+    const greeting = `Hi there — I'm Maya, and I'm really glad you reached out today. I'm the AI intake specialist here, and my job is to make this process as easy as possible for you. I'll ask you about ten quick questions, and our legal team will take it from there. Everything you share with me stays completely confidential — that's my promise to you. Okay, let's get started. ${QUESTIONS[0].maya}`;
     busyRef.current = true;
     setMayaTalking(true);
     await mayaSpeak(greeting, muted);
@@ -459,7 +493,7 @@ const PublicIntake: React.FC = () => {
 
           <h1 className="text-2xl font-bold mb-1">Hi, I'm Maya</h1>
           <p className="text-slate-400 text-sm mb-6">
-            I'm the AI intake specialist for this law firm. I'll walk you through a few quick questions so our attorneys can review your situation.
+            I'm the AI intake specialist here. I know reaching out to a law firm can feel intimidating — so I'm here to make this as simple and comfortable as possible. A few questions, no judgment, completely confidential.
           </p>
 
           {/* Trust signals */}
