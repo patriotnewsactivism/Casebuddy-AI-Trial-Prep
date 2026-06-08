@@ -42,6 +42,7 @@ const AILawFirm = lazy(() => import('./components/AILawFirm'));
 const JudgeProfiler = lazy(() => import('./components/JudgeProfiler'));
 const CourtroomSimulator = lazy(() => import('./components/CourtroomSimulator'));
 const OpposingCounselIntel = lazy(() => import('./components/OpposingCounselIntel'));
+const AIClientOnboarding = lazy(() => import('./components/AIClientOnboarding'));
 const CasePipeline = lazy(() => import('./components/CasePipeline'));
 const ROITracker = lazy(() => import('./components/ROITracker'));
 const MotionWriter = lazy(() => import('./components/MotionWriter'));
@@ -173,6 +174,7 @@ const Sidebar = ({ isOpen, setIsOpen, syncStatus, retrySync }: { isOpen: boolean
 
           <NavGroup title="Front Desk" icon={UserCircle} isOpen={showFrontDesk} toggle={() => setShowFrontDesk(!showFrontDesk)}>
             <NavItem path="/app/law-firm" icon={Scale} label="AI Law Firm (Maya)" />
+            <NavItem path="/app/intake" icon={ClipboardList} label="Client Intake (AI)" />
             <NavItem path="/app/client-portal" icon={UserCircle} label="Client Portal" />
             <NavItem path="/app/legal-secretary" icon={MessageCircle} label="AI Legal Secretary" />
             <NavItem path="/app/conflict-checker" icon={ShieldAlert} label="Conflict Checker" />
@@ -621,6 +623,7 @@ const App = () => {
               <Route path="/app/judge-profiler" element={<AuthenticatedLayout><JudgeProfiler /></AuthenticatedLayout>} />
               <Route path="/app/courtroom" element={<AuthenticatedLayout><CourtroomSimulator /></AuthenticatedLayout>} />
               <Route path="/app/opp-counsel" element={<AuthenticatedLayout><OpposingCounselIntel /></AuthenticatedLayout>} />
+              <Route path="/app/intake" element={<AuthenticatedLayout><AIClientOnboarding /></AuthenticatedLayout>} />
               <Route path="/app/pipeline" element={<AuthenticatedLayout><CasePipeline /></AuthenticatedLayout>} />
               <Route path="/app/roi" element={<AuthenticatedLayout><ROITracker /></AuthenticatedLayout>} />
               <Route path="/app/motion-writer" element={<AuthenticatedLayout><MotionWriter /></AuthenticatedLayout>} />
