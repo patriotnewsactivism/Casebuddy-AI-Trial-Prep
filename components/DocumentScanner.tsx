@@ -197,7 +197,7 @@ ${extractedText.substring(0, 12000)}`;
               title: kd.event,
               description: `Source: ${file.name}`,
               category: 'document' as const,
-            }));
+            })).map(ev => ({ ...ev, type: 'other' as const, importance: 'medium' as const }));
             await updateCase(activeCase.id, {
               timelineEvents: [...(activeCase.timelineEvents || []), ...newEvents],
             });
