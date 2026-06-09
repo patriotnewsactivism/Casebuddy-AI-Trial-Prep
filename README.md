@@ -1,116 +1,46 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Getting Started with Create React App
 
-# CaseBuddy AI - Trial Prep Assistant
-
-An AI-powered legal case management and trial preparation platform with secure, server-side API handling.
-
-## Architecture Overview
-
-CaseBuddy AI uses a modern, secure architecture with **Supabase** as the backend:
-
-- **Frontend**: React + TypeScript + Tailwind CSS
-- **Backend**: Supabase (PostgreSQL + Auth + Storage + Edge Functions)
-- **AI Integration**: Secure API proxying via Supabase Edge Functions
-
-```
-┌─────────────────┐      ┌──────────────────┐      ┌─────────────────┐
-│   React App     │─────▶│  Supabase Edge   │─────▶│  External APIs  │
-│   (Frontend)    │      │    Functions     │      │  (Gemini, etc.) │
-└─────────────────┘      └──────────────────┘      └─────────────────┘
-        │                        │
-        │                        │
-        ▼                        ▼
-┌─────────────────────────────────────────────────┐
-│              Supabase Platform                   │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────┐ │
-│  │  PostgreSQL │  │    Auth     │  │ Storage  │ │
-│  │  Database   │  │   Service   │  │ Buckets  │ │
-│  └─────────────┘  └─────────────┘  └──────────┘ │
-└─────────────────────────────────────────────────┘
-```
-
-## Security Features
-
-- **No exposed API keys**: All third-party API keys are stored server-side in Supabase secrets
-- **Row Level Security (RLS)**: Database-level access control ensuring users can only access their own data
-- **Authentication**: Built-in user authentication with Supabase Auth
-- **Rate limiting**: Per-user rate limiting on all Edge Functions
-- **Secure file storage**: User-isolated storage buckets
-
-## Quick Start
-
-**Prerequisites:**
-- Node.js 18+
-- Supabase account (free tier works)
-
-### 1. Clone and Install
-
-```bash
-git clone <repository-url>
-cd Casebuddy-AI-Trial-Prep
-npm install
-```
-
-### 2. Set Up Supabase
-
-See [SETUP.md](./SETUP.md) for detailed step-by-step instructions.
-
-Quick setup:
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Run the migration files in `supabase/migrations/`
-3. Deploy Edge Functions from `supabase/functions/`
-4. Configure secrets (API keys) in Supabase dashboard
-
-### 3. Configure Environment
-
-Create `.env.local`:
-```bash
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-### 4. Run Locally
-
-```bash
-npm run dev
-```
-
-The app will be available at `http://localhost:5000`.
-
-## Documentation
-
-- **[SETUP.md](./SETUP.md)** - Detailed setup instructions
-- **[SECURITY.md](./SECURITY.md)** - Security architecture and best practices
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System architecture overview
-- **[AGENTS.md](./AGENTS.md)** - Development guidelines for AI assistants
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
 ## Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server on port 5000 |
-| `npm run build` | Create production build |
-| `npm run preview` | Preview production build locally |
+In the project directory, you can run:
 
-## Features
+### `npm start`
 
-- **Case Management**: Create, organize, and track legal cases
-- **Evidence Management**: Upload and analyze evidence with AI
-- **Witness Lab**: AI-powered witness preparation simulations
-- **Strategy Room**: AI-assisted case strategy analysis
-- **Transcriber**: Audio transcription with AI analysis
-- **Drafting Assistant**: AI-powered legal document drafting
-- **Voice Features**: Text-to-speech and speech-to-text capabilities
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
-## Tech Stack
+The page will reload if you make edits.\
+You will also see any lint errors in the console.
 
-- **Frontend**: React 19, TypeScript, Tailwind CSS
-- **Build Tool**: Vite
-- **Backend**: Supabase (PostgreSQL, Auth, Storage, Edge Functions)
-- **AI**: Google Gemini, OpenAI GPT-4, ElevenLabs
+### `npm test`
 
-## License
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-MIT
+### `npm run build`
+
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
+
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
+
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+
+### `npm run eject`
+
+**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+
+If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+
+You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+
+## Learn More
+
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+
+To learn React, check out the [React documentation](https://reactjs.org/).
