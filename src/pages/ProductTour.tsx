@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlayCircle, ChevronLeft, ChevronRight, CheckCircle, ArrowRight, Sparkles, Shield, Globe, FileText, MessageSquare, Store, FileCheck, ScanLine, Scale, Gavel, Calculator, Rocket } from 'lucide-react';
+import { PlayCircle, ChevronLeft, ChevronRight, CheckCircle, Sparkles, Shield, Globe, MessageSquare, Store, FileCheck, ScanLine, Gavel, Calculator, Rocket } from 'lucide-react';
 
 interface TourStep {
   title: string; description: string; icon: any; color: string;
@@ -170,3 +170,4 @@ export default function ProductTour() {
     </div>
   );
 }
+
