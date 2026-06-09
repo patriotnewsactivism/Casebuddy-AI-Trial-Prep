@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe2, Sparkles, Loader2, Copy, CheckCircle, Search, TrendingUp, FileText, Eye, Download, Plus, X } from 'lucide-react';
+import { Globe2, Sparkles, Loader2, Copy, CheckCircle, TrendingUp, Eye, Plus, X } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 
 interface GeneratedPage {
@@ -275,3 +275,4 @@ Format the content in HTML with proper heading tags.`,
     </div>
   );
 }
+
