@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Store, Search, Star, Download, Eye, Filter, Tag, TrendingUp, ShoppingCart, Heart } from 'lucide-react';
+import { Store, Search, Star, Download, Eye, TrendingUp, ShoppingCart, Heart } from 'lucide-react';
 
 interface Template {
   id: string; title: string; author: string; category: string;
@@ -194,3 +194,4 @@ export default function Marketplace() {
     </div>
   );
 }
+
