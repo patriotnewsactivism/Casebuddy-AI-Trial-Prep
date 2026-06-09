@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, Loader2, Settings, Copy, CheckCircle, Code, Globe, UserPlus, Calendar, Palette } from 'lucide-react';
+import { MessageSquare, Send, Loader2, Settings, Copy, CheckCircle, Code, Globe, UserPlus, Calendar } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 
 interface ChatMessage { role: 'bot' | 'user'; text: string; timestamp: string; leadCaptured?: boolean; }
@@ -16,7 +16,7 @@ export default function LegalSecretary() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [leads, setLeads] = useState<LeadInfo[]>([
+  const [leads] = useState<LeadInfo[]>([
     { name: 'John Smith', email: 'john@email.com', phone: '(555) 123-4567', caseType: 'Civil Rights', jurisdiction: 'Mississippi', summary: 'Police excessive force during traffic stop. Has video evidence.', urgency: 'High', timestamp: '2026-06-08T14:30:00Z' },
     { name: 'Sarah Johnson', email: 'sarah.j@email.com', phone: '(555) 987-6543', caseType: 'Personal Injury', jurisdiction: 'Mississippi', summary: 'Slip and fall at grocery store. Medical bills $12,000.', urgency: 'Medium', timestamp: '2026-06-07T09:15:00Z' },
   ]);
@@ -284,3 +284,4 @@ export default function LegalSecretary() {
     </div>
   );
 }
+
