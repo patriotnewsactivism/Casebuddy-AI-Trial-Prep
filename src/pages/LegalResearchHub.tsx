@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { BookOpen, Loader2, Scale, TrendingUp, TrendingDown, FileText, Globe, Search, ArrowLeftRight } from 'lucide-react';
+import { BookOpen, Loader2, Globe, Search, ArrowLeftRight } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
 
 type Tab = 'research' | 'jurisdiction';
@@ -170,3 +170,4 @@ Provide comprehensive legal research in JSON:
     </div>
   );
 }
+
