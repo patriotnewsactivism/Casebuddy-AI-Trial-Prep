@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Clock, Plus, Trash2, AlertTriangle, CheckCircle, Calendar, Calculator, Mail, MapPin, Scale, ArrowRight } from 'lucide-react';
+import { Clock, Plus, Trash2, AlertTriangle, CheckCircle, Calendar, Calculator, MapPin, Scale, ArrowRight } from 'lucide-react';
 
 type Tab = 'deadlines' | 'sol';
 
@@ -224,3 +224,4 @@ export default function DeadlinesAndSol() {
     </div>
   );
 }
+
