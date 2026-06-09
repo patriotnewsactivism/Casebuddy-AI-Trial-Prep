@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Swords, Send, Loader2, Settings, Users, BarChart2, Brain, AlertTriangle, ChevronDown, ChevronUp, Mic, MicOff } from 'lucide-react';
+import { Swords, Send, Loader2, Settings, Users, BarChart2, Brain, ChevronDown, ChevronUp, Mic, MicOff } from 'lucide-react';
 import { trialCoach } from '../lib/api';
 
 type Tab = 'coach' | 'witness' | 'jury';
@@ -353,3 +353,4 @@ Respond JSON: {"ai_prep_notes":"overview","direct_questions":["Q"],"cross_questi
     </div>
   );
 }
+
