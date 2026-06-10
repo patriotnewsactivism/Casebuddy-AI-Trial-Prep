@@ -6,11 +6,11 @@
 ## 🔴 PRIORITY 1 — AI Agent Personas (Core Identity)
 
 ### 1.1 Restore Maya — Case Intake Agent
-- [ ] Rename "Alex" back to "Maya" in `src/pages/IntakePage.tsx`
-- [ ] Add Maya's full persona header (avatar, name, title, personality blurb)
-- [ ] Update page title to reflect Maya's brand
-- [ ] Update `aiParalegal` backend function system prompt with Maya persona
-- [ ] Style Maya's chat bubble with signature violet/purple color
+- [x] Rename "Alex" back to "Maya" in `src/pages/IntakePage.tsx`
+- [x] Add Maya's full persona header (avatar, name, title, personality blurb)
+- [x] Update page title to reflect Maya's brand
+- [x] Update `aiParalegal` backend function system prompt with Maya persona
+- [x] Style Maya's chat bubble with signature violet/purple color
 
 ### 1.2 Assign Named Personas to Every Module
 | Agent | Module | File | Status |
@@ -24,24 +24,24 @@
 | **Jules** | Jury Simulator | `JurySimulator.tsx` | ⬜ Page missing |
 | **Max** | E-Filing & Records | `EFiling.tsx` | ⬜ Not assigned |
 
-- [ ] Create `src/agents/personas.ts` — central config for all agent names, colors, avatars, descriptions
-- [ ] Build reusable `<AgentHeader />` component used across all pages
+- [x] Create `src/agents/personas.ts` — central config for all agent names, colors, avatars, descriptions
+- [x] Build reusable `<AgentHeader />` component used across all pages
 - [ ] Update each module page to import and display its assigned agent
 
 ### 1.3 Meet the Team — Dashboard Section
-- [ ] Add "Meet the Team" section to `Dashboard.tsx`
-- [ ] Display all 8 agents as cards (name, role, avatar, specialty)
-- [ ] Each card links to the agent's module
-- [ ] Add agent availability status indicators
+- [x] Add "Meet the Team" section to `Dashboard.tsx`
+- [x] Display all 8 agents as cards (name, role, avatar, specialty)
+- [x] Each card links to the agent's module
+- [x] Add agent availability status indicators
 
 ---
 
 ## 🔴 PRIORITY 2 — Missing Pages
 
 ### 2.1 Witness Prep Page (`/witnesses`) — Agent: Rex
-- [ ] Create `src/pages/WitnessPrep.tsx`
-- [ ] Add route in `App.tsx`
-- [ ] Add to sidebar nav under "Trial Prep"
+- [x] Create `src/pages/WitnessPrep.tsx`
+- [x] Add route in `App.tsx`
+- [x] Add to sidebar nav under "Trial Prep"
 - [ ] Features:
   - [ ] Input witness name, role, relationship to case
   - [ ] AI generates direct examination questions
@@ -50,9 +50,9 @@
   - [ ] Export questions as printable outline
 
 ### 2.2 Jury Simulator Page (`/jury`) — Agent: Jules
-- [ ] Create `src/pages/JurySimulator.tsx`
-- [ ] Add route in `App.tsx`
-- [ ] Add to sidebar nav under "Trial Prep"
+- [x] Create `src/pages/JurySimulator.tsx`
+- [x] Add route in `App.tsx`
+- [x] Add to sidebar nav under "Trial Prep"
 - [ ] Features:
   - [ ] 6 AI jurors with distinct personalities (skeptic, empath, analytical, conservative, liberal, undecided)
   - [ ] Present opening statement → get per-juror reactions
