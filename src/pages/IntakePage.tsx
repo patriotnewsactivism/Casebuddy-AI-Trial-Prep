@@ -1,8 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UserPlus, Send, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Send, Loader2, CheckCircle, AlertCircle, Mic, MicOff } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
+import AgentHeader from '../components/AgentHeader';
+import { AGENTS } from '../agents/personas';
 
-interface Message { role: 'user' | 'assistant'; content: string; }
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+const maya = AGENTS.maya;
 
 export default function IntakePage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -10,14 +17,18 @@ export default function IntakePage() {
   const [loading, setLoading] = useState(false);
   const [started, setStarted] = useState(false);
   const [summary, setSummary] = useState<any>(null);
+  const [isListening, setIsListening] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const startIntake = async () => {
     setStarted(true);
     setLoading(true);
-    const res = await aiParalegal({ messages: [] });
+    const res = await aiParalegal({ messages: [], agentPersona: maya.systemPrompt });
     if (res.reply) setMessages([{ role: 'assistant', content: res.reply }]);
     setLoading(false);
   };
@@ -28,106 +39,252 @@ export default function IntakePage() {
     setMessages(newMessages);
     setInput('');
     setLoading(true);
-    const res = await aiParalegal({ messages: newMessages });
-    if (res.reply) setMessages(prev => [...prev, { role: 'assistant', content: res.reply.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim() }]);
+    if (isListening) stopListening();
+
+    const res = await aiParalegal({ messages: newMessages, agentPersona: maya.systemPrompt });
+    if (res.reply) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: res.reply.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim()
+      }]);
+    }
     if (res.intakeSummary) setSummary(res.intakeSummary);
     setLoading(false);
   };
 
-  const urgencyColor: Record<string, string> = { low: 'text-green-400', medium: 'text-yellow-400', high: 'text-orange-400', critical: 'text-red-400' };
+  const toggleVoice = () => {
+    if (isListening) { stopListening(); return; }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (e: any) => {
+      let transcript = '';
+      for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript;
+      setInput(transcript);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+    recognitionRef.current = recognition;
+    setIsListening(true);
+  };
+
+  const stopListening = () => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  };
+
+  const urgencyColor: Record<string, string> = {
+    low: 'text-green-400', medium: 'text-yellow-400',
+    high: 'text-orange-400', critical: 'text-red-400'
+  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <UserPlus className="text-violet-400" size={28} />
-        <div>
-          <h1 className="text-2xl font-bold text-white">AI Client Intake</h1>
-          <p className="text-slate-400 text-sm">Alex, your AI paralegal, will interview the client and build the case file</p>
-        </div>
+    <div className="p-6 max-w-5xl mx-auto">
+      {/* Page Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">AI Case Intake</h1>
+        <p className="text-slate-400 text-sm">Maya will interview you, identify your claims, flag deadlines, and build your case file</p>
       </div>
 
+      {/* Agent Header */}
+      <AgentHeader
+        agent={maya}
+        subtitle="I'll guide you through a comprehensive intake interview to understand your situation and build your case file."
+      />
+
       {!started ? (
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-violet-600/20 rounded-full flex items-center justify-center mx-auto">
-            <UserPlus className="text-violet-400" size={32} />
+        /* Pre-start screen */
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 text-center">
+          <div className={`w-20 h-20 rounded-3xl bg-gradient-to-br ${maya.color} flex items-center justify-center text-4xl mx-auto mb-5 shadow-xl`}>
+            {maya.emoji}
           </div>
-          <h2 className="text-xl font-semibold text-white">Start Client Intake</h2>
-          <p className="text-slate-400 max-w-md mx-auto">Alex will conduct a comprehensive intake interview, identify claims, flag deadlines, and assess case viability — all automatically.</p>
-          <button onClick={startIntake} className="bg-violet-600 hover:bg-violet-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors">
-            Begin Intake Interview
+          <h2 className="text-white text-xl font-bold mb-2">Meet Maya</h2>
+          <p className="text-slate-400 text-sm max-w-md mx-auto mb-2">
+            I'm Maya, your AI Case Intake Specialist. I'll conduct a comprehensive interview to understand your situation,
+            identify your legal claims, flag any urgent deadlines, and assess your case viability — all automatically.
+          </p>
+          <p className="text-slate-500 text-xs max-w-md mx-auto mb-8">
+            Everything you share is confidential and used only to build your case file.
+            You can type or use your microphone to speak.
+          </p>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 text-left">
+            {[
+              { icon: '🎯', label: 'Identify Claims', desc: 'All potential legal theories' },
+              { icon: '⏰', label: 'Flag Deadlines', desc: 'SOL and filing windows' },
+              { icon: '📊', label: 'Assess Viability', desc: 'Case strength score 1-100' },
+              { icon: '📋', label: 'Build Case File', desc: 'Structured summary & next steps' },
+            ].map(({ icon, label, desc }) => (
+              <div key={label} className="bg-slate-700/50 rounded-xl p-3">
+                <div className="text-xl mb-1">{icon}</div>
+                <div className="text-white text-xs font-semibold">{label}</div>
+                <div className="text-slate-400 text-xs">{desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={startIntake}
+            className={`bg-gradient-to-r ${maya.color} text-white font-semibold px-8 py-3 rounded-xl hover:opacity-90 transition-opacity shadow-lg text-sm`}
+          >
+            Begin Intake with Maya →
           </button>
         </div>
       ) : (
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-xl flex flex-col h-[600px]">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-700">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-sm text-slate-300 font-medium">Alex — AI Paralegal</span>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Chat */}
+          <div className="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-2xl flex flex-col" style={{ height: '600px' }}>
+            {/* Chat header */}
+            <div className="px-4 py-3 border-b border-slate-700">
+              <AgentHeader agent={maya} compact />
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm leading-relaxed
-                    ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-100'}`}>
+                  {m.role === 'assistant' && (
+                    <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${maya.color} flex items-center justify-center text-xs font-bold text-white mr-2 flex-shrink-0 mt-0.5`}>
+                      {maya.avatar}
+                    </div>
+                  )}
+                  <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                    m.role === 'user'
+                      ? 'bg-violet-600 text-white rounded-br-sm'
+                      : 'bg-slate-700 text-slate-100 rounded-bl-sm'
+                  }`}>
                     {m.content}
                   </div>
                 </div>
               ))}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-slate-700 rounded-xl px-4 py-3">
-                    <Loader2 className="text-violet-400 animate-spin" size={18} />
+                  <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${maya.color} flex items-center justify-center text-xs font-bold text-white mr-2 flex-shrink-0`}>
+                    {maya.avatar}
+                  </div>
+                  <div className="bg-slate-700 px-4 py-3 rounded-2xl rounded-bl-sm">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   </div>
                 </div>
               )}
               <div ref={bottomRef} />
             </div>
-            <div className="p-4 border-t border-slate-700 flex gap-2">
-              <input
-                value={input} onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && send()}
-                placeholder="Type your response..."
-                className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
-              />
-              <button onClick={send} disabled={loading || !input.trim()}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white p-2.5 rounded-lg transition-colors">
-                <Send size={18} />
-              </button>
+
+            {/* Input */}
+            <div className="p-3 border-t border-slate-700">
+              <div className="flex gap-2">
+                <button
+                  onClick={toggleVoice}
+                  className={`p-2.5 rounded-lg transition-colors flex-shrink-0 ${isListening ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-700 text-slate-400 hover:text-white'}`}
+                  title={isListening ? 'Stop listening' : 'Speak your answer'}
+                >
+                  {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && send()}
+                  placeholder={isListening ? 'Listening...' : 'Type your response or use the mic...'}
+                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500"
+                />
+                <button
+                  onClick={send}
+                  disabled={loading || !input.trim()}
+                  className="bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white p-2.5 rounded-lg transition-colors flex-shrink-0"
+                >
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </div>
             </div>
           </div>
 
+          {/* Case Summary Panel */}
           <div className="space-y-4">
             {summary ? (
-              <div className="bg-slate-800 border border-green-500/40 rounded-xl p-5 space-y-3">
-                <div className="flex items-center gap-2 text-green-400 font-semibold">
-                  <CheckCircle size={18} /> Intake Complete
+              <div className="bg-slate-800 border border-violet-500/30 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <CheckCircle size={16} className="text-green-400" />
+                  <h3 className="text-white font-semibold text-sm">Intake Complete</h3>
                 </div>
-                <div className="space-y-2 text-sm">
-                  <div><span className="text-slate-400">Client:</span> <span className="text-white">{summary.client_name || '—'}</span></div>
-                  <div><span className="text-slate-400">Case Type:</span> <span className="text-white">{summary.case_type || '—'}</span></div>
-                  <div><span className="text-slate-400">Viability:</span> <span className="text-white">{summary.case_viability_score}/100</span></div>
-                  <div><span className="text-slate-400">Urgency:</span> <span className={urgencyColor[summary.urgency] || 'text-white'}>{summary.urgency}</span></div>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Client</p>
+                    <p className="text-white font-medium">{summary.client_name || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Case Type</p>
+                    <p className="text-white font-medium">{summary.case_type || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Viability Score</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-slate-700 rounded-full h-2">
+                        <div className="bg-violet-500 h-2 rounded-full" style={{ width: `${summary.case_viability_score || 0}%` }} />
+                      </div>
+                      <span className="text-violet-400 font-bold">{summary.case_viability_score}/100</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Urgency</p>
+                    <p className={`font-semibold capitalize ${urgencyColor[summary.urgency] || 'text-white'}`}>{summary.urgency}</p>
+                  </div>
                   {summary.statute_of_limitations_concern && (
-                    <div className="bg-red-900/30 border border-red-500/40 rounded-lg p-3 mt-2">
-                      <div className="flex items-center gap-1 text-red-400 text-xs font-semibold mb-1"><AlertCircle size={14} /> SOL Warning</div>
-                      <div className="text-red-200 text-xs">{summary.statute_of_limitations_concern}</div>
+                    <div className="bg-red-900/30 border border-red-500/30 rounded-lg p-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <AlertCircle size={13} className="text-red-400" />
+                        <p className="text-red-400 text-xs font-semibold">SOL Warning</p>
+                      </div>
+                      <p className="text-slate-300 text-xs">{summary.statute_of_limitations_concern}</p>
                     </div>
                   )}
                   {summary.next_steps?.length > 0 && (
-                    <div className="mt-2">
-                      <div className="text-slate-400 mb-1">Next Steps:</div>
-                      {summary.next_steps.map((s: string, i: number) => (
-                        <div key={i} className="text-slate-300 text-xs">• {s}</div>
-                      ))}
+                    <div>
+                      <p className="text-slate-400 text-xs uppercase tracking-wider mb-2">Next Steps</p>
+                      <ul className="space-y-1.5">
+                        {summary.next_steps.map((s: string, i: number) => (
+                          <li key={i} className="flex items-start gap-2 text-xs text-slate-300">
+                            <span className="text-violet-400 font-bold flex-shrink-0">→</span>
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-                <div className="text-slate-400 text-sm">Case summary will appear here once the intake interview is complete.</div>
+              <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5">
+                <h3 className="text-slate-400 text-sm font-medium mb-3">Case Summary</h3>
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  Maya will build your case summary here as the interview progresses. It will include claims identified, viability score, urgency level, and recommended next steps.
+                </p>
+                <div className="mt-4 space-y-2">
+                  {['Client Name', 'Case Type', 'Viability Score', 'Urgency', 'Next Steps'].map(f => (
+                    <div key={f} className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                      <span className="text-slate-600 text-xs">{f}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* Tips */}
+            <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4">
+              <p className="text-slate-400 text-xs font-medium mb-2">💡 Tips for best results</p>
+              <ul className="space-y-1.5 text-xs text-slate-500">
+                <li>• Be as specific as possible with dates</li>
+                <li>• Name all parties involved</li>
+                <li>• Mention any documents you have</li>
+                <li>• Note any prior legal action</li>
+              </ul>
+            </div>
           </div>
         </div>
       )}
