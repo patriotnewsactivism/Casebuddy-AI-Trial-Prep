@@ -6,6 +6,8 @@ import IntakePage from './pages/IntakePage';
 import DocumentLab from './pages/DocumentLab';
 import DiscoveryMiner from './pages/DiscoveryMiner';
 import TrialCenter from './pages/TrialCenter';
+import WitnessPrep from './pages/WitnessPrep';
+import JurySimulator from './pages/JurySimulator';
 import LegalResearchHub from './pages/LegalResearchHub';
 import DeadlinesAndSol from './pages/DeadlinesAndSol';
 import ConflictChecker from './pages/ConflictChecker';
@@ -15,11 +17,11 @@ import Marketplace from './pages/Marketplace';
 import ProductTour from './pages/ProductTour';
 import SeoPages from './pages/SeoPages';
 import PwaInstall from './components/PwaInstall';
-import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2 } from 'lucide-react';
 
 interface NavSection {
   title: string;
-  items: { to: string; label: string; icon: any }[];
+  items: { to: string; label: string; icon: any; agent?: string }[];
 }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -28,35 +30,37 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/', label: 'Dashboard', icon: Scale },
       { to: '/cases', label: 'Cases', icon: FolderOpen },
-      { to: '/intake', label: 'AI Intake', icon: UserPlus },
-      { to: '/deadlines', label: 'Deadlines & SOL', icon: Clock },
+      { to: '/intake', label: 'AI Intake — Maya', icon: UserPlus, agent: 'Maya' },
+      { to: '/deadlines', label: 'Deadlines & SOL — Sol', icon: Clock, agent: 'Sol' },
     ],
   },
   {
     title: 'Documents',
     items: [
-      { to: '/documents', label: 'Document Lab', icon: FileSearch },
-      { to: '/discovery', label: 'Discovery Miner', icon: Microscope },
+      { to: '/documents', label: 'Document Lab — Doc', icon: FileSearch, agent: 'Doc' },
+      { to: '/discovery', label: 'Discovery Miner — Doc', icon: Microscope, agent: 'Doc' },
     ],
   },
   {
     title: 'Research',
     items: [
-      { to: '/research', label: 'Legal Research Hub', icon: BookOpen },
+      { to: '/research', label: 'Legal Research — Lex', icon: BookOpen, agent: 'Lex' },
       { to: '/conflict-checker', label: 'Conflict Checker', icon: Shield },
-      { to: '/e-filing', label: 'E-Filing & Records', icon: Gavel },
+      { to: '/e-filing', label: 'E-Filing — Max', icon: Gavel, agent: 'Max' },
     ],
   },
   {
     title: 'Trial Prep',
     items: [
-      { to: '/trial', label: 'Trial Command Center', icon: Swords },
+      { to: '/trial', label: 'Trial Coach — Rex', icon: Swords, agent: 'Rex' },
+      { to: '/witnesses', label: 'Witness Prep — Rex', icon: Users, agent: 'Rex' },
+      { to: '/jury', label: 'Jury Simulator — Jules', icon: BarChart2, agent: 'Jules' },
     ],
   },
   {
     title: 'Growth & Sales',
     items: [
-      { to: '/legal-secretary', label: 'AI Legal Secretary', icon: MessageSquare },
+      { to: '/legal-secretary', label: 'AI Secretary — Sierra', icon: MessageSquare, agent: 'Sierra' },
       { to: '/marketplace', label: 'Marketplace', icon: Store },
       { to: '/seo-pages', label: 'SEO Page Generator', icon: Globe2 },
       { to: '/video-tour', label: 'Product Tour', icon: PlayCircle },
@@ -64,42 +68,60 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+// Agent accent colors for nav
+const AGENT_COLORS: Record<string, string> = {
+  Maya: 'text-violet-400',
+  Lex: 'text-indigo-400',
+  Doc: 'text-blue-400',
+  Rex: 'text-orange-400',
+  Sol: 'text-yellow-400',
+  Sierra: 'text-cyan-400',
+  Jules: 'text-pink-400',
+  Max: 'text-slate-400',
+};
+
 function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleSection = (title: string) => setCollapsed(prev => ({ ...prev, [title]: !prev[title] }));
 
   return (
     <>
-      {open && <div className="fixed inset-0 bg-black/50 z-20 md:hidden" onClick={() => setOpen(false)} />}
-      <aside className={`fixed top-0 left-0 h-full w-64 bg-slate-900 border-r border-slate-700/60 z-30 flex flex-col transform transition-transform duration-200 ${open ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-700/60">
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Scale className="text-white" size={20} />
-          </div>
-          <div>
-            <div className="font-bold text-white text-base leading-tight">CaseBuddy AI</div>
-            <div className="text-xs text-slate-400">Legal Intelligence Platform</div>
+      {open && <div className="fixed inset-0 bg-black/60 z-20 lg:hidden" onClick={() => setOpen(false)} />}
+      <aside className={`fixed top-0 left-0 h-full w-64 bg-slate-900 border-r border-slate-800 z-30 flex flex-col transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+        {/* Logo */}
+        <div className="px-4 py-4 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Scale size={20} className="text-blue-400" />
+            <div>
+              <span className="text-white font-black text-sm">CaseBuddy AI</span>
+              <div className="text-xs text-slate-500">Legal Intelligence Platform</div>
+            </div>
           </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-thin">
+
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2">
           {NAV_SECTIONS.map(section => (
-            <div key={section.title}>
+            <div key={section.title} className="mb-1">
               <button onClick={() => toggleSection(section.title)}
                 className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-300">
                 {section.title}
                 {collapsed[section.title] ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
               </button>
               {!collapsed[section.title] && (
-                <div className="space-y-0.5 mb-2">
-                  {section.items.map(({ to, label, icon: Icon }) => (
+                <div>
+                  {section.items.map(({ to, label, icon: Icon, agent }) => (
                     <NavLink key={to} to={to} end={to === '/'}
                       className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors
-                        ${isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`
+                        `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`
                       }
                       onClick={() => setOpen(false)}>
-                      <Icon size={16} />
-                      {label}
+                      <Icon size={14} className="flex-shrink-0" />
+                      <span className="truncate">{agent ? (
+                        // Show agent name highlighted
+                        label.replace(` — ${agent}`, '')
+                      ) : label}</span>
+                      {agent && <span className={`ml-auto text-xs font-bold ${AGENT_COLORS[agent]} flex-shrink-0`}>{agent}</span>}
                     </NavLink>
                   ))}
                 </div>
@@ -107,10 +129,9 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
             </div>
           ))}
         </nav>
-        <div className="px-4 py-4 border-t border-slate-700/60">
-          <div className="bg-slate-800 rounded-lg px-3 py-2 text-xs text-slate-400 text-center">
-            Powered by <span className="text-blue-400 font-medium">Gemini 2.5 Flash</span>
-          </div>
+
+        <div className="px-4 py-3 border-t border-slate-800 text-xs text-slate-600">
+          Powered by Gemini 2.5 Flash
         </div>
       </aside>
     </>
@@ -119,41 +140,50 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
     <BrowserRouter>
-      <div className="flex min-h-screen bg-slate-950">
+      <div className="min-h-screen bg-slate-950 text-white lg:pl-64">
         <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />
-        <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
-          <header className="md:hidden flex items-center gap-3 px-4 py-4 bg-slate-900 border-b border-slate-700/60 sticky top-0 z-10">
-            <button onClick={() => setSidebarOpen(true)} className="text-slate-400 hover:text-white">
-              <Menu size={24} />
-            </button>
-            <Scale className="text-blue-400" size={20} />
-            <span className="font-bold text-white">CaseBuddy AI</span>
-          </header>
-          <main className="flex-1 p-4 md:p-8 overflow-auto">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/cases" element={<Cases />} />
-              <Route path="/intake" element={<IntakePage />} />
-              <Route path="/deadlines" element={<DeadlinesAndSol />} />
-              {/* Documents */}
-              <Route path="/documents" element={<DocumentLab />} />
-              <Route path="/discovery" element={<DiscoveryMiner />} />
-              {/* Research */}
-              <Route path="/research" element={<LegalResearchHub />} />
-              <Route path="/conflict-checker" element={<ConflictChecker />} />
-              <Route path="/e-filing" element={<EFiling />} />
-              {/* Trial Prep */}
-              <Route path="/trial" element={<TrialCenter />} />
-              {/* Growth & Sales */}
-              <Route path="/legal-secretary" element={<LegalSecretary />} />
-              <Route path="/marketplace" element={<Marketplace />} />
-              <Route path="/seo-pages" element={<SeoPages />} />
-              <Route path="/video-tour" element={<ProductTour />} />
-            </Routes>
-          </main>
+
+        {/* Mobile header */}
+        <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
+          <button onClick={() => setSidebarOpen(true)} className="text-slate-400 hover:text-white">
+            <Menu size={20} />
+          </button>
+          <span className="text-white font-bold text-sm">CaseBuddy AI</span>
+          <div className="w-5" />
         </div>
+
+        <main className="min-h-screen">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/cases" element={<Cases />} />
+            <Route path="/intake" element={<IntakePage />} />
+
+            {/* Documents */}
+            <Route path="/documents" element={<DocumentLab />} />
+            <Route path="/discovery" element={<DiscoveryMiner />} />
+
+            {/* Research */}
+            <Route path="/research" element={<LegalResearchHub />} />
+            <Route path="/conflict-checker" element={<ConflictChecker />} />
+            <Route path="/e-filing" element={<EFiling />} />
+            <Route path="/deadlines" element={<DeadlinesAndSol />} />
+
+            {/* Trial Prep */}
+            <Route path="/trial" element={<TrialCenter />} />
+            <Route path="/witnesses" element={<WitnessPrep />} />
+            <Route path="/jury" element={<JurySimulator />} />
+
+            {/* Growth & Sales */}
+            <Route path="/legal-secretary" element={<LegalSecretary />} />
+            <Route path="/marketplace" element={<Marketplace />} />
+            <Route path="/seo-pages" element={<SeoPages />} />
+            <Route path="/video-tour" element={<ProductTour />} />
+          </Routes>
+        </main>
+
         <PwaInstall />
       </div>
     </BrowserRouter>
