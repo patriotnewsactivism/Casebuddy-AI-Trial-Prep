@@ -8,9 +8,9 @@
 ### 1.1 Restore Maya — Case Intake Agent
 - [ ] Rename "Alex" back to "Maya" in `src/pages/IntakePage.tsx`
 - [ ] Add Maya's full persona header (avatar, name, title, personality blurb)
-- [ ] Update page title from "AI Client Intake" to reflect Maya's brand
-- [ ] Add Maya persona to `aiParalegal` backend function system prompt
-- [ ] Style Maya's chat bubble with her signature color (violet/purple)
+- [ ] Update page title to reflect Maya's brand
+- [ ] Update `aiParalegal` backend function system prompt with Maya persona
+- [ ] Style Maya's chat bubble with signature violet/purple color
 
 ### 1.2 Assign Named Personas to Every Module
 | Agent | Module | File | Status |
@@ -24,7 +24,7 @@
 | **Jules** | Jury Simulator | `JurySimulator.tsx` | ⬜ Page missing |
 | **Max** | E-Filing & Records | `EFiling.tsx` | ⬜ Not assigned |
 
-- [ ] Create shared `src/agents/personas.ts` — central config for all agent names, colors, avatars, descriptions
+- [ ] Create `src/agents/personas.ts` — central config for all agent names, colors, avatars, descriptions
 - [ ] Build reusable `<AgentHeader />` component used across all pages
 - [ ] Update each module page to import and display its assigned agent
 
@@ -32,7 +32,7 @@
 - [ ] Add "Meet the Team" section to `Dashboard.tsx`
 - [ ] Display all 8 agents as cards (name, role, avatar, specialty)
 - [ ] Each card links to the agent's module
-- [ ] Add agent status indicators (Available / Busy / etc.)
+- [ ] Add agent availability status indicators
 
 ---
 
@@ -46,9 +46,8 @@
   - [ ] Input witness name, role, relationship to case
   - [ ] AI generates direct examination questions
   - [ ] AI generates cross-examination questions
-  - [ ] Impeachment strategy based on likely weaknesses
-  - [ ] Witness credibility assessment
-  - [ ] Export questions as PDF/printable outline
+  - [ ] Impeachment strategy + credibility assessment
+  - [ ] Export questions as printable outline
 
 ### 2.2 Jury Simulator Page (`/jury`) — Agent: Jules
 - [ ] Create `src/pages/JurySimulator.tsx`
@@ -56,7 +55,7 @@
 - [ ] Add to sidebar nav under "Trial Prep"
 - [ ] Features:
   - [ ] 6 AI jurors with distinct personalities (skeptic, empath, analytical, conservative, liberal, undecided)
-  - [ ] Present opening statement → get juror reactions
+  - [ ] Present opening statement → get per-juror reactions
   - [ ] Persuasion meter per juror (0–100)
   - [ ] Juror deliberation simulation
   - [ ] Verdict probability tracker
@@ -66,111 +65,97 @@
 
 ## 🟠 PRIORITY 3 — API Integrations
 
-### 3.1 CourtListener API (Free — Legal Research)
-- [ ] Sign up at https://www.courtlistener.com/
-- [ ] Add `REACT_APP_COURTLISTENER_API_KEY` to `.env`
+### 3.1 CourtListener API (Free — Real Case Law)
+- [ ] Sign up: https://www.courtlistener.com/
+- [ ] Add `REACT_APP_COURTLISTENER_API_KEY` to Vercel env
 - [ ] Create backend function `courtlistenerSearch`
-- [ ] Integrate into `LegalResearchHub.tsx` (Lex's module)
-- [ ] Features: case law search, opinion lookup, PACER dockets, citation analysis
-- [ ] Add "Real Case Law" badge to search results
+- [ ] Integrate into `LegalResearchHub.tsx` (Lex)
+- [ ] Real case law search, opinions, PACER dockets, citations
 
 ### 3.2 PACER API (Federal Court Records)
-- [ ] Register at https://pacer.uscourts.gov/register-account
+- [ ] Register: https://pacer.uscourts.gov/register-account
 - [ ] Add `PACER_USERNAME` + `PACER_PASSWORD` to env
 - [ ] Create backend function `pacerSearch`
-- [ ] Integrate into Legal Research + E-Filing modules
 - [ ] Federal case lookup, docket retrieval, document access
+- [ ] Integrate into Legal Research + E-Filing modules
 
-### 3.3 Stripe (SaaS Billing)
-- [ ] Create Stripe account at https://stripe.com
+### 3.3 Stripe (SaaS Billing) 💰
+- [ ] Create account: https://stripe.com
 - [ ] Add `STRIPE_SECRET_KEY` + `STRIPE_PUBLISHABLE_KEY` to env
-- [ ] Create backend function `createCheckoutSession`
-- [ ] Create backend function `stripeWebhook`
-- [ ] Define pricing tiers:
+- [ ] Create backend functions: `createCheckoutSession`, `stripeWebhook`
+- [ ] Pricing tiers:
   - **Pro Se Plan** — $29/mo (individual, all modules)
   - **Law Firm Starter** — $149/mo (up to 3 users)
   - **Law Firm Pro** — $399/mo (unlimited users + white-label)
 - [ ] Build `/pricing` page
 - [ ] Add subscription gate to premium features
-- [ ] Add billing portal link in settings
+- [ ] Add billing portal in settings
 
-### 3.4 Twilio (SMS + Voice Alerts)
-- [ ] Create Twilio account at https://twilio.com
+### 3.4 Twilio (SMS + Deadline Alerts)
+- [ ] Create account: https://twilio.com
 - [ ] Add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` to env
 - [ ] Create backend function `sendSmsAlert`
-- [ ] Integrate into `DeadlinesAndSol.tsx` (Sol's module)
-- [ ] Features:
-  - [ ] SMS reminders for upcoming deadlines (48hr, 24hr, 2hr)
-  - [ ] Court date alerts
-  - [ ] New lead notifications for law firms
-  - [ ] Opt-in/opt-out management
+- [ ] Integrate into `DeadlinesAndSol.tsx` (Sol)
+- [ ] SMS reminders: 48hr, 24hr, 2hr before deadlines
+- [ ] Court date alerts + new lead notifications for firms
 
 ### 3.5 DocuSign API (E-Signatures)
-- [ ] Create DocuSign developer account at https://developers.docusign.com
+- [ ] Create dev account: https://developers.docusign.com
 - [ ] Add `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_SECRET`, `DOCUSIGN_ACCOUNT_ID` to env
 - [ ] Create backend function `createDocuSignEnvelope`
 - [ ] Integrate into `DocumentLab.tsx` and `EFiling.tsx`
-- [ ] Features:
-  - [ ] Send demand letters for signature
-  - [ ] Retainer agreement signing
-  - [ ] Settlement offer signatures
-  - [ ] Track signature status in real-time
+- [ ] Send demand letters, retainer agreements, settlement offers for signature
+- [ ] Track signature status in real-time
 
 ### 3.6 Deepgram (Voice Transcription) ✅ API Key Saved
 - [ ] Add `REACT_APP_DEEPGRAM_API_KEY` to Vercel env vars
 - [ ] Create backend function `transcribeAudio`
-- [ ] Add voice input to Maya's intake (speak instead of type)
+- [ ] Add voice input (mic button) to Maya's intake chat
 - [ ] Add deposition transcription tool to `DocumentLab.tsx`
 - [ ] Add hearing notes recorder to `TrialCenter.tsx`
 - [ ] Speaker diarization for multi-party recordings
-- [ ] Confidence scores + timestamps in output
 
 ### 3.7 SendGrid (Transactional Email)
-- [ ] Create SendGrid account at https://sendgrid.com
+- [ ] Create account: https://sendgrid.com
 - [ ] Add `SENDGRID_API_KEY` to env
 - [ ] Create backend function `sendEmail`
-- [ ] Use cases:
-  - [ ] Case intake summary emailed to client after Maya's interview
-  - [ ] Deadline alerts via email (Sol)
-  - [ ] New lead email notification (Sierra)
-  - [ ] Document analysis reports emailed to attorney
-  - [ ] Weekly case status digest
+- [ ] Case intake summary emailed to client after Maya's interview
+- [ ] Deadline alerts via email (Sol)
+- [ ] New lead email notification (Sierra)
+- [ ] Weekly case status digest
 
-### 3.8 Calendly / Cal.com API (Consultation Booking)
-- [ ] Sign up at https://cal.com (open source, self-hostable) or https://calendly.com
-- [ ] Add `CALENDLY_API_KEY` or `CAL_API_KEY` to env
+### 3.8 Cal.com API (Consultation Booking)
+- [ ] Sign up: https://cal.com (open source)
+- [ ] Add `CAL_API_KEY` to env
 - [ ] Create backend function `createBooking`
-- [ ] Integrate into `LegalSecretary.tsx` (Sierra's module)
-- [ ] Auto-book consultations from AI chat widget
+- [ ] Integrate into `LegalSecretary.tsx` (Sierra)
+- [ ] Auto-book consultations directly from AI chat widget
 - [ ] Sync with Google Calendar
 
-### 3.9 Lob API (Physical Mail)
-- [ ] Create Lob account at https://lob.com
+### 3.9 Lob API (Certified Physical Mail)
+- [ ] Create account: https://lob.com
 - [ ] Add `LOB_API_KEY` to env
 - [ ] Create backend function `sendCertifiedMail`
 - [ ] Integrate into `DocumentLab.tsx`
-- [ ] Features:
-  - [ ] Send demand letters via USPS certified mail from app
-  - [ ] Track delivery status
-  - [ ] Legal proof of service via certified mail
+- [ ] Send demand letters via USPS certified mail from app
+- [ ] Track delivery + legal proof of service
 
-### 3.10 Tyler Technologies eFile API (Court E-Filing)
-- [ ] Research supported state courts at https://www.tylertech.com
+### 3.10 Tyler Technologies eFile API (Direct Court Filing)
+- [ ] Research supported states: https://www.tylertech.com
 - [ ] Apply for API access
 - [ ] Create backend function `eFileDocument`
-- [ ] Integrate into `EFiling.tsx` (Max's module)
-- [ ] Direct court filing from CaseBuddy without external portal
+- [ ] Integrate into `EFiling.tsx` (Max)
+- [ ] Direct filing to court without leaving CaseBuddy
 
-### 3.11 Westlaw / Casetext API (Premium Legal Research)
-- [ ] Contact Thomson Reuters for API access: https://legal.thomsonreuters.com/en/products/westlaw
+### 3.11 Westlaw / Casetext (Premium Legal Research)
+- [ ] Contact Thomson Reuters: https://legal.thomsonreuters.com
 - [ ] Or Casetext/CoCounsel: https://casetext.com
-- [ ] Add as premium tier feature (Law Firm Pro plan only)
+- [ ] Lock behind Law Firm Pro plan only
 - [ ] Integrate into Lex's Legal Research Hub
 
 ### 3.12 Google Maps / Places API (Courthouse Finder)
 - [ ] Add `REACT_APP_GOOGLE_MAPS_KEY` to env
-- [ ] Add courthouse/court locator feature
-- [ ] Find nearby process servers, court reporters, notaries
+- [ ] Courthouse locator + nearby process servers, court reporters, notaries
 - [ ] Integrate into E-Filing and Case Manager
 
 ---
@@ -178,38 +163,28 @@
 ## 🟡 PRIORITY 4 — Feature Enhancements
 
 ### 4.1 Voice Input Everywhere (Deepgram)
-- [ ] Add mic button to Maya's intake chat
-- [ ] Add voice input to all AI chat interfaces
+- [ ] Mic button on Maya's intake chat
+- [ ] Voice input on all AI chat interfaces
 - [ ] Real-time transcription as user speaks
 
 ### 4.2 PDF Export
 - [ ] Install `react-pdf` or `jsPDF`
-- [ ] Export intake summaries as PDF
-- [ ] Export document analysis reports as PDF
-- [ ] Export witness prep questions as printable outline
-- [ ] Export case timeline as PDF
+- [ ] Export intake summaries, document analysis, witness prep questions, case timelines
 
 ### 4.3 Case File System (Supabase)
-- [ ] Wire up Supabase properly to store:
-  - [ ] Cases (parties, type, jurisdiction, status)
-  - [ ] Documents (uploads, analysis results)
-  - [ ] Deadlines (court dates, filing windows)
-  - [ ] Contacts (witnesses, opposing counsel, judges)
-  - [ ] Intake summaries (Maya's output)
-- [ ] Link all modules to the active case context
-- [ ] Case switcher in the sidebar
+- [ ] Wire Supabase to store: cases, documents, deadlines, contacts, intake summaries
+- [ ] Link all modules to active case context
+- [ ] Case switcher in sidebar
 
-### 4.4 White-Label Mode (for Law Firm Sales)
-- [ ] Firm name customization (currently in LegalSecretary config — expand platform-wide)
-- [ ] Custom color theme per firm
+### 4.4 White-Label Mode (Law Firm Sales)
+- [ ] Platform-wide firm name + color theme customization
 - [ ] Custom domain support
 - [ ] Firm logo upload
 - [ ] Remove CaseBuddy branding in white-label mode
 
 ### 4.5 Mobile PWA Polish
-- [ ] Review `sw.js` service worker
 - [ ] Offline mode for case notes
-- [ ] Push notifications for deadlines (via Twilio/browser)
+- [ ] Push notifications for deadlines
 - [ ] Mobile-optimized layouts for all pages
 
 ---
@@ -217,26 +192,24 @@
 ## 🔵 PRIORITY 5 — Growth & Sales
 
 ### 5.1 Pricing Page
-- [ ] Create `src/pages/Pricing.tsx`
-- [ ] Add route `/pricing`
-- [ ] Three tiers: Pro Se ($29), Firm Starter ($149), Firm Pro ($399)
-- [ ] Feature comparison table
+- [ ] Create `src/pages/Pricing.tsx` at route `/pricing`
+- [ ] Three tiers with feature comparison table
 - [ ] Stripe Checkout integration
 
 ### 5.2 Onboarding Flow
 - [ ] First-time user welcome modal
 - [ ] "Start with Maya" CTA on dashboard
-- [ ] Interactive product tour improvements (`ProductTour.tsx`)
+- [ ] Guided product tour
 
 ### 5.3 Analytics
-- [ ] Add PostHog or Mixpanel for usage analytics
+- [ ] Add PostHog or Mixpanel
 - [ ] Track: most-used modules, intake completion rate, doc uploads, trial sessions
-- [ ] Dashboard for firm admins showing team usage
+- [ ] Admin dashboard for firm usage stats
 
 ### 5.4 SEO & Marketing
-- [ ] Complete `SeoPages.tsx` — generate SEO landing pages per practice area + state
+- [ ] Complete `SeoPages.tsx` — landing pages per practice area + state
 - [ ] Submit sitemap to Google
-- [ ] Add structured data (LegalService schema)
+- [ ] Add LegalService structured data schema
 
 ---
 
@@ -247,13 +220,13 @@
 - [x] Supabase connected
 - [x] PWA manifest + service worker
 - [x] AI Legal Secretary with embed code
-- [x] Deepgram API key saved to Superagent
+- [x] Deepgram API key saved
 
 ---
 
 ## 📋 NOTES
-- Backend functions live at: https://superagent-344f8b2b.base44.app/functions/
-- Vercel deployment: https://casebuddy-ai-trial-prep.vercel.app
-- GitHub repo: https://github.com/patriotnewsactivism/Casebuddy-AI-Trial-Prep
-- AI model: Gemini 2.5 Flash (consider upgrading to Pro for law firm tier)
-- All API keys should be added to Vercel environment variables, NOT committed to repo
+- Backend functions: https://superagent-344f8b2b.base44.app/functions/
+- Live app: https://casebuddy-ai-trial-prep.vercel.app
+- GitHub: https://github.com/patriotnewsactivism/Casebuddy-AI-Trial-Prep
+- AI model: Gemini 2.5 Flash (upgrade to Pro for Law Firm tier)
+- All API keys → Vercel environment variables only, never commit to repo
