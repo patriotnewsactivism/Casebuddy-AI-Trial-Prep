@@ -1,6 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { FileSearch, Upload, Loader2, Gem, AlertTriangle, CheckCircle, ScanLine, FileCheck, Eye, X, FileText } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
+import AgentHeader from '../components/AgentHeader';
+import { AGENTS } from '../agents/personas';
+
+const doc = AGENTS.doc;
 
 type Tab = 'analyze' | 'scan' | 'contract';
 
@@ -123,14 +127,13 @@ Respond in JSON:
   const riskColor = (r: string) => r === 'HIGH' || r === 'CRITICAL' ? 'text-red-400 bg-red-500/10' : r === 'MEDIUM' ? 'text-yellow-400 bg-yellow-500/10' : 'text-green-400 bg-green-500/10';
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <FileSearch className="text-blue-400" size={28} />
-        <div>
-          <h1 className="text-2xl font-bold text-white">Document Lab</h1>
-          <p className="text-slate-400 text-sm">Analyze, scan, and review documents — all in one place</p>
-        </div>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">Document Lab</h1>
+        <p className="text-slate-400 text-sm">Doc analyzes, scans, and reviews every document — extracting key facts, legal gems, and risks</p>
       </div>
+
+      <AgentHeader agent={doc} subtitle="Upload any document. I'll find every useful fact, every risk, every contradiction — no detail too small." />
 
       {/* Tab Bar */}
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">

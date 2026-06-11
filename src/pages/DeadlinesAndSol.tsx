@@ -1,5 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Clock, Plus, Trash2, AlertTriangle, CheckCircle, Calendar, Calculator, MapPin, Scale, ArrowRight } from 'lucide-react';
+import AgentHeader from '../components/AgentHeader';
+import { AGENTS } from '../agents/personas';
+
+const sol = AGENTS.sol;
 
 type Tab = 'deadlines' | 'sol';
 
@@ -85,14 +89,13 @@ export default function DeadlinesAndSol() {
   const urgBg = (days: number) => days < 0 ? 'bg-red-500/10 border-red-500/30' : days < 7 ? 'bg-red-500/10 border-red-500/30' : days < 30 ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-slate-800 border-slate-700';
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Clock className="text-blue-400" size={28} />
-        <div>
-          <h1 className="text-2xl font-bold text-white">Deadlines & SOL Calculator</h1>
-          <p className="text-slate-400 text-sm">Track every deadline — calculate statutes of limitations and add them in one click</p>
-        </div>
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">Deadlines & SOL Calculator</h1>
+        <p className="text-slate-400 text-sm">Sol tracks every deadline and calculates statutes of limitations — a missed deadline can destroy a case</p>
       </div>
+
+      <AgentHeader agent={sol} subtitle="I track every deadline, every court date, every statute of limitations. Miss nothing on my watch." />
 
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
         <button onClick={() => setTab('deadlines')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${tab === 'deadlines' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>

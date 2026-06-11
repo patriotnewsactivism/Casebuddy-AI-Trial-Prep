@@ -1,6 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { BookOpen, Loader2, Globe, Search, ArrowLeftRight } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
+import AgentHeader from '../components/AgentHeader';
+import { AGENTS } from '../agents/personas';
+
+const lex = AGENTS.lex;
 
 type Tab = 'research' | 'jurisdiction';
 
@@ -72,14 +76,13 @@ Provide comprehensive legal research in JSON:
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <BookOpen className="text-emerald-400" size={28} />
-        <div>
-          <h1 className="text-2xl font-bold text-white">Legal Research Hub</h1>
-          <p className="text-slate-400 text-sm">AI-powered research + jurisdiction rules database</p>
-        </div>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">Legal Research Hub</h1>
+        <p className="text-slate-400 text-sm">Lex researches case law, statutes, and legal precedents with win probability analysis</p>
       </div>
+
+      <AgentHeader agent={lex} subtitle="Give me a legal question and I'll find the strongest precedents, flag the weaknesses, and tell you your odds." />
 
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
         <button onClick={() => setTab('research')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${tab === 'research' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>

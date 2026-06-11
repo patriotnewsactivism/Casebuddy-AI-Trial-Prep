@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Swords, Send, Loader2, Settings, Users, BarChart2, Brain, ChevronDown, ChevronUp, Mic, MicOff } from 'lucide-react';
 import { trialCoach } from '../lib/api';
+import AgentHeader from '../components/AgentHeader';
+import { AGENTS } from '../agents/personas';
+
+const rex = AGENTS.rex;
 
 type Tab = 'coach' | 'witness' | 'jury';
 
@@ -156,14 +160,13 @@ Respond JSON: {"ai_prep_notes":"overview","direct_questions":["Q"],"cross_questi
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Swords className="text-orange-400" size={28} />
-        <div>
-          <h1 className="text-2xl font-bold text-white">Trial Command Center</h1>
-          <p className="text-slate-400 text-sm">Voice-activated coaching, witness prep, and jury simulation</p>
-        </div>
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">Trial Command Center</h1>
+        <p className="text-slate-400 text-sm">Rex is your battle-hardened trial coach — practice against AI judges, witnesses, and opposing counsel</p>
       </div>
+
+      <AgentHeader agent={rex} subtitle="I'll play the judge, the witness, opposing counsel — whoever you need. I don't go easy. That's how you win." />
 
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
         {TABS.map(t => (

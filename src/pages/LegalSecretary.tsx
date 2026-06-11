@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, Send, Loader2, Settings, Copy, CheckCircle, Code, Globe, UserPlus, Calendar } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
+import AgentHeader from '../components/AgentHeader';
+import { AGENTS } from '../agents/personas';
+
+const sierra = AGENTS.sierra;
 
 interface ChatMessage { role: 'bot' | 'user'; text: string; timestamp: string; leadCaptured?: boolean; }
 
@@ -85,14 +89,13 @@ export default function LegalSecretary() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <MessageSquare className="text-cyan-400" size={28} />
-        <div>
-          <h1 className="text-2xl font-bold text-white">AI Legal Secretary</h1>
-          <p className="text-slate-400 text-sm">Embeddable chat widget — qualifies leads, captures info, books consultations</p>
-        </div>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">AI Legal Secretary</h1>
+        <p className="text-slate-400 text-sm">Sierra qualifies leads, captures client info, and books consultations — your 24/7 AI front desk</p>
       </div>
+
+      <AgentHeader agent={sierra} subtitle="I'm your firm's first impression. Professional, personable, and I never miss a lead — even at 3 AM." />
 
       <div className="flex gap-1 overflow-x-auto pb-1">
         {tabs.map(t => (

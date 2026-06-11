@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { Gavel, Search, FileText, ExternalLink, Building2, Filter, Clock, ArrowRight, BookOpen, Globe } from 'lucide-react';
+import AgentHeader from '../components/AgentHeader';
+import { AGENTS } from '../agents/personas';
+
+const max = AGENTS.max;
 
 interface CourtRecord {
   id: string; caseNumber: string; caption: string; court: string;
@@ -77,14 +81,13 @@ export default function EFiling() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Gavel className="text-indigo-400" size={28} />
-        <div>
-          <h1 className="text-2xl font-bold text-white">E-Filing & Court Records</h1>
-          <p className="text-slate-400 text-sm">Search PACER, view dockets, check e-filing requirements, court directory</p>
-        </div>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">E-Filing & Court Records</h1>
+        <p className="text-slate-400 text-sm">Max manages e-filing, court records, formatting requirements, and service of process</p>
       </div>
+
+      <AgentHeader agent={max} subtitle="Every filing must be perfect. I know every court's rules, formats, and deadlines cold. Nothing gets rejected on my watch." />
 
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1">

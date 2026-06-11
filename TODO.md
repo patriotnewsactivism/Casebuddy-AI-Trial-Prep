@@ -26,7 +26,7 @@
 
 - [x] Create `src/agents/personas.ts` — central config for all agent names, colors, avatars, descriptions
 - [x] Build reusable `<AgentHeader />` component used across all pages
-- [ ] Update each module page to import and display its assigned agent
+- [x] Update each module page to import and display its assigned agent
 
 ### 1.3 Meet the Team — Dashboard Section
 - [x] Add "Meet the Team" section to `Dashboard.tsx`
