@@ -14,10 +14,11 @@ import ConflictChecker from './pages/ConflictChecker';
 import EFiling from './pages/EFiling';
 import LegalSecretary from './pages/LegalSecretary';
 import Marketplace from './pages/Marketplace';
+import Pricing from './pages/Pricing';
 import ProductTour from './pages/ProductTour';
 import SeoPages from './pages/SeoPages';
 import PwaInstall from './components/PwaInstall';
-import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2 } from 'lucide-react';
+import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2, CreditCard } from 'lucide-react';
 
 interface NavSection {
   title: string;
@@ -61,6 +62,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Growth & Sales',
     items: [
       { to: '/legal-secretary', label: 'AI Secretary — Sierra', icon: MessageSquare, agent: 'Sierra' },
+      { to: '/pricing', label: 'Pricing', icon: CreditCard },
       { to: '/marketplace', label: 'Marketplace', icon: Store },
       { to: '/seo-pages', label: 'SEO Page Generator', icon: Globe2 },
       { to: '/video-tour', label: 'Product Tour', icon: PlayCircle },
@@ -178,6 +180,7 @@ export default function App() {
 
             {/* Growth & Sales */}
             <Route path="/legal-secretary" element={<LegalSecretary />} />
+            <Route path="/pricing" element={<Pricing />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/seo-pages" element={<SeoPages />} />
             <Route path="/video-tour" element={<ProductTour />} />
