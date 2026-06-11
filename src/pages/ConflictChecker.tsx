@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { Shield, Search, AlertTriangle, CheckCircle, Plus, X, Loader2, Download } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
+import AgentHeader from '../components/AgentHeader';
+import { AGENTS } from '../agents/personas';
+
+const lex = AGENTS.lex;
 
 interface Party { id: string; name: string; role: string; aliases: string; }
 interface ConflictResult { severity: 'high' | 'medium' | 'low' | 'clear'; party: string; matchedCase: string; details: string; rule: string; }
@@ -88,14 +92,13 @@ Respond with a JSON array of findings. Each finding: { "severity": "high|medium|
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Shield className="text-amber-400" size={28} />
-        <div>
-          <h1 className="text-2xl font-bold text-white">Conflict of Interest Checker</h1>
-          <p className="text-slate-400 text-sm">Cross-reference parties, flag conflicts, generate waivers — ABA Rules compliant</p>
-        </div>
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">Conflict of Interest Checker</h1>
+        <p className="text-slate-400 text-sm">Lex cross-references parties against ABA Model Rules 1.7–1.10 to flag conflicts before they become problems</p>
       </div>
+
+      <AgentHeader agent={lex} subtitle="I check every party, every relationship, every prior representation. One missed conflict can sink a case — and a career." />
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Input Panel */}

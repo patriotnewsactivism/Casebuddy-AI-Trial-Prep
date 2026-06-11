@@ -46,7 +46,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Research',
     items: [
       { to: '/research', label: 'Legal Research — Lex', icon: BookOpen, agent: 'Lex' },
-      { to: '/conflict-checker', label: 'Conflict Checker', icon: Shield },
+      { to: '/conflict-checker', label: 'Conflict Checker — Lex', icon: Shield, agent: 'Lex' },
       { to: '/e-filing', label: 'E-Filing — Max', icon: Gavel, agent: 'Max' },
     ],
   },
