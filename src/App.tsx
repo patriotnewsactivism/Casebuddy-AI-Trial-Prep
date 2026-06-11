@@ -17,8 +17,10 @@ import Marketplace from './pages/Marketplace';
 import Pricing from './pages/Pricing';
 import ProductTour from './pages/ProductTour';
 import SeoPages from './pages/SeoPages';
+import Settings from './pages/Settings';
+import OnboardingModal from './components/OnboardingModal';
 import PwaInstall from './components/PwaInstall';
-import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2, CreditCard } from 'lucide-react';
+import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2, CreditCard, Settings as SettingsIcon } from 'lucide-react';
 
 interface NavSection {
   title: string;
@@ -66,6 +68,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/marketplace', label: 'Marketplace', icon: Store },
       { to: '/seo-pages', label: 'SEO Page Generator', icon: Globe2 },
       { to: '/video-tour', label: 'Product Tour', icon: PlayCircle },
+      { to: '/settings', label: 'Settings', icon: SettingsIcon },
     ],
   },
 ];
@@ -145,6 +148,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <OnboardingModal />
       <div className="min-h-screen bg-slate-950 text-white lg:pl-64">
         <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />
 
@@ -180,6 +184,7 @@ export default function App() {
 
             {/* Growth & Sales */}
             <Route path="/legal-secretary" element={<LegalSecretary />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/seo-pages" element={<SeoPages />} />
