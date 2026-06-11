@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { BarChart2, Loader2, Play, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { trialCoach } from '../lib/api';
+import ActiveCaseBar from '../components/ActiveCaseBar';
+import { useActiveCase, buildCaseContext, logActivity, completeAgentTask } from '../lib/caseStore';
 import AgentHeader from '../components/AgentHeader';
 import { AGENTS } from '../agents/personas';
 
@@ -54,6 +56,7 @@ const MODES: { id: SimMode; label: string; desc: string }[] = [
 ];
 
 export default function JurySimulator() {
+  const activeCase = useActiveCase();
   const [mode, setMode] = useState<SimMode>('opening');
   const [caseType, setCaseType] = useState('Civil Rights');
   const [statement, setStatement] = useState('');
@@ -74,9 +77,9 @@ export default function JurySimulator() {
     setDeliberationResult('');
 
     const prompt = `${jules.systemPrompt}
-
+${activeCase ? `\n${buildCaseContext(activeCase)}\n` : ''}
 JURY SIMULATION REQUEST:
-Case Type: ${caseType}
+Case Type: ${activeCase?.caseType || caseType}
 Mode: ${mode.replace('_', ' ').toUpperCase()}
 Statement/Argument Presented: "${statement}"
 
@@ -130,6 +133,10 @@ Respond with valid JSON only:
             plaintiffCount >= 5 ? '🏆 PLAINTIFF WINS' :
             plaintiffCount <= 2 ? '🛡️ DEFENSE WINS' : '⚖️ HUNG JURY'
           );
+          if (activeCase) {
+            logActivity(activeCase.id, 'jules', 'Ran jury simulation', `${mode} — ${plaintiffCount}/6 jurors for plaintiff. ${(parsed.overall_analysis || '').slice(0, 120)}`);
+            completeAgentTask(activeCase.id, 'jules');
+          }
         }
       } catch {
         setJuliesAnalysis(res.reply);
@@ -171,6 +178,8 @@ Write the deliberation as a dramatic but realistic scene. Show the debate betwee
       </div>
 
       <AgentHeader agent={jules} subtitle="Present your argument and I'll show you exactly who you've won, who you've lost, and how to fix it." />
+
+      <ActiveCaseBar agentId="jules" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Input panel */}

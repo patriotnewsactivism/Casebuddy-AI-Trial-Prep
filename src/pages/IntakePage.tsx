@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, CheckCircle, AlertCircle, Mic, MicOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Send, Loader2, CheckCircle, AlertCircle, Mic, MicOff, Briefcase } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
-import { AGENTS } from '../agents/personas';
+import { AGENTS, AGENT_LIST } from '../agents/personas';
+import { createCaseFromIntake } from '../lib/caseStore';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -11,7 +13,21 @@ interface Message {
 
 const maya = AGENTS.maya;
 
+// Fallback parser — extracts Maya's <INTAKE_SUMMARY> JSON from the raw reply
+// in case the backend doesn't return a parsed intakeSummary field.
+function parseIntakeSummary(reply: string): any | null {
+  const match = reply.match(/<INTAKE_SUMMARY>([\s\S]*?)<\/INTAKE_SUMMARY>/);
+  if (!match) return null;
+  try {
+    const jsonText = match[1].replace(/```json|```/g, '').trim();
+    return JSON.parse(jsonText);
+  } catch {
+    return null;
+  }
+}
+
 export default function IntakePage() {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -48,8 +64,19 @@ export default function IntakePage() {
         content: res.reply.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim()
       }]);
     }
-    if (res.intakeSummary) setSummary(res.intakeSummary);
+    const parsed = res.intakeSummary || (res.reply ? parseIntakeSummary(res.reply) : null);
+    if (parsed) setSummary(parsed);
     setLoading(false);
+  };
+
+  const openCaseFile = () => {
+    if (!summary) return;
+    const transcript = messages.map(m => `${m.role === 'user' ? 'Client' : 'Maya'}: ${m.content}`).join('\n');
+    const c = createCaseFromIntake({
+      ...summary,
+      summary: summary.summary || transcript.slice(0, 600),
+    });
+    navigate(`/cases/${c.id}`);
   };
 
   const toggleVoice = () => {
@@ -256,6 +283,26 @@ export default function IntakePage() {
                       </ul>
                     </div>
                   )}
+                </div>
+
+                {/* Hand the client off to the rest of the firm */}
+                <div className="mt-5 pt-4 border-t border-slate-700">
+                  <button
+                    onClick={openCaseFile}
+                    className={`w-full bg-gradient-to-r ${maya.color} text-white font-semibold py-3 rounded-xl hover:opacity-90 transition-opacity shadow-lg text-sm flex items-center justify-center gap-2`}>
+                    <Briefcase size={16} /> Open Case File & Brief the Team →
+                  </button>
+                  <div className="flex items-center justify-center gap-1 mt-3">
+                    {AGENT_LIST.filter(a => a.id !== 'maya' && a.id !== 'sierra').map(a => (
+                      <div key={a.id} title={`${a.name} — ${a.title}`}
+                        className={`w-6 h-6 rounded-full bg-gradient-to-br ${a.color} flex items-center justify-center text-[10px] font-bold text-white`}>
+                        {a.avatar}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-slate-500 text-xs text-center mt-2">
+                    Maya will brief Sol, Doc, Lex, Max, Rex & Jules with their assignments automatically
+                  </p>
                 </div>
               </div>
             ) : (
