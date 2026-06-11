@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Link, Outlet } from 'react-router-dom';
+import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
 import CaseDetail from './pages/CaseDetail';
@@ -29,7 +30,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Core',
     items: [
-      { to: '/', label: 'Dashboard', icon: Scale },
+      { to: '/dashboard', label: 'Dashboard', icon: Scale },
       { to: '/cases', label: 'Cases', icon: FolderOpen },
       { to: '/intake', label: 'AI Intake — Maya', icon: UserPlus, agent: 'Maya' },
       { to: '/deadlines', label: 'Deadlines & SOL — Sol', icon: Clock, agent: 'Sol' },
@@ -91,13 +92,13 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
       <aside className={`fixed top-0 left-0 h-full w-64 bg-slate-900 border-r border-slate-800 z-30 flex flex-col transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
         {/* Logo */}
         <div className="px-4 py-4 border-b border-slate-800">
-          <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2 group">
             <Scale size={20} className="text-blue-400" />
             <div>
-              <span className="text-white font-black text-sm">CaseBuddy AI</span>
+              <span className="text-white font-black text-sm group-hover:text-blue-300 transition-colors">CaseBuddy AI</span>
               <div className="text-xs text-slate-500">Legal Intelligence Platform</div>
             </div>
-          </div>
+          </Link>
         </div>
 
         {/* Nav */}
@@ -139,55 +140,67 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
   );
 }
 
-export default function App() {
+// App shell — sidebar + content area for every page except the public landing page
+function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-slate-950 text-white lg:pl-64">
-        <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />
+    <div className="min-h-screen bg-slate-950 text-white lg:pl-64">
+      <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />
 
-        {/* Mobile header */}
-        <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
-          <button onClick={() => setSidebarOpen(true)} className="text-slate-400 hover:text-white">
-            <Menu size={20} />
-          </button>
-          <span className="text-white font-bold text-sm">CaseBuddy AI</span>
-          <div className="w-5" />
-        </div>
-
-        <main className="min-h-screen">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/cases" element={<Cases />} />
-            <Route path="/cases/:id" element={<CaseDetail />} />
-            <Route path="/intake" element={<IntakePage />} />
-
-            {/* Documents */}
-            <Route path="/documents" element={<DocumentLab />} />
-            <Route path="/discovery" element={<DiscoveryMiner />} />
-
-            {/* Research */}
-            <Route path="/research" element={<LegalResearchHub />} />
-            <Route path="/conflict-checker" element={<ConflictChecker />} />
-            <Route path="/e-filing" element={<EFiling />} />
-            <Route path="/deadlines" element={<DeadlinesAndSol />} />
-
-            {/* Trial Prep */}
-            <Route path="/trial" element={<TrialCenter />} />
-            <Route path="/witnesses" element={<WitnessPrep />} />
-            <Route path="/jury" element={<JurySimulator />} />
-
-            {/* Growth & Sales */}
-            <Route path="/legal-secretary" element={<LegalSecretary />} />
-            <Route path="/marketplace" element={<Marketplace />} />
-            <Route path="/seo-pages" element={<SeoPages />} />
-            <Route path="/video-tour" element={<ProductTour />} />
-          </Routes>
-        </main>
-
-        <PwaInstall />
+      {/* Mobile header */}
+      <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
+        <button onClick={() => setSidebarOpen(true)} className="text-slate-400 hover:text-white">
+          <Menu size={20} />
+        </button>
+        <span className="text-white font-bold text-sm">CaseBuddy AI</span>
+        <div className="w-5" />
       </div>
+
+      <main className="min-h-screen">
+        <Outlet />
+      </main>
+
+      <PwaInstall />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Public landing page — full-bleed, no sidebar */}
+        <Route path="/" element={<Landing />} />
+
+        <Route element={<AppShell />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/cases" element={<Cases />} />
+          <Route path="/cases/:id" element={<CaseDetail />} />
+          <Route path="/intake" element={<IntakePage />} />
+
+          {/* Documents */}
+          <Route path="/documents" element={<DocumentLab />} />
+          <Route path="/discovery" element={<DiscoveryMiner />} />
+
+          {/* Research */}
+          <Route path="/research" element={<LegalResearchHub />} />
+          <Route path="/conflict-checker" element={<ConflictChecker />} />
+          <Route path="/e-filing" element={<EFiling />} />
+          <Route path="/deadlines" element={<DeadlinesAndSol />} />
+
+          {/* Trial Prep */}
+          <Route path="/trial" element={<TrialCenter />} />
+          <Route path="/witnesses" element={<WitnessPrep />} />
+          <Route path="/jury" element={<JurySimulator />} />
+
+          {/* Growth & Sales */}
+          <Route path="/legal-secretary" element={<LegalSecretary />} />
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/seo-pages" element={<SeoPages />} />
+          <Route path="/video-tour" element={<ProductTour />} />
+        </Route>
+      </Routes>
     </BrowserRouter>
   );
 }

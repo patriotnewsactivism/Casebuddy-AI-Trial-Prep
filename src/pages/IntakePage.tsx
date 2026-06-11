@@ -5,6 +5,7 @@ import { aiParalegal } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
 import { AGENTS, AGENT_LIST } from '../agents/personas';
 import { createCaseFromIntake } from '../lib/caseStore';
+import { useLiveVoice } from '../hooks/useLiveVoice';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -37,21 +38,30 @@ export default function IntakePage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
+  // Live two-way voice: speak with Maya hands-free — your words auto-send
+  // when you pause, and she answers out loud, then keeps listening.
+  const sendTextRef = useRef<(text: string) => void>(() => {});
+  const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text) });
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const startIntake = async () => {
+  const startIntake = async (liveMode = false) => {
     setStarted(true);
     setLoading(true);
+    if (liveMode) voice.startLive();
     const res = await aiParalegal({ messages: [], agentPersona: maya.systemPrompt });
-    if (res.reply) setMessages([{ role: 'assistant', content: res.reply }]);
+    if (res.reply) {
+      setMessages([{ role: 'assistant', content: res.reply }]);
+      voice.speak(res.reply); // no-op unless live mode is on
+    }
     setLoading(false);
   };
 
-  const send = async () => {
-    if (!input.trim() || loading) return;
-    const newMessages: Message[] = [...messages, { role: 'user', content: input }];
+  const sendText = async (text: string) => {
+    if (!text.trim() || loading) return;
+    const newMessages: Message[] = [...messages, { role: 'user', content: text }];
     setMessages(newMessages);
     setInput('');
     setLoading(true);
@@ -59,15 +69,17 @@ export default function IntakePage() {
 
     const res = await aiParalegal({ messages: newMessages, agentPersona: maya.systemPrompt });
     if (res.reply) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: res.reply.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim()
-      }]);
+      const clean = res.reply.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim();
+      setMessages(prev => [...prev, { role: 'assistant', content: clean }]);
+      voice.speak(clean);
     }
     const parsed = res.intakeSummary || (res.reply ? parseIntakeSummary(res.reply) : null);
     if (parsed) setSummary(parsed);
     setLoading(false);
   };
+  sendTextRef.current = sendText;
+
+  const send = () => sendText(input);
 
   const openCaseFile = () => {
     if (!summary) return;
@@ -152,20 +164,49 @@ export default function IntakePage() {
             ))}
           </div>
 
-          <button
-            onClick={startIntake}
-            className={`bg-gradient-to-r ${maya.color} text-white font-semibold px-8 py-3 rounded-xl hover:opacity-90 transition-opacity shadow-lg text-sm`}
-          >
-            Begin Intake with Maya →
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => startIntake(false)}
+              className={`bg-gradient-to-r ${maya.color} text-white font-semibold px-8 py-3 rounded-xl hover:opacity-90 transition-opacity shadow-lg text-sm`}
+            >
+              Begin Intake with Maya →
+            </button>
+            {voice.supported && (
+              <button
+                onClick={() => startIntake(true)}
+                className="bg-slate-700 hover:bg-slate-600 border border-violet-500/50 text-white font-semibold px-8 py-3 rounded-xl transition-colors shadow-lg text-sm flex items-center gap-2"
+              >
+                <Mic size={15} className="text-violet-400" /> Talk Live with Maya
+              </button>
+            )}
+          </div>
+          {voice.supported && (
+            <p className="text-slate-600 text-xs mt-3">
+              Live mode is fully hands-free — speak naturally, Maya hears you, answers out loud, and keeps listening.
+            </p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Chat */}
           <div className="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-2xl flex flex-col" style={{ height: '600px' }}>
             {/* Chat header */}
-            <div className="px-4 py-3 border-b border-slate-700">
+            <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between gap-3">
               <AgentHeader agent={maya} compact />
+              {voice.supported && (
+                <button
+                  onClick={() => (voice.live ? voice.stopLive() : voice.startLive())}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors shrink-0 ${
+                    voice.live
+                      ? 'bg-red-600/20 border border-red-500/50 text-red-300'
+                      : 'bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300'
+                  }`}
+                  title={voice.live ? 'End live conversation' : 'Start hands-free live conversation'}
+                >
+                  <span className={`w-2 h-2 rounded-full ${voice.live ? 'bg-red-400 animate-pulse' : 'bg-slate-500'}`} />
+                  {voice.live ? 'LIVE — tap to end' : 'Go Live'}
+                </button>
+              )}
             </div>
 
             {/* Messages */}
@@ -205,6 +246,27 @@ export default function IntakePage() {
 
             {/* Input */}
             <div className="p-3 border-t border-slate-700">
+              {voice.live && (
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  {voice.speaking ? (
+                    <>
+                      <span className="flex gap-0.5 items-end h-3">
+                        <span className="w-1 bg-violet-400 rounded-full animate-pulse" style={{ height: '12px' }} />
+                        <span className="w-1 bg-violet-400 rounded-full animate-pulse" style={{ height: '7px', animationDelay: '150ms' }} />
+                        <span className="w-1 bg-violet-400 rounded-full animate-pulse" style={{ height: '10px', animationDelay: '300ms' }} />
+                      </span>
+                      <span className="text-violet-300 text-xs font-medium">Maya is speaking…</span>
+                    </>
+                  ) : voice.interim ? (
+                    <span className="text-slate-300 text-xs italic truncate">“{voice.interim}”</span>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-green-300 text-xs font-medium">Listening — just talk, it sends when you pause</span>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2">
                 <button
                   onClick={toggleVoice}
