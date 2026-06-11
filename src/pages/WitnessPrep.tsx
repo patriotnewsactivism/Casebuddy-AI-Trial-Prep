@@ -269,7 +269,7 @@ ${result.closing_question ? `<h2>🏁 Closing Question</h2><p>${result.closing_q
               <div className="bg-slate-800 border border-orange-500/30 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-orange-400 font-semibold text-sm flex-1">⚔️ Rex's Strategic Overview — {form.name}</h3>
-                  <button onClick={exportPrepPackage} className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs transition-colors">
+                  <button onClick={exportPrepPackage} className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs transition-colors flex-shrink-0">
                     <Download size={12} /> Export PDF
                   </button>
                   <div className="flex items-center gap-2 text-xs">
