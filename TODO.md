@@ -171,10 +171,15 @@
 - [ ] Install `react-pdf` or `jsPDF`
 - [ ] Export intake summaries, document analysis, witness prep questions, case timelines
 
-### 4.3 Case File System (Supabase)
-- [ ] Wire Supabase to store: cases, documents, deadlines, contacts, intake summaries
-- [ ] Link all modules to active case context
-- [ ] Case switcher in sidebar
+### 4.3 Case File System ✅ (localStorage — Supabase sync next)
+- [x] Central case store (`src/lib/caseStore.ts`) — cases, deadlines, documents, witnesses, research, activity log
+- [x] Maya's intake creates the case file & auto-briefs every department (Sol, Doc, Lex, Max, Rex, Jules) with handoff tasks
+- [x] Link all modules to active case context (`<ActiveCaseBar />` + `buildCaseContext()` injected into AI calls)
+- [x] Case switcher on every module page
+- [x] Case Manager list + Case Detail "war room" (`/cases`, `/cases/:id`) with stage pipeline & firm activity feed
+- [x] Conflict checker cross-references new parties against all existing case files
+- [ ] Sync case store to Supabase (replace localStorage persistence)
+- [ ] Sierra's qualified leads auto-create intake-ready case stubs
 
 ### 4.4 White-Label Mode (Law Firm Sales)
 - [ ] Platform-wide firm name + color theme customization

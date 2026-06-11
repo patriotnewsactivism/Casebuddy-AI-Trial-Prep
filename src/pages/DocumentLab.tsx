@@ -1,6 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { FileSearch, Upload, Loader2, Gem, AlertTriangle, CheckCircle, ScanLine, FileCheck, Eye, X, FileText } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
+import ActiveCaseBar from '../components/ActiveCaseBar';
+import { useActiveCase, buildCaseContext, caseBrief, addCaseDocument, logActivity, completeAgentTask } from '../lib/caseStore';
 
 type Tab = 'analyze' | 'scan' | 'contract';
 
@@ -12,11 +14,13 @@ const DOC_TYPES = ['Contract', 'Deposition', 'Police Report', 'Medical Record', 
 
 export default function DocumentLab() {
   const [tab, setTab] = useState<Tab>('analyze');
+  const activeCase = useActiveCase();
 
   // === ANALYZE STATE ===
   const [text, setText] = useState('');
   const [docType, setDocType] = useState('Contract');
   const [caseSummary, setCaseSummary] = useState('');
+  const [fileName, setFileName] = useState('');
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
 
@@ -28,6 +32,15 @@ export default function DocumentLab() {
   const [selectedDoc, setSelectedDoc] = useState<ScannedDoc | null>(null);
   const [caseContext, setCaseContext] = useState('');
 
+  // Prefill case context from the active case file so Doc already knows the case
+  useEffect(() => {
+    if (activeCase) {
+      setCaseSummary(prev => prev || caseBrief(activeCase));
+      setCaseContext(prev => prev || caseBrief(activeCase));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
+
   // === CONTRACT STATE ===
   const [contractText, setContractText] = useState('');
   const [contractLoading, setContractLoading] = useState(false);
@@ -37,6 +50,7 @@ export default function DocumentLab() {
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setFileName(file.name);
     const reader = new FileReader();
     reader.onload = ev => setText(ev.target?.result as string || '');
     reader.readAsText(file);
@@ -45,8 +59,23 @@ export default function DocumentLab() {
   const analyze = async () => {
     if (!text.trim()) return;
     setLoading(true); setAnalysis(null);
-    const res = await analyzeDocument({ text, document_type: docType, case_summary: caseSummary });
-    if (res.analysis) setAnalysis(res.analysis);
+    const res = await analyzeDocument({
+      text,
+      document_type: docType,
+      case_summary: activeCase ? `${caseSummary}\n\n${buildCaseContext(activeCase)}` : caseSummary,
+    });
+    if (res.analysis) {
+      setAnalysis(res.analysis);
+      if (activeCase) {
+        const name = fileName || `${docType} (pasted text)`;
+        const summary = typeof res.analysis === 'string'
+          ? res.analysis.slice(0, 300)
+          : (res.analysis.summary || 'Analysis completed').slice(0, 300);
+        addCaseDocument(activeCase.id, { fileName: name, docType, summary, analyzedAt: new Date().toISOString() });
+        logActivity(activeCase.id, 'doc', 'Analyzed a document', `${name} — ${summary.slice(0, 120)}`);
+        completeAgentTask(activeCase.id, 'doc');
+      }
+    }
     setLoading(false);
   };
 
@@ -66,14 +95,24 @@ export default function DocumentLab() {
         reader.onload = e => resolve(e.target?.result as string || '');
         reader.readAsText(file);
       });
-      const res = await analyzeDocument({ text: fileText, document_type: 'Other', case_summary: caseContext });
+      const res = await analyzeDocument({
+        text: fileText,
+        document_type: 'Other',
+        case_summary: activeCase ? `${caseContext}\n\n${buildCaseContext(activeCase)}` : caseContext,
+      });
       setScannedDocs(prev => [...prev, {
         id: Date.now().toString() + Math.random(),
         fileName: file.name, text: fileText,
         analysis: res.analysis || { summary: 'Analysis completed' },
         scannedAt: new Date().toLocaleString(),
       }]);
+      if (activeCase) {
+        const summary = (res.analysis?.summary || 'Scanned & analyzed').slice(0, 300);
+        addCaseDocument(activeCase.id, { fileName: file.name, docType: 'Scanned', summary, analyzedAt: new Date().toISOString() });
+        logActivity(activeCase.id, 'doc', 'Scanned & analyzed a document', file.name);
+      }
     }
+    if (activeCase && files.length > 0) completeAgentTask(activeCase.id, 'doc');
     setFiles([]); setScanning(false);
   };
 
@@ -131,6 +170,8 @@ Respond in JSON:
           <p className="text-slate-400 text-sm">Analyze, scan, and review documents — all in one place</p>
         </div>
       </div>
+
+      <ActiveCaseBar agentId="doc" />
 
       {/* Tab Bar */}
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">

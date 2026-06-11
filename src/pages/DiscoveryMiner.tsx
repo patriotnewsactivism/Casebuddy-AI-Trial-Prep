@@ -1,15 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Microscope, Plus, Trash2, Loader2, Flame, Clock, GitCompare } from 'lucide-react';
 import { discoveryMiner } from '../lib/api';
+import ActiveCaseBar from '../components/ActiveCaseBar';
+import { useActiveCase, buildCaseContext, caseBrief, logActivity } from '../lib/caseStore';
 
 interface Doc { title: string; document_type: string; content_text: string; }
 
 export default function DiscoveryMiner() {
+  const activeCase = useActiveCase();
   const [docs, setDocs] = useState<Doc[]>([{ title: '', document_type: 'Contract', content_text: '' }]);
   const [caseTheory, setCaseTheory] = useState('');
   const [side, setSide] = useState('Plaintiff');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
+
+  useEffect(() => {
+    if (activeCase) setCaseTheory(prev => prev || caseBrief(activeCase));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
 
   const addDoc = () => setDocs(d => [...d, { title: '', document_type: 'Contract', content_text: '' }]);
   const removeDoc = (i: number) => setDocs(d => d.filter((_, idx) => idx !== i));
@@ -21,8 +29,17 @@ export default function DiscoveryMiner() {
     if (!valid.length) return;
     setLoading(true);
     setResults(null);
-    const res = await discoveryMiner({ documents: valid, case_theory: caseTheory, side });
-    if (res.mining_results) setResults(res.mining_results);
+    const res = await discoveryMiner({
+      documents: valid,
+      case_theory: activeCase ? `${caseTheory}\n\n${buildCaseContext(activeCase)}` : caseTheory,
+      side,
+    });
+    if (res.mining_results) {
+      setResults(res.mining_results);
+      if (activeCase) {
+        logActivity(activeCase.id, 'doc', 'Mined discovery for contradictions & smoking guns', `Cross-referenced ${valid.length} document(s).`);
+      }
+    }
     setLoading(false);
   };
 
@@ -37,6 +54,8 @@ export default function DiscoveryMiner() {
           <p className="text-slate-400 text-sm">Cross-reference all documents to uncover smoking guns, contradictions & gaps</p>
         </div>
       </div>
+
+      <ActiveCaseBar agentId="doc" />
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
         <div className="grid md:grid-cols-2 gap-4">

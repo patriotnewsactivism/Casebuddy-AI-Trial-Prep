@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Users, ChevronDown, ChevronUp, Loader2, Download, Plus, Trash2 } from 'lucide-react';
 import { trialCoach } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
+import ActiveCaseBar from '../components/ActiveCaseBar';
 import { AGENTS } from '../agents/personas';
+import { useActiveCase, buildCaseContext, addCaseWitness, logActivity, completeAgentTask } from '../lib/caseStore';
 
 const rex = AGENTS.rex;
 
@@ -39,6 +41,7 @@ const blankWitness = (): WitnessForm => ({
 });
 
 export default function WitnessPrep() {
+  const activeCase = useActiveCase();
   const [form, setForm] = useState<WitnessForm>(blankWitness());
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<WitnessResult | null>(null);
@@ -54,7 +57,7 @@ export default function WitnessPrep() {
     setResult(null);
 
     const prompt = `${rex.systemPrompt}
-
+${activeCase ? `\n${buildCaseContext(activeCase)}\n` : ''}
 WITNESS PREP REQUEST:
 Witness: ${form.name}
 Type: ${form.witness_type} witness
@@ -89,6 +92,16 @@ Generate comprehensive examination preparation. Respond with valid JSON only:
         setResult(parsed);
         setWitnesses(prev => [...prev, { form: { ...form }, result: parsed }]);
         setActiveWitness(witnesses.length);
+        if (activeCase) {
+          addCaseWitness(activeCase.id, {
+            name: form.name,
+            side: form.side === 'ours' ? 'ours' : 'opposing',
+            expectedTestimony: form.expected_testimony,
+            preparedAt: new Date().toISOString(),
+          });
+          logActivity(activeCase.id, 'rex', 'Prepared witness examination package', `${form.name} (${form.side === 'ours' ? 'direct exam' : 'cross exam'})`);
+          completeAgentTask(activeCase.id, 'rex', '/witnesses');
+        }
       } catch {
         setResult({ ai_prep_notes: res.reply, direct_questions: [], cross_questions: [], anticipated_answers: [], credibility_assessment: '', vulnerabilities: [], opening_gambit: '', closing_question: '', danger_zones: [] });
       }
@@ -114,6 +127,8 @@ Generate comprehensive examination preparation. Respond with valid JSON only:
       </div>
 
       <AgentHeader agent={rex} subtitle="Give me a witness, I'll give you every question you need — and every trap to set." />
+
+      <ActiveCaseBar agentId="rex" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Form */}
