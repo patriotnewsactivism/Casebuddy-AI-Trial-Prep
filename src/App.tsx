@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
+import CaseDetail from './pages/CaseDetail';
 import IntakePage from './pages/IntakePage';
 import DocumentLab from './pages/DocumentLab';
 import DiscoveryMiner from './pages/DiscoveryMiner';
@@ -159,6 +160,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/cases" element={<Cases />} />
+            <Route path="/cases/:id" element={<CaseDetail />} />
             <Route path="/intake" element={<IntakePage />} />
 
             {/* Documents */}

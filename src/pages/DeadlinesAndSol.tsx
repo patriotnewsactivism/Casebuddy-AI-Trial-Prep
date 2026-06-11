@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Clock, Plus, Trash2, AlertTriangle, CheckCircle, Calendar, Calculator, MapPin, Scale, ArrowRight } from 'lucide-react';
+import ActiveCaseBar from '../components/ActiveCaseBar';
+import { useActiveCase, addCaseDeadline, toggleCaseDeadline, removeCaseDeadline, logActivity, completeAgentTask } from '../lib/caseStore';
 
 type Tab = 'deadlines' | 'sol';
 
@@ -25,20 +27,52 @@ const ALL_SOL = SOL_DB.sort((a, b) => a.state.localeCompare(b.state));
 
 export default function DeadlinesAndSol() {
   const [tab, setTab] = useState<Tab>('deadlines');
+  const activeCase = useActiveCase();
 
-  // Deadline state
-  const [deadlines, setDeadlines] = useState<Deadline[]>([
+  // Deadline state (used only when no case file is active — case deadlines persist to the case)
+  const [localDeadlines, setLocalDeadlines] = useState<Deadline[]>([
     { id: '1', title: 'Answer to Complaint', deadline_type: 'Filing Deadline', due_date: new Date(Date.now() + 3*86400000).toISOString().split('T')[0], description: 'Must file answer within 21 days', is_critical: true, is_completed: false, case_name: 'Smith v. ABC Corp' },
     { id: '2', title: 'Discovery Cutoff', deadline_type: 'Discovery Cutoff', due_date: new Date(Date.now() + 30*86400000).toISOString().split('T')[0], description: 'All discovery must be completed', is_critical: false, is_completed: false, case_name: 'Jones v. City' },
   ]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', deadline_type: 'Filing Deadline', due_date: '', description: '', is_critical: false, case_name: '' });
 
+  const deadlines: Deadline[] = activeCase
+    ? activeCase.deadlines.map(d => ({
+        id: d.id, title: d.title, deadline_type: d.deadlineType, due_date: d.dueDate,
+        description: d.description, is_critical: d.isCritical, is_completed: d.isCompleted,
+        case_name: activeCase.clientName,
+      }))
+    : localDeadlines;
+
+  const toggleDl = (id: string) => {
+    if (activeCase) toggleCaseDeadline(activeCase.id, id);
+    else setLocalDeadlines(ds => ds.map(x => x.id === id ? {...x, is_completed: !x.is_completed} : x));
+  };
+  const removeDl = (id: string) => {
+    if (activeCase) removeCaseDeadline(activeCase.id, id);
+    else setLocalDeadlines(ds => ds.filter(x => x.id !== id));
+  };
+
   // SOL state
   const [selectedState, setSelectedState] = useState('Mississippi');
   const [claimType, setClaimType] = useState('Personal Injury');
   const [incidentDate, setIncidentDate] = useState('');
   const [calculated, setCalculated] = useState(false);
+
+  // Prefill the SOL calculator from the active case file (intake handoff)
+  useEffect(() => {
+    if (!activeCase) return;
+    const match = ALL_SOL.find(s =>
+      activeCase.jurisdiction.toLowerCase().includes(s.state.toLowerCase()) ||
+      activeCase.jurisdiction.toUpperCase() === s.abbr
+    );
+    if (match) setSelectedState(match.state);
+    if (activeCase.incidentDate && /^\d{4}-\d{2}-\d{2}/.test(activeCase.incidentDate)) {
+      setIncidentDate(activeCase.incidentDate.slice(0, 10));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
 
   const stateData = useMemo(() => ALL_SOL.find(s => s.state === selectedState), [selectedState]);
   const claimData = useMemo(() => stateData?.claims.find(c => c.type === claimType), [stateData, claimType]);
@@ -56,22 +90,37 @@ export default function DeadlinesAndSol() {
 
   const addDeadline = () => {
     if (!form.title || !form.due_date) return;
-    setDeadlines(d => [...d, { ...form, id: Date.now().toString(), is_completed: false }]);
+    if (activeCase) {
+      addCaseDeadline(activeCase.id, {
+        title: form.title, deadlineType: form.deadline_type, dueDate: form.due_date,
+        description: form.description, isCritical: form.is_critical, isCompleted: false,
+      });
+      logActivity(activeCase.id, 'sol', 'Calendared a deadline', `${form.title} — due ${form.due_date}`);
+    } else {
+      setLocalDeadlines(d => [...d, { ...form, id: Date.now().toString(), is_completed: false }]);
+    }
     setForm({ title: '', deadline_type: 'Filing Deadline', due_date: '', description: '', is_critical: false, case_name: '' });
     setShowForm(false);
   };
 
   const addSolToDeadlines = () => {
     if (!deadline || !claimData) return;
-    const newDeadline: Deadline = {
-      id: Date.now().toString(),
-      title: `SOL: ${claimType} (${selectedState})`,
-      deadline_type: 'Statute of Limitations',
-      due_date: deadline.toISOString().split('T')[0],
-      description: `${claimData.notes}. ${claimData.tolling}`,
-      is_critical: true, is_completed: false, case_name: ''
-    };
-    setDeadlines(d => [...d, newDeadline]);
+    const title = `SOL: ${claimType} (${selectedState})`;
+    const dueDate = deadline.toISOString().split('T')[0];
+    const description = `${claimData.notes}. ${claimData.tolling}`;
+    if (activeCase) {
+      addCaseDeadline(activeCase.id, {
+        title, deadlineType: 'Statute of Limitations', dueDate,
+        description, isCritical: true, isCompleted: false,
+      });
+      logActivity(activeCase.id, 'sol', 'Calculated statute of limitations', `${title} — expires ${dueDate}`);
+      completeAgentTask(activeCase.id, 'sol');
+    } else {
+      setLocalDeadlines(d => [...d, {
+        id: Date.now().toString(), title, deadline_type: 'Statute of Limitations',
+        due_date: dueDate, description, is_critical: true, is_completed: false, case_name: '',
+      }]);
+    }
     setTab('deadlines');
   };
 
@@ -93,6 +142,8 @@ export default function DeadlinesAndSol() {
           <p className="text-slate-400 text-sm">Track every deadline — calculate statutes of limitations and add them in one click</p>
         </div>
       </div>
+
+      <ActiveCaseBar agentId="sol" />
 
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
         <button onClick={() => setTab('deadlines')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${tab === 'deadlines' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
@@ -136,7 +187,7 @@ export default function DeadlinesAndSol() {
               const days = daysUntil(d.due_date);
               return (
                 <div key={d.id} className={`border rounded-xl p-4 flex items-center gap-4 ${d.is_completed ? 'bg-slate-800/50 border-slate-700/50 opacity-60' : urgBg(days)}`}>
-                  <button onClick={() => setDeadlines(ds => ds.map(x => x.id === d.id ? {...x, is_completed: !x.is_completed} : x))}
+                  <button onClick={() => toggleDl(d.id)}
                     className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${d.is_completed ? 'bg-green-600 border-green-500' : 'border-slate-500 hover:border-blue-400'}`}>
                     {d.is_completed && <CheckCircle size={14} className="text-white" />}
                   </button>
@@ -154,7 +205,7 @@ export default function DeadlinesAndSol() {
                     </div>
                     <div className="text-slate-600 text-xs">{new Date(d.due_date).toLocaleDateString()}</div>
                   </div>
-                  <button onClick={() => setDeadlines(ds => ds.filter(x => x.id !== d.id))} className="text-slate-600 hover:text-red-400 shrink-0"><Trash2 size={14} /></button>
+                  <button onClick={() => removeDl(d.id)} className="text-slate-600 hover:text-red-400 shrink-0"><Trash2 size={14} /></button>
                 </div>
               );
             })}

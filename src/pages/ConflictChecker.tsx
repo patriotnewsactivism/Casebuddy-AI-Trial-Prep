@@ -1,16 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, Search, AlertTriangle, CheckCircle, Plus, X, Loader2, Download } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
+import ActiveCaseBar from '../components/ActiveCaseBar';
+import { useCases, useActiveCase, logActivity, completeAgentTask } from '../lib/caseStore';
 
 interface Party { id: string; name: string; role: string; aliases: string; }
 interface ConflictResult { severity: 'high' | 'medium' | 'low' | 'clear'; party: string; matchedCase: string; details: string; rule: string; }
 
 export default function ConflictChecker() {
+  const allCases = useCases();
+  const activeCase = useActiveCase();
   const [parties, setParties] = useState<Party[]>([{ id: '1', name: '', role: 'Client', aliases: '' }]);
   const [checking, setChecking] = useState(false);
   const [results, setResults] = useState<ConflictResult[] | null>(null);
   const [caseType, setCaseType] = useState('Civil Rights');
   const [jurisdiction, setJurisdiction] = useState('Federal');
+
+  // Prefill the party list from the active case file (Maya's intake handoff)
+  useEffect(() => {
+    if (!activeCase) return;
+    const prefilled: Party[] = [
+      { id: '1', name: activeCase.clientName, role: 'Client', aliases: '' },
+      ...activeCase.parties
+        .filter(p => p.toLowerCase() !== activeCase.clientName.toLowerCase())
+        .map((p, i) => ({ id: `p${i}`, name: p, role: 'Opposing Party', aliases: '' })),
+    ];
+    setParties(prev => (prev.length === 1 && !prev[0].name.trim()) ? prefilled : prev);
+    setCaseType(prev => activeCase.caseType || prev);
+    if (activeCase.jurisdiction) setJurisdiction(activeCase.jurisdiction);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
 
   const addParty = () => setParties(prev => [...prev, { id: Math.random().toString(36).slice(2), name: '', role: 'Opposing Party', aliases: '' }]);
   const removeParty = (id: string) => setParties(prev => prev.filter(p => p.id !== id));
@@ -29,6 +48,9 @@ Jurisdiction: ${jurisdiction}
 
 Parties:
 ${parties.filter(p => p.name.trim()).map(p => `- ${p.name} (${p.role})${p.aliases ? ` — also known as: ${p.aliases}` : ''}`).join('\n')}
+
+EXISTING FIRM CASES TO CROSS-REFERENCE (flag any overlap of clients or adverse parties):
+${allCases.filter(c => c.id !== activeCase?.id).map(c => `- ${c.clientName} (${c.caseType}) — parties: ${c.parties.join(', ') || 'n/a'}`).join('\n') || '- No other cases on file'}
 
 For each party, check:
 1. Could any party have a direct adverse relationship with another?
@@ -59,6 +81,10 @@ Respond with a JSON array of findings. Each finding: { "severity": "high|medium|
             }
           }
           setResults(mockResults);
+        }
+        if (activeCase) {
+          logActivity(activeCase.id, 'maya', 'Ran conflict of interest check', `Cross-referenced ${parties.filter(p => p.name.trim()).length} parties against ${allCases.length - 1} other case(s).`);
+          completeAgentTask(activeCase.id, 'maya', '/conflict-checker');
         }
       }
     } catch {
@@ -96,6 +122,8 @@ Respond with a JSON array of findings. Each finding: { "severity": "high|medium|
           <p className="text-slate-400 text-sm">Cross-reference parties, flag conflicts, generate waivers — ABA Rules compliant</p>
         </div>
       </div>
+
+      <ActiveCaseBar agentId="maya" />
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Input Panel */}

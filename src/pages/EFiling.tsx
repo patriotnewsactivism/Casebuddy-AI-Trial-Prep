@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Gavel, Search, FileText, ExternalLink, Building2, Filter, Clock, ArrowRight, BookOpen, Globe } from 'lucide-react';
+import ActiveCaseBar from '../components/ActiveCaseBar';
 
 interface CourtRecord {
   id: string; caseNumber: string; caption: string; court: string;
@@ -85,6 +86,8 @@ export default function EFiling() {
           <p className="text-slate-400 text-sm">Search PACER, view dockets, check e-filing requirements, court directory</p>
         </div>
       </div>
+
+      <ActiveCaseBar agentId="max" />
 
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1">

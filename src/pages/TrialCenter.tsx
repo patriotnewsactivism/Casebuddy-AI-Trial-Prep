@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Swords, Send, Loader2, Settings, Users, BarChart2, Brain, ChevronDown, ChevronUp, Mic, MicOff } from 'lucide-react';
 import { trialCoach } from '../lib/api';
+import ActiveCaseBar from '../components/ActiveCaseBar';
+import { useActiveCase, buildCaseContext } from '../lib/caseStore';
 
 type Tab = 'coach' | 'witness' | 'jury';
 
@@ -70,6 +72,17 @@ export default function TrialCenter() {
   const [caseSummaryJury, setCaseSummaryJury] = useState('');
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Pull the active case file into the coaching session so Rex knows the case
+  const activeCase = useActiveCase();
+  useEffect(() => {
+    if (!activeCase) return;
+    const facts = buildCaseContext(activeCase);
+    setConfig(c => c.case_facts ? c : { ...c, case_facts: facts });
+    setCaseSummaryJury(prev => prev || activeCase.summary || facts);
+    if (activeCase.caseType) setCaseType(activeCase.caseType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
 
   // Voice recognition
   const toggleVoice = () => {
@@ -164,6 +177,8 @@ Respond JSON: {"ai_prep_notes":"overview","direct_questions":["Q"],"cross_questi
           <p className="text-slate-400 text-sm">Voice-activated coaching, witness prep, and jury simulation</p>
         </div>
       </div>
+
+      <ActiveCaseBar agentId="rex" />
 
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
         {TABS.map(t => (
