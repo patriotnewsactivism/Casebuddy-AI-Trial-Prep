@@ -95,7 +95,7 @@ export function useLiveVoice({ onUtterance, silenceMs = 1600 }: LiveVoiceOptions
       recRef.current = rec;
       setListening(true);
     } catch { /* start() throws if called too soon after stop */ }
-  }, [supported, silenceMs, stopRecognition]);
+  }, [supported, silenceMs]);
 
   const speak = useCallback((text: string) => {
     if (!liveRef.current || !('speechSynthesis' in window)) return;

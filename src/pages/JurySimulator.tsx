@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart2, Loader2, Play, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Play } from 'lucide-react';
 import { trialCoach } from '../lib/api';
 import ActiveCaseBar from '../components/ActiveCaseBar';
 import { useActiveCase, buildCaseContext, logActivity, completeAgentTask } from '../lib/caseStore';
