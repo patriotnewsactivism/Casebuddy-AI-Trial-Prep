@@ -1,5 +1,6 @@
 # CaseBuddy AI — Master TODO & Roadmap
-> Last updated: 2026-06-10 | Managed by Superagent
+> Last updated: 2026-06-12 | Managed by Superagent
+> Engineering guide for AI agents & contributors: see `CLAUDE.md`
 
 ---
 
@@ -15,14 +16,14 @@
 ### 1.2 Assign Named Personas to Every Module
 | Agent | Module | File | Status |
 |-------|--------|------|--------|
-| **Maya** | Case Intake | `IntakePage.tsx` | ⚠️ Renamed to Alex — restore |
-| **Lex** | Legal Research Hub | `LegalResearchHub.tsx` | ⬜ Not assigned |
-| **Doc** | Document Lab + Discovery | `DocumentLab.tsx`, `DiscoveryMiner.tsx` | ⬜ Not assigned |
-| **Rex** | Trial Coach + Trial Center | `TrialCenter.tsx` | ⬜ Not assigned |
-| **Sol** | Deadlines & SOL Tracker | `DeadlinesAndSol.tsx` | ⬜ Not assigned |
-| **Sierra** | Legal Secretary | `LegalSecretary.tsx` | ⬜ Not assigned |
-| **Jules** | Jury Simulator | `JurySimulator.tsx` | ⬜ Page missing |
-| **Max** | E-Filing & Records | `EFiling.tsx` | ⬜ Not assigned |
+| **Maya** | Case Intake | `IntakePage.tsx` | ✅ Live |
+| **Lex** | Legal Research Hub | `LegalResearchHub.tsx` | ✅ Live |
+| **Doc** | Document Lab + Discovery | `DocumentLab.tsx`, `DiscoveryMiner.tsx` | ✅ Live |
+| **Rex** | Trial Coach + Witness Prep | `TrialCenter.tsx`, `WitnessPrep.tsx` | ✅ Live |
+| **Sol** | Deadlines & SOL Tracker | `DeadlinesAndSol.tsx` | ✅ Live |
+| **Sierra** | Legal Secretary | `LegalSecretary.tsx` | ✅ Live + lead capture |
+| **Jules** | Jury Simulator | `JurySimulator.tsx` | ✅ Live |
+| **Max** | E-Filing & Records | `EFiling.tsx` | ✅ Live |
 
 - [x] Create `src/agents/personas.ts` — central config for all agent names, colors, avatars, descriptions
 - [x] Build reusable `<AgentHeader />` component used across all pages
@@ -42,24 +43,25 @@
 - [x] Create `src/pages/WitnessPrep.tsx`
 - [x] Add route in `App.tsx`
 - [x] Add to sidebar nav under "Trial Prep"
-- [ ] Features:
-  - [ ] Input witness name, role, relationship to case
-  - [ ] AI generates direct examination questions
-  - [ ] AI generates cross-examination questions
-  - [ ] Impeachment strategy + credibility assessment
-  - [ ] Export questions as printable outline
+- [x] Features:
+  - [x] Input witness name, role, relationship to case
+  - [x] AI generates direct examination questions
+  - [x] AI generates cross-examination questions
+  - [x] Impeachment strategy + credibility assessment (vulnerabilities, danger zones, opening gambit, closing question)
+  - [x] Export questions as printable outline (print-to-PDF prep package)
+  - [x] Multi-witness roster with per-witness saved prep packages
 
 ### 2.2 Jury Simulator Page (`/jury`) — Agent: Jules
 - [x] Create `src/pages/JurySimulator.tsx`
 - [x] Add route in `App.tsx`
 - [x] Add to sidebar nav under "Trial Prep"
-- [ ] Features:
-  - [ ] 6 AI jurors with distinct personalities (skeptic, empath, analytical, conservative, liberal, undecided)
-  - [ ] Present opening statement → get per-juror reactions
-  - [ ] Persuasion meter per juror (0–100)
-  - [ ] Juror deliberation simulation
-  - [ ] Verdict probability tracker
-  - [ ] Closing argument feedback
+- [x] Features:
+  - [x] 6 AI jurors with distinct personalities (skeptic, empath, analytical, emotional, plaintiff/defense/neutral leans)
+  - [x] Present opening statement → get per-juror reactions
+  - [x] Persuasion meter per juror (0–100)
+  - [x] Juror deliberation simulation (dramatized jury-room scene)
+  - [x] Verdict probability tracker (predicted verdict banner + plaintiff % meter)
+  - [x] Closing argument feedback (modes: opening / evidence / closing / rebuttal)
 
 ---
 
@@ -163,23 +165,23 @@
 ## 🟡 PRIORITY 4 — Feature Enhancements
 
 ### 4.1 Voice Input Everywhere (Deepgram)
-- [ ] Mic button on Maya's intake chat
+- [x] Mic button on Maya's intake chat (browser Web Speech API; Deepgram upgrade pending)
 - [ ] Voice input on all AI chat interfaces
-- [ ] Real-time transcription as user speaks
+- [x] Real-time transcription as user speaks (on intake — interim results stream into the input)
 
 ### 4.2 PDF Export
-- [ ] Install `react-pdf` or `jsPDF`
-- [ ] Export intake summaries, document analysis, witness prep questions, case timelines
+- [x] Witness prep packages export as printable PDF (styled HTML → print dialog, no heavy deps)
+- [ ] Export intake summaries, document analysis, case timelines (reuse the WitnessPrep print pattern)
 
-### 4.3 Case File System ✅ (localStorage — Supabase sync next)
+### 4.3 Case File System ✅ (localStorage + Supabase cloud sync)
 - [x] Central case store (`src/lib/caseStore.ts`) — cases, deadlines, documents, witnesses, research, activity log
 - [x] Maya's intake creates the case file & auto-briefs every department (Sol, Doc, Lex, Max, Rex, Jules) with handoff tasks
 - [x] Link all modules to active case context (`<ActiveCaseBar />` + `buildCaseContext()` injected into AI calls)
 - [x] Case switcher on every module page
 - [x] Case Manager list + Case Detail "war room" (`/cases`, `/cases/:id`) with stage pipeline & firm activity feed
 - [x] Conflict checker cross-references new parties against all existing case files
-- [ ] Sync case store to Supabase (replace localStorage persistence)
-- [ ] Sierra's qualified leads auto-create intake-ready case stubs
+- [x] Sync case store to Supabase (`src/lib/cloudSync.ts` — best-effort mirror, localStorage stays source of truth; run the `case_files` table SQL from the file header once in Supabase)
+- [x] Sierra's qualified leads auto-create intake-ready case stubs (`src/lib/leadStore.ts` — Sierra emits `<LEAD_CAPTURED>` in chat, "Send to Maya →" promotes lead to a case file & briefs all departments)
 
 ### 4.4 White-Label Mode (Law Firm Sales)
 - [ ] Platform-wide firm name + color theme customization
@@ -197,14 +199,13 @@
 ## 🔵 PRIORITY 5 — Growth & Sales
 
 ### 5.1 Pricing Page
-- [ ] Create `src/pages/Pricing.tsx` at route `/pricing`
-- [ ] Three tiers with feature comparison table
-- [ ] Stripe Checkout integration
+- [x] Create `src/pages/Pricing.tsx` at route `/pricing` (single plan $499/mo, 2-week free trial)
+- [ ] Stripe Checkout integration (blocked on Stripe account — see 3.3)
 
 ### 5.2 Onboarding Flow
-- [ ] First-time user welcome modal
+- [x] First-time user welcome modal (`OnboardingModal.tsx`)
+- [x] Guided product tour (`/video-tour`)
 - [ ] "Start with Maya" CTA on dashboard
-- [ ] Guided product tour
 
 ### 5.3 Analytics
 - [ ] Add PostHog or Mixpanel
@@ -231,7 +232,8 @@
 
 ## 📋 NOTES
 - Backend functions: https://superagent-344f8b2b.base44.app/functions/
-- Live app: https://casebuddy-ai-trial-prep.vercel.app
+- Live app: https://casebuddy.live (Vercel project: casebuddy-ai-trial-prep)
 - GitHub: https://github.com/patriotnewsactivism/Casebuddy-AI-Trial-Prep
 - AI model: Gemini 2.5 Flash (upgrade to Pro for Law Firm tier)
 - All API keys → Vercel environment variables only, never commit to repo
+- Architecture & conventions for contributors/AI agents: `CLAUDE.md`

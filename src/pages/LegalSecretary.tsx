@@ -1,29 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, Loader2, Settings, Copy, CheckCircle, Code, Globe, UserPlus, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { MessageSquare, Send, Loader2, Settings, Copy, CheckCircle, Code, Globe, UserPlus, Calendar, Briefcase, Archive } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
 import { AGENTS } from '../agents/personas';
+import { useLeads, addLead, promoteLead, archiveLead, parseLeadCapture, stripLeadCapture } from '../lib/leadStore';
 
 const sierra = AGENTS.sierra;
 
 interface ChatMessage { role: 'bot' | 'user'; text: string; timestamp: string; leadCaptured?: boolean; }
 
-interface LeadInfo {
-  name: string; email: string; phone: string; caseType: string;
-  jurisdiction: string; summary: string; urgency: string; timestamp: string;
-}
-
 export default function LegalSecretary() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'demo' | 'config' | 'leads' | 'embed'>('demo');
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'bot', text: "Hello! I'm the AI legal assistant for your firm. I can help you understand if you have a potential case and connect you with the right attorney. What's your situation?", timestamp: new Date().toISOString() },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [leads] = useState<LeadInfo[]>([
-    { name: 'John Smith', email: 'john@email.com', phone: '(555) 123-4567', caseType: 'Civil Rights', jurisdiction: 'Mississippi', summary: 'Police excessive force during traffic stop. Has video evidence.', urgency: 'High', timestamp: '2026-06-08T14:30:00Z' },
-    { name: 'Sarah Johnson', email: 'sarah.j@email.com', phone: '(555) 987-6543', caseType: 'Personal Injury', jurisdiction: 'Mississippi', summary: 'Slip and fall at grocery store. Medical bills $12,000.', urgency: 'Medium', timestamp: '2026-06-07T09:15:00Z' },
-  ]);
+  const leads = useLeads().filter(l => l.status !== 'archived');
   const [copied, setCopied] = useState(false);
   const [config, setConfig] = useState({
     firmName: 'Your Law Firm',
@@ -48,11 +43,15 @@ export default function LegalSecretary() {
     try {
       const res = await aiParalegal({
         message: userMsg,
-        context: `You are an AI legal intake assistant for ${config.firmName}. Practice areas: ${config.practiceAreas}. Your goals: 1) Understand the potential client's situation, 2) Determine the case type and jurisdiction, 3) Assess urgency and merit, 4) Collect contact info (name, email, phone), 5) Book a consultation. Be professional, empathetic, and clear. Ask qualifying questions. If they share contact info, acknowledge it.`,
+        context: `You are an AI legal intake assistant for ${config.firmName}. Practice areas: ${config.practiceAreas}. Your goals: 1) Understand the potential client's situation, 2) Determine the case type and jurisdiction, 3) Assess urgency and merit, 4) Collect contact info (name, email, phone), 5) Book a consultation. Be professional, empathetic, and clear. Ask qualifying questions. If they share contact info, acknowledge it.
+
+Once you have at minimum the person's name plus their email or phone AND a sense of their legal issue, append a structured lead record to the END of your reply, wrapped exactly in <LEAD_CAPTURED></LEAD_CAPTURED> tags, as JSON with fields: name, email, phone, case_type, jurisdiction, summary (1-2 sentences), urgency (Low/Medium/High). Only emit it once per conversation. Never mention the tags to the client.`,
         history: messages.map(m => ({ role: m.role === 'bot' ? 'assistant' : 'user', content: m.text })),
       });
-      const botText = res.response || res.message || "I'd be happy to help. Could you tell me more about your situation?";
-      setMessages(prev => [...prev, { role: 'bot', text: botText, timestamp: new Date().toISOString() }]);
+      const rawText = res.response || res.message || "I'd be happy to help. Could you tell me more about your situation?";
+      const captured = parseLeadCapture(rawText);
+      if (captured) addLead(captured);
+      setMessages(prev => [...prev, { role: 'bot', text: stripLeadCapture(rawText), timestamp: new Date().toISOString(), leadCaptured: !!captured }]);
     } catch {
       setMessages(prev => [...prev, { role: 'bot', text: "I appreciate you reaching out. Could you provide a bit more detail so I can better assist you?", timestamp: new Date().toISOString() }]);
     }
@@ -123,12 +122,22 @@ export default function LegalSecretary() {
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
-                    m.role === 'user' ? 'bg-blue-600 text-white rounded-br-md' : 'bg-slate-700 text-slate-200 rounded-bl-md'
-                  }`}>
-                    {m.text}
+                <div key={i}>
+                  <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                      m.role === 'user' ? 'bg-blue-600 text-white rounded-br-md' : 'bg-slate-700 text-slate-200 rounded-bl-md'
+                    }`}>
+                      {m.text}
+                    </div>
                   </div>
+                  {m.leadCaptured && (
+                    <div className="flex justify-start mt-1.5">
+                      <button onClick={() => setActiveTab('leads')}
+                        className="flex items-center gap-1.5 bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 text-xs px-3 py-1.5 rounded-full hover:bg-cyan-500/25 transition-colors">
+                        <UserPlus size={12} /> Lead captured — view in Leads tab
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
               {loading && (
@@ -191,11 +200,18 @@ export default function LegalSecretary() {
       {/* Leads */}
       {activeTab === 'leads' && (
         <div className="space-y-4">
-          {leads.map((lead, i) => (
-            <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-cyan-500/30 transition-colors">
+          {leads.length === 0 && (
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-10 text-center">
+              <div className="text-4xl mb-3">📥</div>
+              <p className="text-white font-medium mb-1">No leads yet</p>
+              <p className="text-slate-400 text-sm">When Sierra captures a qualified lead in chat, it appears here automatically.</p>
+            </div>
+          )}
+          {leads.map(lead => (
+            <div key={lead.id} className="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-cyan-500/30 transition-colors">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <span className="text-white font-semibold">{lead.name}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                       lead.urgency === 'High' ? 'bg-red-500/20 text-red-400' :
@@ -203,18 +219,41 @@ export default function LegalSecretary() {
                       'bg-slate-700 text-slate-400'
                     }`}>{lead.urgency} Priority</span>
                     <span className="bg-blue-500/20 text-blue-400 text-xs px-2 py-0.5 rounded-full">{lead.caseType}</span>
+                    {lead.status === 'promoted' && (
+                      <span className="bg-violet-500/20 text-violet-400 text-xs px-2 py-0.5 rounded-full">✓ Case Opened</span>
+                    )}
                   </div>
                   <div className="text-slate-400 text-sm mb-2">{lead.summary}</div>
                   <div className="flex flex-wrap gap-4 text-xs text-slate-500">
                     <span>📧 {lead.email}</span>
                     <span>📱 {lead.phone}</span>
                     <span>📍 {lead.jurisdiction}</span>
-                    <span>🕐 {new Date(lead.timestamp).toLocaleDateString()}</span>
+                    <span>🕐 {new Date(lead.capturedAt).toLocaleDateString()}</span>
                   </div>
+                </div>
+                <div className="flex flex-col gap-2 shrink-0">
+                  {lead.status === 'promoted' && lead.caseId ? (
+                    <button onClick={() => navigate(`/cases/${lead.caseId}`)}
+                      className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-500 text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+                      <Briefcase size={13} /> View Case File
+                    </button>
+                  ) : (
+                    <button onClick={() => { const c = promoteLead(lead.id); if (c) navigate(`/cases/${c.id}`); }}
+                      className="flex items-center gap-1.5 bg-gradient-to-r from-cyan-600 to-violet-600 hover:opacity-90 text-white px-3 py-2 rounded-lg text-xs font-medium transition-opacity">
+                      <Briefcase size={13} /> Send to Maya →
+                    </button>
+                  )}
+                  <button onClick={() => archiveLead(lead.id)}
+                    className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-400 px-3 py-2 rounded-lg text-xs transition-colors">
+                    <Archive size={13} /> Archive
+                  </button>
                 </div>
               </div>
             </div>
           ))}
+          <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-3 text-cyan-400 text-xs">
+            💡 "Send to Maya" opens an intake-ready case stub — the case file system automatically briefs Sol, Doc, Lex, Max, Rex &amp; Jules with their handoff assignments.
+          </div>
         </div>
       )}
 

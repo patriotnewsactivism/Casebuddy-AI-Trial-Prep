@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, User, Bell, Shield, Palette, Key, Save, Check, Moon, Sun, Smartphone, Mail, MessageSquare, Globe, Volume2 } from 'lucide-react';
+import { User, Bell, Shield, Palette, Key, Save, Check, Moon, Sun, Smartphone } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface UserProfile {

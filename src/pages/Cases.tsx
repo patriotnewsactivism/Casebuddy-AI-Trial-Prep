@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FolderOpen, Plus, Search, Filter, Trash2, Edit3, ChevronDown, ChevronUp, Calendar, Users, FileText, Clock, AlertTriangle, CheckCircle, X, Scale, Tag, MapPin, DollarSign, ArrowRight } from 'lucide-react';
+import { FolderOpen, Plus, Search, Trash2, Edit3, ChevronDown, ChevronUp, Users, FileText, Clock, AlertTriangle, X, Scale, Tag, MapPin, DollarSign } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -89,7 +89,6 @@ export default function Cases() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedCase, setExpandedCase] = useState<string | null>(null);
-  const [view, setView] = useState<'cards' | 'table'>('cards');
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(cases)); }, [cases]);
 

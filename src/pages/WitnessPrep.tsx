@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, ChevronDown, ChevronUp, Loader2, Download, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Download, Plus } from 'lucide-react';
 import { trialCoach } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
 import ActiveCaseBar from '../components/ActiveCaseBar';

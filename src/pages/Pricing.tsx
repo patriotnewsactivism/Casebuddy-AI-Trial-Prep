@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Star, Crown, ArrowRight, Shield, Users, Clock, FileText, Swords, BarChart2, MessageSquare, Globe, Sparkles, X, Zap, Lock, Headphones } from 'lucide-react';
+import { Check, Star, Crown, ArrowRight, Shield, Users, FileText, Sparkles, X, Zap, Lock, Headphones } from 'lucide-react';
 
 const FEATURES = [
   { category: 'AI Agents (All 8 Included)', items: [

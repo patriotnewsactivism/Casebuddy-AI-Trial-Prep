@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, Users, BookOpen, Clock, BarChart2, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, Users, BookOpen, Clock, BarChart2, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AGENT_LIST } from '../agents/personas';
 

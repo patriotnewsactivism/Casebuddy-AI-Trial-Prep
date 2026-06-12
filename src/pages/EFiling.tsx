@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gavel, Search, FileText, ExternalLink, Building2, Filter, Clock, ArrowRight, BookOpen, Globe } from 'lucide-react';
+import { Search, FileText, ExternalLink, Building2, Filter, Clock, ArrowRight, BookOpen, Globe } from 'lucide-react';
 import AgentHeader from '../components/AgentHeader';
 import { AGENTS } from '../agents/personas';
 

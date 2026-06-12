@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Scale, ArrowRight, Sparkles, Users, FileSearch, Swords, Clock, MessageSquare, X } from 'lucide-react';
+import { Scale, ArrowRight, Sparkles, Users, FileSearch, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const STEPS = [

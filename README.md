@@ -1,46 +1,54 @@
-# Getting Started with Create React App
+# ⚖️ CaseBuddy AI — Your AI Law Firm
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+**Live at [casebuddy.live](https://casebuddy.live)**
 
-## Available Scripts
+CaseBuddy AI is an agentic legal intelligence platform: **8 named AI specialists
+that work together like departments in a real law firm**, sharing one case file
+so nothing falls through the cracks. Built for attorneys and pro se litigants.
 
-In the project directory, you can run:
+## Meet the Firm
 
-### `npm start`
+| Agent | Specialty | Module |
+|---|---|---|
+| 💼 **Sierra** | Legal Secretary — 24/7 lead qualification & capture | `/legal-secretary` |
+| ⚖️ **Maya** | Case Intake — interviews clients, opens the case file, briefs every department | `/intake` |
+| ⏱️ **Sol** | Deadlines & statutes of limitation — never miss a filing window | `/deadlines` |
+| 🔍 **Doc** | Document analysis & discovery mining — finds the smoking guns | `/documents`, `/discovery` |
+| 📚 **Lex** | Legal research, precedent, win-probability & conflict checks | `/research`, `/conflict-checker` |
+| 🗂️ **Max** | E-filing, court rules, formatting & service of process | `/e-filing` |
+| ⚔️ **Rex** | Trial coaching & witness prep — direct, cross, impeachment strategy | `/trial`, `/witnesses` |
+| 🎭 **Jules** | Jury simulation — 6 AI jurors, persuasion meters, verdict prediction | `/jury` |
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+**The agentic loop:** Sierra captures a lead → one click sends it to Maya →
+Maya's intake creates the case file and auto-assigns handoff tasks to Sol, Doc,
+Lex, Max, Rex & Jules → every agent reads the shared case context and writes
+its findings back → the Case Detail war room (`/cases/:id`) shows the whole
+firm's activity in real time.
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+## Tech Stack
 
-### `npm test`
+- **React 19 + TypeScript** (Create React App), Tailwind CSS, lucide-react
+- **AI backend:** Base44 functions (`aiParalegal`, `analyzeDocument`,
+  `discoveryMiner`, `trialCoach`) running Gemini 2.5 Flash
+- **State:** localStorage case/lead stores with optional **Supabase cloud sync**
+- **Deploy:** Vercel (SPA rewrites), PWA-installable with offline service worker
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Development
 
-### `npm run build`
+```bash
+npm install
+npm start        # http://localhost:3000
+npm run build    # production build
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Copy `.env.example` to `.env` for local configuration. All real keys live in
+Vercel environment variables — never commit secrets.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+**Contributing or pointing an AI agent at this repo? Read [`CLAUDE.md`](./CLAUDE.md)**
+— it documents the architecture, the persona system, the case-file spine, and
+the conventions every module follows. The roadmap lives in [`TODO.md`](./TODO.md).
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+---
 
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
-
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+*CaseBuddy AI is a legal preparation tool, not a law firm or a substitute for
+licensed legal advice.*

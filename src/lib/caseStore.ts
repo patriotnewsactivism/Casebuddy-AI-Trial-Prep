@@ -2,10 +2,11 @@
 // The shared spine that connects every agent. Maya opens the case file,
 // hands off briefings to each department, and every module reads & writes
 // the same file so the client flows through the whole firm automatically.
-// Persists to localStorage (Supabase sync can layer on top later).
+// Persists to localStorage; mirrors to Supabase when configured (cloudSync).
 
 import { useSyncExternalStore } from 'react';
 import { AGENTS } from '../agents/personas';
+import { schedulePush, pullCases, mergeCases, deleteCaseRemote } from './cloudSync';
 
 export type CaseStage = 'intake' | 'investigation' | 'research' | 'discovery' | 'pretrial' | 'trial' | 'closed';
 
@@ -115,7 +116,17 @@ function persist() {
   localStorage.setItem(CASES_KEY, JSON.stringify(cache));
   version++;
   listeners.forEach(l => l());
+  schedulePush(cache);
 }
+
+// On startup, pull remote cases (if Supabase is configured) and merge them in.
+void pullCases().then(remote => {
+  if (!remote || remote.length === 0) return;
+  cache = mergeCases(cache, remote);
+  localStorage.setItem(CASES_KEY, JSON.stringify(cache));
+  version++;
+  listeners.forEach(l => l());
+});
 
 const subscribe = (l: () => void) => {
   listeners.add(l);
@@ -274,6 +285,7 @@ export function deleteCase(id: string) {
   cache = cache.filter(c => c.id !== id);
   if (localStorage.getItem(ACTIVE_KEY) === id) localStorage.removeItem(ACTIVE_KEY);
   persist();
+  void deleteCaseRemote(id);
 }
 
 export function setCaseStage(id: string, stage: CaseStage) {
