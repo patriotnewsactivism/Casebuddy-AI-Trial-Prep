@@ -115,9 +115,16 @@ export default function TrialCenter() {
   // Live two-way courtroom sparring — speak, Rex objects out loud, keeps listening
   const sendCoachRef = useRef<(text: string) => void>(() => {});
   const liveVoice = useLiveVoice({ onUtterance: text => sendCoachRef.current(text) });
+  const coachLoadingRef = useRef(false);
+  const coachQueueRef = useRef('');
 
   const sendCoachText = async (text: string) => {
-    if (!text.trim() || loading) return;
+    if (!text.trim()) return;
+    if (coachLoadingRef.current) {
+      coachQueueRef.current = `${coachQueueRef.current} ${text}`.trim();
+      return;
+    }
+    coachLoadingRef.current = true;
     const newMessages: Message[] = [...messages, { role: 'user', content: text }];
     setMessages(newMessages); setInput(''); setLoading(true);
     if (isListening) { recognitionRef.current?.stop(); setIsListening(false); }
@@ -128,7 +135,15 @@ export default function TrialCenter() {
       setMessages(prev => [...prev, { role: 'assistant', content: clean }]);
       liveVoice.speak(clean);
     }
+    coachLoadingRef.current = false;
     setLoading(false);
+    if (coachQueueRef.current) {
+      setTimeout(() => {
+        const q = coachQueueRef.current;
+        coachQueueRef.current = '';
+        if (q) sendCoachRef.current(q);
+      }, 80);
+    }
   };
   sendCoachRef.current = sendCoachText;
   const sendCoach = () => sendCoachText(input);

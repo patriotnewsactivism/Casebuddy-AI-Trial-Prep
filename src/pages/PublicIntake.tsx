@@ -39,6 +39,8 @@ export default function PublicIntake() {
 
   const sendTextRef = useRef<(text: string) => void>(() => {});
   const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text) });
+  const loadingRef = useRef(false);
+  const queuedRef = useRef('');
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,7 +64,12 @@ CONTEXT: You are speaking directly with a potential CLIENT who opened the firm's
   };
 
   const sendText = async (text: string) => {
-    if (!text.trim() || loading) return;
+    if (!text.trim()) return;
+    if (loadingRef.current) {
+      queuedRef.current = `${queuedRef.current} ${text}`.trim();
+      return;
+    }
+    loadingRef.current = true;
     const newMessages: Message[] = [...messages, { role: 'user', content: text }];
     setMessages(newMessages);
     setInput('');
@@ -76,7 +83,15 @@ CONTEXT: You are speaking directly with a potential CLIENT who opened the firm's
       const parsed = res.intakeSummary || parseIntakeSummary(res.reply);
       if (parsed) setSummary(parsed);
     }
+    loadingRef.current = false;
     setLoading(false);
+    if (queuedRef.current) {
+      setTimeout(() => {
+        const q = queuedRef.current;
+        queuedRef.current = '';
+        if (q) sendTextRef.current(q);
+      }, 80);
+    }
   };
   sendTextRef.current = sendText;
 

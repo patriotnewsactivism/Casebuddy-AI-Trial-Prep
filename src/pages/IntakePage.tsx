@@ -47,6 +47,9 @@ export default function IntakePage() {
   // when you pause, and she answers out loud, then keeps listening.
   const sendTextRef = useRef<(text: string) => void>(() => {});
   const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text) });
+  // Words spoken while Maya is still thinking get queued, never dropped
+  const loadingRef = useRef(false);
+  const queuedRef = useRef('');
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -83,7 +86,12 @@ ${CASE_UPDATE_DIRECTIVE}`;
   };
 
   const sendText = async (text: string) => {
-    if (!text.trim() || loading) return;
+    if (!text.trim()) return;
+    if (loadingRef.current) {
+      queuedRef.current = `${queuedRef.current} ${text}`.trim();
+      return;
+    }
+    loadingRef.current = true;
     const newMessages: Message[] = [...messages, { role: 'user', content: text }];
     setMessages(newMessages);
     setInput('');
@@ -102,7 +110,15 @@ ${CASE_UPDATE_DIRECTIVE}`;
       const parsed = res.intakeSummary || (res.reply ? parseIntakeSummary(res.reply) : null);
       if (parsed) setSummary(parsed);
     }
+    loadingRef.current = false;
     setLoading(false);
+    if (queuedRef.current) {
+      setTimeout(() => {
+        const q = queuedRef.current;
+        queuedRef.current = '';
+        if (q) sendTextRef.current(q);
+      }, 80);
+    }
   };
   sendTextRef.current = sendText;
 

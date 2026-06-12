@@ -22,6 +22,8 @@ export default function CaseAssistant() {
 
   const sendTextRef = useRef<(text: string) => void>(() => {});
   const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text) });
+  const loadingRef = useRef(false);
+  const queuedRef = useRef('');
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -32,7 +34,12 @@ ${activeCase ? `\n${buildCaseContext(activeCase)}` : '\nNo case file is currentl
 ${CASE_UPDATE_DIRECTIVE}`;
 
   const sendText = async (text: string) => {
-    if (!text.trim() || loading) return;
+    if (!text.trim()) return;
+    if (loadingRef.current) {
+      queuedRef.current = `${queuedRef.current} ${text}`.trim();
+      return;
+    }
+    loadingRef.current = true;
     const newMessages: Message[] = [...messages, { role: 'user', content: text }];
     setMessages(newMessages);
     setInput('');
@@ -45,7 +52,15 @@ ${CASE_UPDATE_DIRECTIVE}`;
       setMessages(prev => [...prev, { role: 'assistant', content: clean }]);
       voice.speak(clean);
     }
+    loadingRef.current = false;
     setLoading(false);
+    if (queuedRef.current) {
+      setTimeout(() => {
+        const q = queuedRef.current;
+        queuedRef.current = '';
+        if (q) sendTextRef.current(q);
+      }, 80);
+    }
   };
   sendTextRef.current = sendText;
 
