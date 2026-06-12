@@ -99,7 +99,7 @@ Generate comprehensive examination preparation. Respond with valid JSON only:
             expectedTestimony: form.expected_testimony,
             preparedAt: new Date().toISOString(),
           });
-          logActivity(activeCase.id, 'rex', 'Prepared witness examination package', `${form.name} (${form.side === 'ours' ? 'direct exam' : 'cross exam'})`);
+          logActivity(activeCase.id, 'rex', 'Prepared witness examination package', `${form.name} (${form.side === 'ours' ? 'direct exam' : 'cross exam'})`, 90);
           completeAgentTask(activeCase.id, 'rex', '/witnesses');
         }
       } catch {

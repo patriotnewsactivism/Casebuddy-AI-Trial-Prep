@@ -54,7 +54,7 @@ export default function Landing() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
-            <Link to="/intake"
+            <Link to="/start"
               className="group flex items-center gap-2.5 bg-gradient-to-r from-violet-600 to-purple-700 hover:opacity-90 text-white font-bold px-8 py-4 rounded-2xl text-base shadow-2xl shadow-violet-900/40 transition-all">
               <Mic size={18} />
               Talk Live with Maya — Free Intake
@@ -172,7 +172,7 @@ export default function Landing() {
           <p className="relative text-slate-400 mt-4 max-w-md mx-auto text-sm">
             Start a live intake right now — no forms, no setup. Just tell Maya what happened.
           </p>
-          <Link to="/intake"
+          <Link to="/start"
             className="relative inline-flex items-center gap-2.5 bg-white text-slate-900 font-bold px-8 py-4 rounded-2xl text-base mt-8 hover:bg-slate-200 transition-colors">
             <Mic size={18} /> Start Talking to Maya <ArrowRight size={16} />
           </Link>

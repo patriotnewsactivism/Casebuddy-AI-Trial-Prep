@@ -83,7 +83,7 @@ Respond with a JSON array of findings. Each finding: { "severity": "high|medium|
           setResults(mockResults);
         }
         if (activeCase) {
-          logActivity(activeCase.id, 'maya', 'Ran conflict of interest check', `Cross-referenced ${parties.filter(p => p.name.trim()).length} parties against ${allCases.length - 1} other case(s).`);
+          logActivity(activeCase.id, 'maya', 'Ran conflict of interest check', `Cross-referenced ${parties.filter(p => p.name.trim()).length} parties against ${allCases.length - 1} other case(s).`, 30);
           completeAgentTask(activeCase.id, 'maya', '/conflict-checker');
         }
       }

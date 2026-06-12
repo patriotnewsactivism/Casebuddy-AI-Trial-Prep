@@ -37,7 +37,7 @@ export default function DiscoveryMiner() {
     if (res.mining_results) {
       setResults(res.mining_results);
       if (activeCase) {
-        logActivity(activeCase.id, 'doc', 'Mined discovery for contradictions & smoking guns', `Cross-referenced ${valid.length} document(s).`);
+        logActivity(activeCase.id, 'doc', 'Mined discovery for contradictions & smoking guns', `Cross-referenced ${valid.length} document(s).`, 90);
       }
     }
     setLoading(false);

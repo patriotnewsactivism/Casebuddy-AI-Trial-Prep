@@ -72,7 +72,7 @@ export default function DocumentLab() {
           ? res.analysis.slice(0, 300)
           : (res.analysis.summary || 'Analysis completed').slice(0, 300);
         addCaseDocument(activeCase.id, { fileName: name, docType, summary, analyzedAt: new Date().toISOString() });
-        logActivity(activeCase.id, 'doc', 'Analyzed a document', `${name} — ${summary.slice(0, 120)}`);
+        logActivity(activeCase.id, 'doc', 'Analyzed a document', `${name} — ${summary.slice(0, 120)}`, 60);
         completeAgentTask(activeCase.id, 'doc');
       }
     }
@@ -109,7 +109,7 @@ export default function DocumentLab() {
       if (activeCase) {
         const summary = (res.analysis?.summary || 'Scanned & analyzed').slice(0, 300);
         addCaseDocument(activeCase.id, { fileName: file.name, docType: 'Scanned', summary, analyzedAt: new Date().toISOString() });
-        logActivity(activeCase.id, 'doc', 'Scanned & analyzed a document', file.name);
+        logActivity(activeCase.id, 'doc', 'Scanned & analyzed a document', file.name, 45);
       }
     }
     if (activeCase && files.length > 0) completeAgentTask(activeCase.id, 'doc');

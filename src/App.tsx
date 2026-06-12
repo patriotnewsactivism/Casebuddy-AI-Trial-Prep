@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Link, Outlet } from 'react-router-dom';
 import Landing from './pages/Landing';
+import PublicIntake from './pages/PublicIntake';
 import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
 import CaseDetail from './pages/CaseDetail';
@@ -19,6 +20,8 @@ import Marketplace from './pages/Marketplace';
 import ProductTour from './pages/ProductTour';
 import SeoPages from './pages/SeoPages';
 import PwaInstall from './components/PwaInstall';
+import CaseAssistant from './components/CaseAssistant';
+import { initCloudSync } from './lib/caseStore';
 import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2 } from 'lucide-react';
 
 interface NavSection {
@@ -161,17 +164,23 @@ function AppShell() {
         <Outlet />
       </main>
 
+      {/* Firm-wide voice assistant — talk to the team from any page */}
+      <CaseAssistant />
       <PwaInstall />
     </div>
   );
 }
 
 export default function App() {
+  // Pull cloud-synced cases (e.g. intakes clients submitted via /start)
+  useEffect(() => { initCloudSync(); }, []);
+
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public landing page — full-bleed, no sidebar */}
+        {/* Public pages — full-bleed, no sidebar */}
         <Route path="/" element={<Landing />} />
+        <Route path="/start" element={<PublicIntake />} />
 
         <Route element={<AppShell />}>
           <Route path="/dashboard" element={<Dashboard />} />

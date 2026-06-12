@@ -4,7 +4,10 @@ import { Send, Loader2, CheckCircle, AlertCircle, Mic, MicOff, Briefcase } from 
 import { aiParalegal } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
 import { AGENTS, AGENT_LIST } from '../agents/personas';
-import { createCaseFromIntake } from '../lib/caseStore';
+import {
+  createCaseFromIntake, useActiveCase, buildCaseContext,
+  CASE_UPDATE_DIRECTIVE, ingestAgentReply,
+} from '../lib/caseStore';
 import { useLiveVoice } from '../hooks/useLiveVoice';
 
 interface Message {
@@ -29,6 +32,8 @@ function parseIntakeSummary(reply: string): any | null {
 
 export default function IntakePage() {
   const navigate = useNavigate();
+  const activeCase = useActiveCase();
+  const [updateMode, setUpdateMode] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -47,14 +52,32 @@ export default function IntakePage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const startIntake = async (liveMode = false) => {
+  // In update mode Maya works the EXISTING case: she already knows the file,
+  // asks what's new, and merges every new fact straight into the case brain.
+  const systemPrompt = updateMode && activeCase
+    ? `${maya.systemPrompt}
+
+CONTEXT: You are UPDATING an existing case, not starting a new intake. You already know the case file below — do NOT re-ask what you already know. Greet briefly, then ask what's new or changed (new documents, new events, new parties, responses from the other side, anything). Probe for legal significance.
+${buildCaseContext(activeCase)}
+${CASE_UPDATE_DIRECTIVE}`
+    : `${maya.systemPrompt}
+${CASE_UPDATE_DIRECTIVE}`;
+
+  const startIntake = async (liveMode = false, asUpdate = false) => {
+    setUpdateMode(asUpdate);
     setStarted(true);
     setLoading(true);
     if (liveMode) voice.startLive();
-    const res = await aiParalegal({ messages: [], agentPersona: maya.systemPrompt });
+    const res = await aiParalegal({
+      messages: [],
+      agentPersona: asUpdate && activeCase
+        ? `${maya.systemPrompt}\n\nCONTEXT: You are UPDATING an existing case. You already know the case file below — greet briefly and ask what's new or changed.\n${buildCaseContext(activeCase)}\n${CASE_UPDATE_DIRECTIVE}`
+        : `${maya.systemPrompt}\n${CASE_UPDATE_DIRECTIVE}`,
+    });
     if (res.reply) {
-      setMessages([{ role: 'assistant', content: res.reply }]);
-      voice.speak(res.reply); // no-op unless live mode is on
+      const clean = ingestAgentReply(asUpdate ? activeCase?.id : undefined, 'maya', res.reply);
+      setMessages([{ role: 'assistant', content: clean }]);
+      voice.speak(clean); // no-op unless live mode is on
     }
     setLoading(false);
   };
@@ -67,14 +90,18 @@ export default function IntakePage() {
     setLoading(true);
     if (isListening) stopListening();
 
-    const res = await aiParalegal({ messages: newMessages, agentPersona: maya.systemPrompt });
+    const res = await aiParalegal({ messages: newMessages, agentPersona: systemPrompt });
     if (res.reply) {
-      const clean = res.reply.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim();
+      // Merge new facts into the case (update mode), strip protocol blocks
+      const ingested = ingestAgentReply(updateMode ? activeCase?.id : undefined, 'maya', res.reply);
+      const clean = ingested.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim();
       setMessages(prev => [...prev, { role: 'assistant', content: clean }]);
       voice.speak(clean);
     }
-    const parsed = res.intakeSummary || (res.reply ? parseIntakeSummary(res.reply) : null);
-    if (parsed) setSummary(parsed);
+    if (!updateMode) {
+      const parsed = res.intakeSummary || (res.reply ? parseIntakeSummary(res.reply) : null);
+      if (parsed) setSummary(parsed);
+    }
     setLoading(false);
   };
   sendTextRef.current = sendText;
@@ -185,6 +212,23 @@ export default function IntakePage() {
               Live mode is fully hands-free — speak naturally, Maya hears you, answers out loud, and keeps listening.
             </p>
           )}
+
+          {/* Continuous growth: feed new developments into an existing case */}
+          {activeCase && (
+            <div className="mt-6 pt-5 border-t border-slate-700 max-w-md mx-auto">
+              <p className="text-slate-400 text-xs mb-3">
+                Or has something new happened in <span className="text-white font-semibold">{activeCase.clientName}</span>'s case?
+              </p>
+              <button
+                onClick={() => startIntake(voice.supported, true)}
+                className="w-full bg-slate-700 hover:bg-slate-600 border border-violet-500/40 text-white font-semibold px-6 py-3 rounded-xl transition-colors text-sm">
+                🔄 Update the Case — Tell Maya What's New
+              </button>
+              <p className="text-slate-600 text-xs mt-2">
+                New facts, parties, claims and deadlines merge into the case file automatically — the whole team sees them instantly.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -193,6 +237,11 @@ export default function IntakePage() {
             {/* Chat header */}
             <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between gap-3">
               <AgentHeader agent={maya} compact />
+              {updateMode && activeCase && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-violet-600/20 border border-violet-500/40 text-violet-300 font-semibold whitespace-nowrap">
+                  Updating: {activeCase.clientName}
+                </span>
+              )}
               {voice.supported && (
                 <button
                   onClick={() => (voice.live ? voice.stopLive() : voice.startLive())}

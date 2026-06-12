@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Swords, Send, Loader2, Settings, Users, BarChart2, Brain, ChevronDown, ChevronUp, Mic, MicOff } from 'lucide-react';
 import { trialCoach } from '../lib/api';
 import ActiveCaseBar from '../components/ActiveCaseBar';
-import { useActiveCase, buildCaseContext } from '../lib/caseStore';
+import { useActiveCase, buildCaseContext, CASE_UPDATE_DIRECTIVE, ingestAgentReply } from '../lib/caseStore';
 import { useLiveVoice } from '../hooks/useLiveVoice';
 
 type Tab = 'coach' | 'witness' | 'jury';
@@ -78,7 +78,7 @@ export default function TrialCenter() {
   const activeCase = useActiveCase();
   useEffect(() => {
     if (!activeCase) return;
-    const facts = buildCaseContext(activeCase);
+    const facts = `${buildCaseContext(activeCase)}\n${CASE_UPDATE_DIRECTIVE}`;
     setConfig(c => c.case_facts ? c : { ...c, case_facts: facts });
     setCaseSummaryJury(prev => prev || activeCase.summary || facts);
     if (activeCase.caseType) setCaseType(activeCase.caseType);
@@ -123,8 +123,10 @@ export default function TrialCenter() {
     if (isListening) { recognitionRef.current?.stop(); setIsListening(false); }
     const res = await trialCoach({ messages: newMessages, config });
     if (res.reply) {
-      setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
-      liveVoice.speak(res.reply);
+      // Anything new Rex surfaces mid-sparring gets merged into the case file
+      const clean = ingestAgentReply(activeCase?.id, 'rex', res.reply);
+      setMessages(prev => [...prev, { role: 'assistant', content: clean }]);
+      liveVoice.speak(clean);
     }
     setLoading(false);
   };

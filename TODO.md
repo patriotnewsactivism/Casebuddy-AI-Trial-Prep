@@ -178,7 +178,13 @@
 - [x] Case switcher on every module page
 - [x] Case Manager list + Case Detail "war room" (`/cases`, `/cases/:id`) with stage pipeline & firm activity feed
 - [x] Conflict checker cross-references new parties against all existing case files
-- [ ] Sync case store to Supabase (replace localStorage persistence)
+- [x] Sync case store to Supabase (localStorage + cloud merge; run once in Supabase SQL editor:
+      `create table case_files (id text primary key, data jsonb, updated_at timestamptz);`
+      and ensure anon insert/select/update policies or disable RLS for this table)
+- [x] Public client intake link at `/start` — clients talk to Maya, case lands in the firm
+- [x] Living case file: agents emit <CASE_UPDATE> blocks, merged into factLog/parties/claims/deadlines
+- [x] Firm-wide floating voice assistant (CaseAssistant) on every app page
+- [x] Billable-hours-saved tracking per agent action (ROI on Dashboard & Case Detail)
 - [ ] Sierra's qualified leads auto-create intake-ready case stubs
 
 ### 4.4 White-Label Mode (Law Firm Sales)

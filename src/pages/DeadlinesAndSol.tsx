@@ -95,7 +95,7 @@ export default function DeadlinesAndSol() {
         title: form.title, deadlineType: form.deadline_type, dueDate: form.due_date,
         description: form.description, isCritical: form.is_critical, isCompleted: false,
       });
-      logActivity(activeCase.id, 'sol', 'Calendared a deadline', `${form.title} — due ${form.due_date}`);
+      logActivity(activeCase.id, 'sol', 'Calendared a deadline', `${form.title} — due ${form.due_date}`, 10);
     } else {
       setLocalDeadlines(d => [...d, { ...form, id: Date.now().toString(), is_completed: false }]);
     }
@@ -113,7 +113,7 @@ export default function DeadlinesAndSol() {
         title, deadlineType: 'Statute of Limitations', dueDate,
         description, isCritical: true, isCompleted: false,
       });
-      logActivity(activeCase.id, 'sol', 'Calculated statute of limitations', `${title} — expires ${dueDate}`);
+      logActivity(activeCase.id, 'sol', 'Calculated statute of limitations', `${title} — expires ${dueDate}`, 30);
       completeAgentTask(activeCase.id, 'sol');
     } else {
       setLocalDeadlines(d => [...d, {

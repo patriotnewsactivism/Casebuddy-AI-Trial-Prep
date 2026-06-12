@@ -76,7 +76,7 @@ Provide comprehensive legal research in JSON:
           ? parsed.slice(0, 500)
           : (parsed.research_summary || parsed.recommended_strategy || 'Research completed').slice(0, 500);
         addResearchNote(activeCase.id, question, findings);
-        logActivity(activeCase.id, 'lex', 'Completed legal research', question.slice(0, 120));
+        logActivity(activeCase.id, 'lex', 'Completed legal research', question.slice(0, 120), 120);
         completeAgentTask(activeCase.id, 'lex');
       }
     }
