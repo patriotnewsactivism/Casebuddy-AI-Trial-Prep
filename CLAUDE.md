@@ -43,19 +43,29 @@ time** — changing one requires a redeploy. Never commit real keys (see
 src/
 ├── agents/personas.ts      ← THE HEART. All 8 agent identities + system prompts.
 ├── lib/
-│   ├── api.ts              ← thin client for Base44 backend functions (the only AI gateway)
+│   ├── api.ts              ← Base44 backend client (the only AI gateway). 60s timeout;
+│   │                          failures return { reply: friendlyError, serviceError } —
+│   │                          agents never go silent, so don't re-wrap errors in pages.
 │   ├── caseStore.ts        ← THE SPINE. Shared case file: tasks, deadlines, docs,
-│   │                          witnesses, research, activity log. localStorage +
-│   │                          useSyncExternalStore. Handoff engine lives here.
-│   ├── cloudSync.ts        ← optional Supabase mirror of caseStore (best-effort, silent no-op)
-│   ├── leadStore.ts        ← Sierra's captured leads; promoteLead() → case stub
-│   └── supabase.ts         ← guarded client (null when env vars absent — handle it)
+│   │                          witnesses, research, activity log, factLog. localStorage +
+│   │                          useSyncExternalStore. Also home to: the handoff engine,
+│   │                          built-in Supabase cloud sync (initCloudSync/schedulePush),
+│   │                          the <CASE_UPDATE> living-case-brain (CASE_UPDATE_DIRECTIVE,
+│   │                          ingestAgentReply, applyCaseUpdate), and ROI tracking
+│   │                          (minutesSaved on activity → firmMinutesSaved).
+│   └── leadStore.ts        ← Sierra's captured leads; promoteLead() → case stub
+├── hooks/useLiveVoice.ts   ← hands-free voice engine (Web Speech; Deepgram nova-2 +
+│                              Aura TTS when REACT_APP_DEEPGRAM_API_KEY is set)
 ├── components/
 │   ├── AgentHeader.tsx     ← persona banner shown on every module page
 │   ├── ActiveCaseBar.tsx   ← case switcher + agent task strip on every module page
+│   ├── CaseAssistant.tsx   ← floating firm-wide voice assistant (rendered in AppShell)
 │   ├── OnboardingModal.tsx / PwaInstall.tsx
 ├── pages/                  ← one page per module, routed in App.tsx
-└── App.tsx                 ← BrowserRouter, sidebar nav (NAV_SECTIONS), all routes
+│   ├── Landing.tsx         ← public marketing page at /  (full-bleed, no sidebar)
+│   └── PublicIntake.tsx    ← shareable client intake at /start → case lands in the firm
+└── App.tsx                 ← routes: / and /start are public; everything else inside
+                               <AppShell> (sidebar, dashboard at /dashboard)
 ```
 
 There is **no app server in this repo**. All AI calls go through
@@ -83,10 +93,13 @@ import the persona.
 
 ### The agentic loop (what makes this a "firm", not a toolbox)
 
-1. **Sierra** chats with a website visitor 24/7. When she has name + contact +
-   issue, her reply embeds `<LEAD_CAPTURED>{json}</LEAD_CAPTURED>` →
-   `leadStore.addLead()`. One click ("Send to Maya") promotes the lead to a
-   case stub via `promoteLead()`.
+1. Clients arrive two ways: **Sierra** chats with website visitors 24/7 —
+   when she has name + contact + issue, her reply embeds
+   `<LEAD_CAPTURED>{json}</LEAD_CAPTURED>` → `leadStore.addLead()`, and one
+   click ("Send to Maya") promotes the lead to a case stub via `promoteLead()`.
+   Or the firm shares the **public intake link `/start`**, where the client
+   talks to Maya directly and the finished case lands in the firm's case list
+   (source `'client-link'`, synced via Supabase).
 2. **Maya** runs the intake interview. Her final reply embeds
    `<INTAKE_SUMMARY>{json}</INTAKE_SUMMARY>` → `createCaseFromIntake()` builds
    the case file **and auto-generates handoff tasks for every department**
@@ -99,9 +112,17 @@ import the persona.
    findings).
 4. When an agent finishes work it **writes back**: `addCaseDeadline` /
    `addCaseDocument` / `addCaseWitness` / `addResearchNote`, plus
-   `logActivity(caseId, agentId, action, detail)` and
+   `logActivity(caseId, agentId, action, detail, minutesSaved?)` (the
+   minutes feed the ROI counters on Dashboard/Case Detail) and
    `completeAgentTask(caseId, agentId, route?)`. The Case Detail "war room"
    (`/cases/:id`) shows the live activity feed and stage pipeline.
+5. **The case file is alive.** Conversational agents append
+   `CASE_UPDATE_DIRECTIVE` to their prompts; whenever a chat reveals new
+   facts/parties/claims/deadlines the model emits a `<CASE_UPDATE>{json}`
+   block. Pass every reply through
+   `ingestAgentReply(caseId, agentId, reply)` — it applies the update to the
+   case (deduped `factLog`) and returns the reply with the block stripped for
+   display.
 
 **When you add or change any agent feature, preserve this loop.** A module
 that doesn't read the case context and write back its results breaks the firm.
@@ -140,9 +161,13 @@ page's existing shape). To get JSON out of a reply:
   `useSyncExternalStore` hooks (`useCases`, `useActiveCase`, `useLeads`).
   Mutate **only** through the exported store functions so listeners fire and
   cloud sync runs. No Redux/Zustand — don't introduce them.
-- Supabase sync is **best-effort and silent**: `cloudSync.ts` debounce-pushes
-  on every persist and pulls/merges (newer `updatedAt` wins) on startup. It
-  must never throw into the UI. Table SQL is in the header of `cloudSync.ts`.
+- Supabase sync is **built into caseStore and best-effort/silent**: dirty case
+  ids are debounce-pushed to the `case_files` table on every persist, and
+  `initCloudSync()` (called once from `App`) pulls + merges on startup (newer
+  `updatedAt` wins). It must never throw into the UI; without env keys it's a
+  no-op. One-time setup in the Supabase SQL editor:
+  `create table case_files (id text primary key, data jsonb, updated_at timestamptz);`
+  (plus anon read/write policies, or disable RLS for the table).
 
 ### Adding a new agent module (checklist)
 1. Add the persona to `AGENTS` in `src/agents/personas.ts` (unique accent color, first-person `systemPrompt` with numbered duties).

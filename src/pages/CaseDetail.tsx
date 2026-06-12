@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, CheckCircle2, Clock, FileText, Users, BookOpen, ArrowRight, Trash2 } from 'lucide-react';
 import {
   useCases, useActiveCase, setActiveCaseId, setCaseStage, setTaskStatus,
-  deleteCase, CASE_STAGES, CaseStage,
+  deleteCase, CASE_STAGES, CaseStage, caseMinutesSaved, formatHoursSaved,
 } from '../lib/caseStore';
 import { AGENTS } from '../agents/personas';
 
@@ -49,6 +49,14 @@ export default function CaseDetail() {
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold text-white">{c.clientName}</h1>
               {c.urgency && <span className={`text-sm font-semibold capitalize ${urgencyColor[c.urgency] || 'text-slate-400'}`}>● {c.urgency}</span>}
+              {c.source === 'client-link' && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-600/20 border border-cyan-500/40 text-cyan-300 font-semibold">Client intake link</span>
+              )}
+              {caseMinutesSaved(c) > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-green-600/20 border border-green-500/40 text-green-300 font-semibold">
+                  {formatHoursSaved(caseMinutesSaved(c))}h billable saved
+                </span>
+              )}
             </div>
             <p className="text-slate-400 text-sm">{c.caseType}{c.jurisdiction ? ` · ${c.jurisdiction}` : ''}{c.incidentDate ? ` · Incident: ${c.incidentDate}` : ''}</p>
           </div>
@@ -271,6 +279,32 @@ export default function CaseDetail() {
                 {c.nextSteps.map((s, i) => (
                   <p key={i} className="text-slate-300 text-xs flex items-start gap-1.5"><span className="text-violet-400 font-bold shrink-0">→</span>{s}</p>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Case brain — facts learned across every conversation */}
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
+            <h2 className="text-white font-bold text-sm mb-1">🧠 Case Brain</h2>
+            <p className="text-slate-500 text-xs mb-3">Facts the team has learned — from any agent, any conversation, any time.</p>
+            {c.factLog.length === 0 ? (
+              <p className="text-slate-500 text-xs">Nothing yet. Talk to any agent (or the floating assistant) and new facts land here automatically.</p>
+            ) : (
+              <div className="space-y-2.5 max-h-72 overflow-y-auto">
+                {c.factLog.map(f => {
+                  const agent = AGENTS[f.agentId];
+                  return (
+                    <div key={f.id} className="flex items-start gap-2.5">
+                      <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${agent?.color || 'from-slate-600 to-slate-700'} flex items-center justify-center text-[9px] font-bold text-white shrink-0 mt-0.5`}>
+                        {agent?.avatar || '?'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-slate-300 text-xs leading-relaxed">{f.fact}</p>
+                        <p className="text-slate-600 text-[10px]">{new Date(f.at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

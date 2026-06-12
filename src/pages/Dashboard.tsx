@@ -1,7 +1,10 @@
-import React from 'react';
-import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, Users, BookOpen, Clock, BarChart2, TrendingUp } from 'lucide-react';
+import React, { useState } from 'react';
+import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, Users, BookOpen, Clock, BarChart2, TrendingUp, Link2, Check, Mic } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AGENT_LIST } from '../agents/personas';
+import { useCases, firmMinutesSaved, formatHoursSaved, cloudSyncEnabled } from '../lib/caseStore';
+
+const BILLABLE_RATE = 250; // $/hr used for the savings estimate
 
 const MODULES = [
   { to: '/intake', label: 'AI Intake', desc: 'Smart client intake with Maya, your AI paralegal', icon: UserPlus, color: 'from-violet-600 to-purple-700', tag: 'Start Here', agent: 'Maya' },
@@ -16,6 +19,21 @@ const MODULES = [
 ];
 
 export default function Dashboard() {
+  const cases = useCases();
+  const [copied, setCopied] = useState(false);
+  const minutes = firmMinutesSaved(cases);
+  const hours = formatHoursSaved(minutes);
+  const dollars = Math.round((minutes / 60) * BILLABLE_RATE).toLocaleString();
+  const newClientIntakes = cases.filter(c => c.source === 'client-link').length;
+  const intakeLink = `${window.location.origin}/start`;
+
+  const copyLink = () => {
+    navigator.clipboard?.writeText(intakeLink).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-10">
 
@@ -28,12 +46,12 @@ export default function Dashboard() {
         <p className="text-slate-400 text-base">Your all-in-one AI legal wheelhouse — from intake to verdict</p>
       </div>
 
-      {/* Stats */}
+      {/* Live ROI — computed from actual agent work across all cases */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'AI Agents', value: '8', icon: TrendingUp, color: 'text-blue-400', sub: 'Named personas' },
-          { label: 'Time Saved', value: '10h+', icon: Clock, color: 'text-green-400', sub: 'Per case avg' },
-          { label: 'Trial Modes', value: '8', icon: Swords, color: 'text-orange-400', sub: 'Judge, witness & more' },
+          { label: 'Billable Hours Saved', value: `${hours}h`, icon: Clock, color: 'text-green-400', sub: `≈ $${dollars} at $${BILLABLE_RATE}/hr` },
+          { label: 'Active Cases', value: String(cases.length), icon: FolderOpen, color: 'text-violet-400', sub: newClientIntakes ? `${newClientIntakes} via client link` : 'Across the firm' },
+          { label: 'AI Agents', value: '8', icon: TrendingUp, color: 'text-blue-400', sub: 'Working every case' },
           { label: 'Juror Profiles', value: '6', icon: BarChart2, color: 'text-pink-400', sub: 'Unique personalities' },
         ].map(({ label, value, icon: Icon, color, sub }) => (
           <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-4">
@@ -43,6 +61,28 @@ export default function Dashboard() {
             <div className="text-slate-500 text-xs">{sub}</div>
           </div>
         ))}
+      </div>
+
+      {/* Client intake link — send it to anyone, Maya takes the case */}
+      <div className="bg-gradient-to-br from-violet-900/40 to-slate-800 border border-violet-500/30 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center gap-5">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center shrink-0">
+          <Mic size={20} className="text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-white font-bold text-base">Your public intake link</h2>
+          <p className="text-slate-400 text-sm mt-0.5">
+            Send this to any potential client — they just talk to Maya, and the finished case file lands here with every department briefed.
+            {!cloudSyncEnabled && ' (Connect Supabase env keys so client-submitted cases sync across devices.)'}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <code className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-violet-300 text-xs font-mono truncate max-w-full">{intakeLink}</code>
+            <button onClick={copyLink}
+              className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors">
+              {copied ? <><Check size={13} /> Copied!</> : <><Link2 size={13} /> Copy Link</>}
+            </button>
+            <Link to="/start" className="text-slate-400 hover:text-white text-xs underline underline-offset-2">Preview it →</Link>
+          </div>
+        </div>
       </div>
 
       {/* Module Grid */}

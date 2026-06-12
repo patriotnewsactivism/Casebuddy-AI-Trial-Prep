@@ -5,8 +5,8 @@
 // Persists to localStorage; mirrors to Supabase when configured (cloudSync).
 
 import { useSyncExternalStore } from 'react';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AGENTS } from '../agents/personas';
-import { schedulePush, pullCases, mergeCases, deleteCaseRemote } from './cloudSync';
 
 export type CaseStage = 'intake' | 'investigation' | 'research' | 'discovery' | 'pretrial' | 'trial' | 'closed';
 
@@ -35,6 +35,16 @@ export interface CaseActivity {
   agentId: string;
   action: string;
   detail?: string;
+  at: string;
+  minutesSaved?: number; // estimated billable minutes this action saved
+}
+
+// A single learned fact — the case brain grows one of these at a time,
+// from any agent, in any conversation, at any point in the case.
+export interface CaseFact {
+  id: string;
+  agentId: string;
+  fact: string;
   at: string;
 }
 
@@ -93,6 +103,8 @@ export interface CaseFile {
   witnesses: CaseWitness[];
   research: CaseResearchNote[];
   activity: CaseActivity[];
+  factLog: CaseFact[];
+  source?: 'attorney' | 'client-link'; // where the intake came from
 }
 
 // ===== Storage & subscriptions =====
@@ -100,9 +112,23 @@ export interface CaseFile {
 const CASES_KEY = 'cb_cases';
 const ACTIVE_KEY = 'cb_active_case';
 
+// Older stored cases may predate newer fields — fill the gaps on load.
+function normalize(c: any): CaseFile {
+  const defaults = {
+    parties: [], claims: [], nextSteps: [], tasks: [], deadlines: [],
+    documents: [], witnesses: [], research: [], activity: [], factLog: [],
+    jurisdiction: '', incidentDate: '', summary: '', solConcern: '',
+    viabilityScore: null, urgency: '', stage: 'intake',
+  };
+  const merged = { ...defaults, ...c };
+  merged.factLog = merged.factLog || [];
+  return merged as CaseFile;
+}
+
 function load(): CaseFile[] {
   try {
-    return JSON.parse(localStorage.getItem(CASES_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(CASES_KEY) || '[]');
+    return Array.isArray(raw) ? raw.map(normalize) : [];
   } catch {
     return [];
   }
@@ -112,21 +138,72 @@ let cache: CaseFile[] = load();
 let version = 0;
 const listeners = new Set<() => void>();
 
-function persist() {
-  localStorage.setItem(CASES_KEY, JSON.stringify(cache));
-  version++;
-  listeners.forEach(l => l());
-  schedulePush(cache);
+// ===== Cloud sync (Supabase) =====
+// Makes the public intake link real: a case a client creates in their browser
+// lands in the firm's Supabase table and shows up on the attorney's device.
+// Table: create table case_files (id text primary key, data jsonb, updated_at timestamptz);
+// Fully optional — without env keys (or if requests fail) everything stays local.
+
+let cloud: SupabaseClient | null = null;
+try {
+  const url = process.env.REACT_APP_SUPABASE_URL;
+  const key = process.env.REACT_APP_SUPABASE_ANON_KEY;
+  if (url && key && key !== 'your_anon_key_here') cloud = createClient(url, key);
+} catch { cloud = null; }
+
+export const cloudSyncEnabled = !!cloud;
+
+const dirtyIds = new Set<string>();
+let pushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePush() {
+  if (!cloud || dirtyIds.size === 0) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    const ids = Array.from(dirtyIds);
+    dirtyIds.clear();
+    const rows = cache
+      .filter(c => ids.includes(c.id))
+      .map(c => ({ id: c.id, data: c, updated_at: c.updatedAt }));
+    if (rows.length === 0) return;
+    try { await cloud!.from('case_files').upsert(rows); } catch { /* offline — stays local */ }
+  }, 1200);
 }
 
-// On startup, pull remote cases (if Supabase is configured) and merge them in.
-void pullCases().then(remote => {
-  if (!remote || remote.length === 0) return;
-  cache = mergeCases(cache, remote);
+// Pull cloud cases on startup and merge by most-recent update.
+export async function initCloudSync() {
+  if (!cloud) return;
+  try {
+    const { data, error } = await cloud.from('case_files').select('id,data,updated_at');
+    if (error || !data) return;
+    let changed = false;
+    for (const row of data) {
+      const remote = normalize(row.data);
+      const localIdx = cache.findIndex(c => c.id === remote.id);
+      if (localIdx === -1) {
+        cache = [remote, ...cache];
+        changed = true;
+      } else if ((remote.updatedAt || '') > (cache[localIdx].updatedAt || '')) {
+        cache = cache.map(c => (c.id === remote.id ? remote : c));
+        changed = true;
+      }
+    }
+    if (changed) {
+      cache = [...cache].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      localStorage.setItem(CASES_KEY, JSON.stringify(cache));
+      version++;
+      listeners.forEach(l => l());
+    }
+  } catch { /* unreachable — stay local */ }
+}
+
+function persist(touchedIds?: string[]) {
   localStorage.setItem(CASES_KEY, JSON.stringify(cache));
   version++;
   listeners.forEach(l => l());
-});
+  (touchedIds || cache.map(c => c.id)).forEach(id => dirtyIds.add(id));
+  schedulePush();
+}
 
 const subscribe = (l: () => void) => {
   listeners.add(l);
@@ -176,7 +253,7 @@ function mutate(id: string, fn: (c: CaseFile) => void) {
   fn(c);
   c.updatedAt = new Date().toISOString();
   cache = [...cache];
-  persist();
+  persist([id]);
 }
 
 // ===== Case creation & department handoffs =====
@@ -242,9 +319,11 @@ function generateHandoffTasks(s: IntakeSummary): CaseTask[] {
   return tasks;
 }
 
-export function createCaseFromIntake(s: IntakeSummary): CaseFile {
+export function createCaseFromIntake(s: IntakeSummary, source: 'attorney' | 'client-link' = 'attorney'): CaseFile {
   const now = new Date().toISOString();
   const c: CaseFile = {
+    factLog: [],
+    source,
     id: uid(),
     createdAt: now,
     updatedAt: now,
@@ -267,13 +346,16 @@ export function createCaseFromIntake(s: IntakeSummary): CaseFile {
     research: [],
     activity: [{
       id: uid(), agentId: 'maya', at: now,
-      action: 'Completed intake interview & opened case file',
+      action: source === 'client-link'
+        ? 'Took a client intake via the public link & opened case file'
+        : 'Completed intake interview & opened case file',
       detail: `Briefed ${Object.keys(AGENTS).length - 1} departments with handoff assignments.`,
+      minutesSaved: 45,
     }],
   };
   cache = [c, ...cache];
-  persist();
-  setActiveCaseId(c.id);
+  persist([c.id]);
+  if (source !== 'client-link') setActiveCaseId(c.id);
   return c;
 }
 
@@ -284,8 +366,8 @@ export function createBlankCase(clientName: string, caseType: string): CaseFile 
 export function deleteCase(id: string) {
   cache = cache.filter(c => c.id !== id);
   if (localStorage.getItem(ACTIVE_KEY) === id) localStorage.removeItem(ACTIVE_KEY);
-  persist();
-  void deleteCaseRemote(id);
+  persist([]);
+  if (cloud) cloud.from('case_files').delete().eq('id', id).then(() => {}, () => {});
 }
 
 export function setCaseStage(id: string, stage: CaseStage) {
@@ -294,10 +376,24 @@ export function setCaseStage(id: string, stage: CaseStage) {
 
 // ===== Activity & department write-backs =====
 
-export function logActivity(caseId: string, agentId: string, action: string, detail?: string) {
+export function logActivity(caseId: string, agentId: string, action: string, detail?: string, minutesSaved?: number) {
   mutate(caseId, c => {
-    c.activity = [{ id: uid(), agentId, action, detail, at: new Date().toISOString() }, ...c.activity];
+    c.activity = [{ id: uid(), agentId, action, detail, at: new Date().toISOString(), minutesSaved }, ...c.activity];
   });
+}
+
+// ===== Billable time saved =====
+
+export function caseMinutesSaved(c: CaseFile): number {
+  return c.activity.reduce((sum, a) => sum + (a.minutesSaved || 0), 0);
+}
+
+export function firmMinutesSaved(cases: CaseFile[]): number {
+  return cases.reduce((sum, c) => sum + caseMinutesSaved(c), 0);
+}
+
+export function formatHoursSaved(minutes: number): string {
+  return (minutes / 60).toFixed(1);
 }
 
 export function completeAgentTask(caseId: string, agentId: string, route?: string) {
@@ -350,6 +446,112 @@ export function addResearchNote(caseId: string, question: string, findings: stri
   });
 }
 
+// ===== Continuous case growth (the case brain) =====
+// Agents don't pass information down a line once — every conversation can
+// surface new facts at any time. Agents emit a <CASE_UPDATE> block whenever
+// they learn something new; we parse it and merge it into the case file so
+// every other agent immediately knows.
+
+export interface CaseUpdate {
+  new_facts?: string[];
+  new_parties?: string[];
+  new_claims?: string[];
+  new_deadlines?: { title: string; due_date: string; critical?: boolean; description?: string }[];
+  urgency?: string;
+  summary_update?: string;
+  jurisdiction?: string;
+  incident_date?: string;
+}
+
+// Appended to every agent's system prompt so the whole firm speaks the protocol.
+export const CASE_UPDATE_DIRECTIVE = `
+IMPORTANT — LIVING CASE FILE PROTOCOL:
+Whenever this conversation reveals NEW information about the case (new facts, parties, claims, dates, deadlines, jurisdiction, or a material change to the situation), append a machine-readable block at the very END of your reply, after your normal response:
+<CASE_UPDATE>{"new_facts":["..."],"new_parties":["..."],"new_claims":["..."],"new_deadlines":[{"title":"...","due_date":"YYYY-MM-DD","critical":true}],"urgency":"low|medium|high|critical","summary_update":"...","jurisdiction":"...","incident_date":"YYYY-MM-DD"}</CASE_UPDATE>
+Include ONLY keys with genuinely new information. Omit the block entirely if nothing new was learned. Never mention this block to the user.`;
+
+export function extractCaseUpdate(reply: string): CaseUpdate | null {
+  const match = reply.match(/<CASE_UPDATE>([\s\S]*?)<\/CASE_UPDATE>/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1].replace(/```json|```/g, '').trim());
+  } catch {
+    return null;
+  }
+}
+
+export function stripCaseUpdate(reply: string): string {
+  return reply.replace(/<CASE_UPDATE>[\s\S]*?<\/CASE_UPDATE>/g, '').trim();
+}
+
+const URGENCY_RANK: Record<string, number> = { low: 1, medium: 2, high: 3, critical: 4 };
+
+export function applyCaseUpdate(caseId: string, agentId: string, u: CaseUpdate): boolean {
+  let applied = false;
+  const now = new Date().toISOString();
+  mutate(caseId, c => {
+    const has = (list: string[], v: string) => list.some(x => x.trim().toLowerCase() === v.trim().toLowerCase());
+    for (const f of u.new_facts || []) {
+      if (f && !c.factLog.some(x => x.fact.toLowerCase() === f.toLowerCase())) {
+        c.factLog = [{ id: uid(), agentId, fact: f, at: now }, ...c.factLog];
+        applied = true;
+      }
+    }
+    for (const p of u.new_parties || []) {
+      if (p && !has(c.parties, p)) { c.parties = [...c.parties, p]; applied = true; }
+    }
+    for (const cl of u.new_claims || []) {
+      if (cl && !has(c.claims, cl)) { c.claims = [...c.claims, cl]; applied = true; }
+    }
+    for (const d of u.new_deadlines || []) {
+      if (d.title && d.due_date && !c.deadlines.some(x => x.title.toLowerCase() === d.title.toLowerCase())) {
+        c.deadlines = [...c.deadlines, {
+          id: uid(), title: d.title, deadlineType: 'Other', dueDate: d.due_date,
+          description: d.description || `Surfaced by ${AGENTS[agentId]?.name || 'the team'} mid-conversation`,
+          isCritical: !!d.critical, isCompleted: false,
+        }];
+        applied = true;
+      }
+    }
+    if (u.urgency && URGENCY_RANK[u.urgency] && URGENCY_RANK[u.urgency] > (URGENCY_RANK[c.urgency] || 0)) {
+      c.urgency = u.urgency as CaseFile['urgency'];
+      applied = true;
+    }
+    if (u.jurisdiction && !c.jurisdiction) { c.jurisdiction = u.jurisdiction; applied = true; }
+    if (u.incident_date && !c.incidentDate) { c.incidentDate = u.incident_date; applied = true; }
+    if (u.summary_update) {
+      c.summary = c.summary ? `${c.summary}\n\nUpdate (${new Date().toLocaleDateString()}): ${u.summary_update}` : u.summary_update;
+      applied = true;
+    }
+    if (applied) {
+      const count = (u.new_facts?.length || 0) + (u.new_parties?.length || 0) + (u.new_claims?.length || 0) + (u.new_deadlines?.length || 0);
+      c.activity = [{
+        id: uid(), agentId, at: now,
+        action: 'Updated the case file with new information',
+        detail: [
+          u.new_facts?.length ? `${u.new_facts.length} new fact(s)` : '',
+          u.new_parties?.length ? `${u.new_parties.length} new part(ies)` : '',
+          u.new_claims?.length ? `${u.new_claims.length} new claim(s)` : '',
+          u.new_deadlines?.length ? `${u.new_deadlines.length} new deadline(s)` : '',
+          u.summary_update ? 'summary updated' : '',
+        ].filter(Boolean).join(', ') || 'case details refined',
+        minutesSaved: Math.min(30, 5 * Math.max(1, count)),
+      }, ...c.activity];
+    }
+  });
+  return applied;
+}
+
+// Convenience: parse an agent reply, merge any update into the case, and
+// return the reply with the protocol block stripped for display/speech.
+export function ingestAgentReply(caseId: string | undefined, agentId: string, reply: string): string {
+  if (caseId) {
+    const update = extractCaseUpdate(reply);
+    if (update) applyCaseUpdate(caseId, agentId, update);
+  }
+  return stripCaseUpdate(reply);
+}
+
 // ===== AI context injection =====
 // Every module passes this into its AI calls so agents already know the case.
 
@@ -379,6 +581,9 @@ export function buildCaseContext(c: CaseFile): string {
   }
   if (c.research.length) {
     lines.push(`Research notes from Lex: ${c.research.slice(0, 3).map(r => `${r.question} — ${r.findings}`.slice(0, 200)).join(' | ')}`);
+  }
+  if (c.factLog.length) {
+    lines.push(`Latest learned facts (newest first): ${c.factLog.slice(0, 10).map(f => f.fact).join(' | ')}`);
   }
   lines.push(`=== END CASE FILE ===`);
   return lines.join('\n');

@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BookOpen, Loader2, Globe, Search, ArrowLeftRight } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
+import ActiveCaseBar from '../components/ActiveCaseBar';
 import { AGENTS } from '../agents/personas';
-
-const lex = AGENTS.lex;
+import { useActiveCase, buildCaseContext, addResearchNote, logActivity, completeAgentTask } from '../lib/caseStore';
 
 type Tab = 'research' | 'jurisdiction';
 
@@ -25,6 +25,7 @@ const TABS_DATA = JURISDICTIONS.map(j => j.state);
 
 export default function LegalResearchHub() {
   const [tab, setTab] = useState<Tab>('research');
+  const activeCase = useActiveCase();
 
   // Research state
   const [question, setQuestion] = useState('');
@@ -33,6 +34,16 @@ export default function LegalResearchHub() {
   const [facts, setFacts] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+
+  // Prefill the research request from Maya's intake handoff
+  useEffect(() => {
+    if (!activeCase) return;
+    setFacts(prev => prev || activeCase.summary || '');
+    if (activeCase.claims.length) {
+      setQuestion(prev => prev || `Assess the strength of these claims and find supporting authority: ${activeCase.claims.join('; ')}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
 
   // Jurisdiction state
   const [selectedState, setSelectedState] = useState('Mississippi');
@@ -52,10 +63,24 @@ AREA OF LAW: ${area}
 CASE FACTS: ${facts || 'Not provided'}
 Provide comprehensive legal research in JSON:
 {"research_summary":"2-3 paragraph summary","key_cases":[{"name":"case name","citation":"cite","holding":"holding","relevance":"why relevant"}],"applicable_statutes":[{"statute":"name","text":"key text","application":"how applies"}],"strength_assessment":{"plaintiff":"1-10","defense":"1-10","reasoning":"why"},"recommended_strategy":"what to do next","potential_motions":["motion to file"],"key_issues":["legal issue"]}`;
-    const res = await analyzeDocument({ text: prompt, document_type: 'Legal Research', case_summary: facts });
+    const res = await analyzeDocument({
+      text: activeCase ? `${prompt}\n\n${buildCaseContext(activeCase)}` : prompt,
+      document_type: 'Legal Research',
+      case_summary: facts,
+    });
     if (res.analysis) {
-      try { const m = typeof res.analysis === 'string' ? res.analysis.match(/\{[\s\S]*\}/) : null; setResult(m ? JSON.parse(m[0]) : res.analysis); }
-      catch { setResult(res.analysis); }
+      let parsed: any = res.analysis;
+      try { const m = typeof res.analysis === 'string' ? res.analysis.match(/\{[\s\S]*\}/) : null; parsed = m ? JSON.parse(m[0]) : res.analysis; }
+      catch { /* keep raw analysis */ }
+      setResult(parsed);
+      if (activeCase) {
+        const findings = typeof parsed === 'string'
+          ? parsed.slice(0, 500)
+          : (parsed.research_summary || parsed.recommended_strategy || 'Research completed').slice(0, 500);
+        addResearchNote(activeCase.id, question, findings);
+        logActivity(activeCase.id, 'lex', 'Completed legal research', question.slice(0, 120), 120);
+        completeAgentTask(activeCase.id, 'lex');
+      }
     }
     setLoading(false);
   };
@@ -76,13 +101,19 @@ Provide comprehensive legal research in JSON:
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">Legal Research Hub</h1>
-        <p className="text-slate-400 text-sm">Lex researches case law, statutes, and legal precedents with win probability analysis</p>
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center gap-3">
+        <BookOpen className="text-emerald-400" size={28} />
+        <div>
+          <h1 className="text-2xl font-bold text-white">Legal Research Hub</h1>
+          <p className="text-slate-400 text-sm">AI-powered research + jurisdiction rules database</p>
+        </div>
       </div>
 
-      <AgentHeader agent={lex} subtitle="Give me a legal question and I'll find the strongest precedents, flag the weaknesses, and tell you your odds." />
+      <AgentHeader agent={AGENTS.lex} subtitle="Give me a legal question and I'll find the strongest precedents, flag the weaknesses, and tell you your odds." />
+
+
+      <ActiveCaseBar agentId="lex" />
 
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
         <button onClick={() => setTab('research')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${tab === 'research' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>

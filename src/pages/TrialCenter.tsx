@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Swords, Send, Loader2, Settings, Users, BarChart2, Brain, ChevronDown, ChevronUp, Mic, MicOff } from 'lucide-react';
 import { trialCoach } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
+import ActiveCaseBar from '../components/ActiveCaseBar';
 import { AGENTS } from '../agents/personas';
-
-const rex = AGENTS.rex;
+import { useActiveCase, buildCaseContext, CASE_UPDATE_DIRECTIVE, ingestAgentReply } from '../lib/caseStore';
+import { useLiveVoice } from '../hooks/useLiveVoice';
 
 type Tab = 'coach' | 'witness' | 'jury';
 
@@ -75,6 +76,17 @@ export default function TrialCenter() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  // Pull the active case file into the coaching session so Rex knows the case
+  const activeCase = useActiveCase();
+  useEffect(() => {
+    if (!activeCase) return;
+    const facts = `${buildCaseContext(activeCase)}\n${CASE_UPDATE_DIRECTIVE}`;
+    setConfig(c => c.case_facts ? c : { ...c, case_facts: facts });
+    setCaseSummaryJury(prev => prev || activeCase.summary || facts);
+    if (activeCase.caseType) setCaseType(activeCase.caseType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
+
   // Voice recognition
   const toggleVoice = () => {
     if (isListening) {
@@ -101,15 +113,42 @@ export default function TrialCenter() {
   };
 
   const startCoach = () => { setShowConfig(false); setStarted(true); setMessages([]); };
-  const sendCoach = async () => {
-    if (!input.trim() || loading) return;
-    const newMessages: Message[] = [...messages, { role: 'user', content: input }];
+
+  // Live two-way courtroom sparring — speak, Rex objects out loud, keeps listening
+  const sendCoachRef = useRef<(text: string) => void>(() => {});
+  const liveVoice = useLiveVoice({ onUtterance: text => sendCoachRef.current(text) });
+  const coachLoadingRef = useRef(false);
+  const coachQueueRef = useRef('');
+
+  const sendCoachText = async (text: string) => {
+    if (!text.trim()) return;
+    if (coachLoadingRef.current) {
+      coachQueueRef.current = `${coachQueueRef.current} ${text}`.trim();
+      return;
+    }
+    coachLoadingRef.current = true;
+    const newMessages: Message[] = [...messages, { role: 'user', content: text }];
     setMessages(newMessages); setInput(''); setLoading(true);
     if (isListening) { recognitionRef.current?.stop(); setIsListening(false); }
     const res = await trialCoach({ messages: newMessages, config });
-    if (res.reply) setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
+    if (res.reply) {
+      // Anything new Rex surfaces mid-sparring gets merged into the case file
+      const clean = ingestAgentReply(activeCase?.id, 'rex', res.reply);
+      setMessages(prev => [...prev, { role: 'assistant', content: clean }]);
+      liveVoice.speak(clean);
+    }
+    coachLoadingRef.current = false;
     setLoading(false);
+    if (coachQueueRef.current) {
+      setTimeout(() => {
+        const q = coachQueueRef.current;
+        coachQueueRef.current = '';
+        if (q) sendCoachRef.current(q);
+      }, 80);
+    }
   };
+  sendCoachRef.current = sendCoachText;
+  const sendCoach = () => sendCoachText(input);
 
   // Witness
   const toggle = (k: string) => setExpanded(e => e.includes(k) ? e.filter(x => x !== k) : [...e, k]);
@@ -160,13 +199,19 @@ Respond JSON: {"ai_prep_notes":"overview","direct_questions":["Q"],"cross_questi
   ];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">Trial Command Center</h1>
-        <p className="text-slate-400 text-sm">Rex is your battle-hardened trial coach — practice against AI judges, witnesses, and opposing counsel</p>
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center gap-3">
+        <Swords className="text-orange-400" size={28} />
+        <div>
+          <h1 className="text-2xl font-bold text-white">Trial Command Center</h1>
+          <p className="text-slate-400 text-sm">Voice-activated coaching, witness prep, and jury simulation</p>
+        </div>
       </div>
 
-      <AgentHeader agent={rex} subtitle="I'll play the judge, the witness, opposing counsel — whoever you need. I don't go easy. That's how you win." />
+      <AgentHeader agent={AGENTS.rex} subtitle="I'll play the judge, the witness, opposing counsel — whoever you need. I don't go easy. That's how you win." />
+
+
+      <ActiveCaseBar agentId="rex" />
 
       <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
         {TABS.map(t => (
@@ -236,6 +281,16 @@ Respond JSON: {"ai_prep_notes":"overview","direct_questions":["Q"],"cross_questi
                   <span className="text-sm text-slate-300 font-medium">{ROLES.find(r => r.id === config.role)?.label} — {config.mode}</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {liveVoice.supported && (
+                    <button
+                      onClick={() => (liveVoice.live ? liveVoice.stopLive() : liveVoice.startLive())}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                        liveVoice.live ? 'bg-red-600/20 border border-red-500/50 text-red-300' : 'bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300'
+                      }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${liveVoice.live ? 'bg-red-400 animate-pulse' : 'bg-slate-500'}`} />
+                      {liveVoice.live ? 'LIVE' : 'Go Live'}
+                    </button>
+                  )}
                   <span className={`text-xs px-2 py-1 rounded font-medium ${diffColor[config.difficulty]} text-white`}>{config.difficulty}</span>
                   <button onClick={() => { setShowConfig(true); setStarted(false); }} className="text-slate-400 hover:text-white"><Settings size={16} /></button>
                 </div>
@@ -253,6 +308,19 @@ Respond JSON: {"ai_prep_notes":"overview","direct_questions":["Q"],"cross_questi
                 {loading && <div className="flex justify-start"><div className="bg-slate-700 rounded-xl px-4 py-3"><Loader2 className="text-orange-400 animate-spin" size={18} /></div></div>}
                 <div ref={bottomRef} />
               </div>
+              {liveVoice.live && (
+                <div className="px-4 pt-2 flex items-center gap-2">
+                  {liveVoice.speaking ? (
+                    <span className="text-orange-300 text-xs font-medium">⚔️ Speaking…</span>
+                  ) : liveVoice.interim ? (
+                    <span className="text-slate-300 text-xs italic truncate">“{liveVoice.interim}”</span>
+                  ) : (
+                    <span className="text-green-300 text-xs font-medium flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> Listening — speak, it sends when you pause
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="p-4 border-t border-slate-700 flex gap-2">
                 <button onClick={toggleVoice}
                   className={`p-2.5 rounded-lg transition-colors ${isListening ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-700 text-slate-400 hover:text-white'}`}>

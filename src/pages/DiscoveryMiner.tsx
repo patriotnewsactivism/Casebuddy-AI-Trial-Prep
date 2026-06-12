@@ -1,19 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Microscope, Plus, Trash2, Loader2, Flame, Clock, GitCompare } from 'lucide-react';
 import { discoveryMiner } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
+import ActiveCaseBar from '../components/ActiveCaseBar';
 import { AGENTS } from '../agents/personas';
-
-const doc = AGENTS.doc;
+import { useActiveCase, buildCaseContext, caseBrief, logActivity } from '../lib/caseStore';
 
 interface Doc { title: string; document_type: string; content_text: string; }
 
 export default function DiscoveryMiner() {
+  const activeCase = useActiveCase();
   const [docs, setDocs] = useState<Doc[]>([{ title: '', document_type: 'Contract', content_text: '' }]);
   const [caseTheory, setCaseTheory] = useState('');
   const [side, setSide] = useState('Plaintiff');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
+
+  useEffect(() => {
+    if (activeCase) setCaseTheory(prev => prev || caseBrief(activeCase));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
 
   const addDoc = () => setDocs(d => [...d, { title: '', document_type: 'Contract', content_text: '' }]);
   const removeDoc = (i: number) => setDocs(d => d.filter((_, idx) => idx !== i));
@@ -25,21 +31,36 @@ export default function DiscoveryMiner() {
     if (!valid.length) return;
     setLoading(true);
     setResults(null);
-    const res = await discoveryMiner({ documents: valid, case_theory: caseTheory, side });
-    if (res.mining_results) setResults(res.mining_results);
+    const res = await discoveryMiner({
+      documents: valid,
+      case_theory: activeCase ? `${caseTheory}\n\n${buildCaseContext(activeCase)}` : caseTheory,
+      side,
+    });
+    if (res.mining_results) {
+      setResults(res.mining_results);
+      if (activeCase) {
+        logActivity(activeCase.id, 'doc', 'Mined discovery for contradictions & smoking guns', `Cross-referenced ${valid.length} document(s).`, 90);
+      }
+    }
     setLoading(false);
   };
 
   const DOC_TYPES = ['Contract', 'Deposition', 'Police Report', 'Medical Record', 'Email', 'Text Messages', 'Financial Record', 'Expert Report', 'Court Filing', 'Other'];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">Discovery Miner</h1>
-        <p className="text-slate-400 text-sm">Doc cross-references all documents to uncover smoking guns, contradictions & timeline gaps</p>
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center gap-3">
+        <Microscope className="text-emerald-400" size={28} />
+        <div>
+          <h1 className="text-2xl font-bold text-white">Discovery Miner</h1>
+          <p className="text-slate-400 text-sm">Cross-reference all documents to uncover smoking guns, contradictions & gaps</p>
+        </div>
       </div>
 
-      <AgentHeader agent={doc} subtitle="Feed me every document you have. I'll find the smoking guns, the contradictions, and the gaps they don't want you to see." />
+      <AgentHeader agent={AGENTS.doc} subtitle="Feed me every document you have. I'll find the smoking guns, the contradictions, and the gaps they don't want you to see." />
+
+
+      <ActiveCaseBar agentId="doc" />
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
         <div className="grid md:grid-cols-2 gap-4">

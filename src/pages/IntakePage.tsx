@@ -4,7 +4,11 @@ import { Send, Loader2, CheckCircle, AlertCircle, Mic, MicOff, Briefcase } from 
 import { aiParalegal } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
 import { AGENTS, AGENT_LIST } from '../agents/personas';
-import { createCaseFromIntake } from '../lib/caseStore';
+import {
+  createCaseFromIntake, useActiveCase, buildCaseContext,
+  CASE_UPDATE_DIRECTIVE, ingestAgentReply,
+} from '../lib/caseStore';
+import { useLiveVoice } from '../hooks/useLiveVoice';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -28,6 +32,8 @@ function parseIntakeSummary(reply: string): any | null {
 
 export default function IntakePage() {
   const navigate = useNavigate();
+  const activeCase = useActiveCase();
+  const [updateMode, setUpdateMode] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,37 +43,86 @@ export default function IntakePage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
+  // Live two-way voice: speak with Maya hands-free — your words auto-send
+  // when you pause, and she answers out loud, then keeps listening.
+  const sendTextRef = useRef<(text: string) => void>(() => {});
+  const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text) });
+  // Words spoken while Maya is still thinking get queued, never dropped
+  const loadingRef = useRef(false);
+  const queuedRef = useRef('');
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const startIntake = async () => {
+  // In update mode Maya works the EXISTING case: she already knows the file,
+  // asks what's new, and merges every new fact straight into the case brain.
+  const systemPrompt = updateMode && activeCase
+    ? `${maya.systemPrompt}
+
+CONTEXT: You are UPDATING an existing case, not starting a new intake. You already know the case file below — do NOT re-ask what you already know. Greet briefly, then ask what's new or changed (new documents, new events, new parties, responses from the other side, anything). Probe for legal significance.
+${buildCaseContext(activeCase)}
+${CASE_UPDATE_DIRECTIVE}`
+    : `${maya.systemPrompt}
+${CASE_UPDATE_DIRECTIVE}`;
+
+  const startIntake = async (liveMode = false, asUpdate = false) => {
+    setUpdateMode(asUpdate);
     setStarted(true);
     setLoading(true);
-    const res = await aiParalegal({ messages: [], agentPersona: maya.systemPrompt });
-    if (res.reply) setMessages([{ role: 'assistant', content: res.reply }]);
+    if (liveMode) voice.startLive();
+    const res = await aiParalegal({
+      messages: [],
+      agentPersona: asUpdate && activeCase
+        ? `${maya.systemPrompt}\n\nCONTEXT: You are UPDATING an existing case. You already know the case file below — greet briefly and ask what's new or changed.\n${buildCaseContext(activeCase)}\n${CASE_UPDATE_DIRECTIVE}`
+        : `${maya.systemPrompt}\n${CASE_UPDATE_DIRECTIVE}`,
+    });
+    if (res.reply) {
+      const clean = ingestAgentReply(asUpdate ? activeCase?.id : undefined, 'maya', res.reply);
+      setMessages([{ role: 'assistant', content: clean }]);
+      voice.speak(clean); // no-op unless live mode is on
+    }
     setLoading(false);
   };
 
-  const send = async () => {
-    if (!input.trim() || loading) return;
-    const newMessages: Message[] = [...messages, { role: 'user', content: input }];
+  const sendText = async (text: string) => {
+    if (!text.trim()) return;
+    if (loadingRef.current) {
+      queuedRef.current = `${queuedRef.current} ${text}`.trim();
+      return;
+    }
+    loadingRef.current = true;
+    const newMessages: Message[] = [...messages, { role: 'user', content: text }];
     setMessages(newMessages);
     setInput('');
     setLoading(true);
     if (isListening) stopListening();
 
-    const res = await aiParalegal({ messages: newMessages, agentPersona: maya.systemPrompt });
+    const res = await aiParalegal({ messages: newMessages, agentPersona: systemPrompt });
     if (res.reply) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: res.reply.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim()
-      }]);
+      // Merge new facts into the case (update mode), strip protocol blocks
+      const ingested = ingestAgentReply(updateMode ? activeCase?.id : undefined, 'maya', res.reply);
+      const clean = ingested.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/, '').trim();
+      setMessages(prev => [...prev, { role: 'assistant', content: clean }]);
+      voice.speak(clean);
     }
-    const parsed = res.intakeSummary || (res.reply ? parseIntakeSummary(res.reply) : null);
-    if (parsed) setSummary(parsed);
+    if (!updateMode) {
+      const parsed = res.intakeSummary || (res.reply ? parseIntakeSummary(res.reply) : null);
+      if (parsed) setSummary(parsed);
+    }
+    loadingRef.current = false;
     setLoading(false);
+    if (queuedRef.current) {
+      setTimeout(() => {
+        const q = queuedRef.current;
+        queuedRef.current = '';
+        if (q) sendTextRef.current(q);
+      }, 80);
+    }
   };
+  sendTextRef.current = sendText;
+
+  const send = () => sendText(input);
 
   const openCaseFile = () => {
     if (!summary) return;
@@ -152,20 +207,71 @@ export default function IntakePage() {
             ))}
           </div>
 
-          <button
-            onClick={startIntake}
-            className={`bg-gradient-to-r ${maya.color} text-white font-semibold px-8 py-3 rounded-xl hover:opacity-90 transition-opacity shadow-lg text-sm`}
-          >
-            Begin Intake with Maya →
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => startIntake(false)}
+              className={`bg-gradient-to-r ${maya.color} text-white font-semibold px-8 py-3 rounded-xl hover:opacity-90 transition-opacity shadow-lg text-sm`}
+            >
+              Begin Intake with Maya →
+            </button>
+            {voice.supported && (
+              <button
+                onClick={() => startIntake(true)}
+                className="bg-slate-700 hover:bg-slate-600 border border-violet-500/50 text-white font-semibold px-8 py-3 rounded-xl transition-colors shadow-lg text-sm flex items-center gap-2"
+              >
+                <Mic size={15} className="text-violet-400" /> Talk Live with Maya
+              </button>
+            )}
+          </div>
+          {voice.supported && (
+            <p className="text-slate-600 text-xs mt-3">
+              Live mode is fully hands-free — speak naturally, Maya hears you, answers out loud, and keeps listening.
+            </p>
+          )}
+
+          {/* Continuous growth: feed new developments into an existing case */}
+          {activeCase && (
+            <div className="mt-6 pt-5 border-t border-slate-700 max-w-md mx-auto">
+              <p className="text-slate-400 text-xs mb-3">
+                Or has something new happened in <span className="text-white font-semibold">{activeCase.clientName}</span>'s case?
+              </p>
+              <button
+                onClick={() => startIntake(voice.supported, true)}
+                className="w-full bg-slate-700 hover:bg-slate-600 border border-violet-500/40 text-white font-semibold px-6 py-3 rounded-xl transition-colors text-sm">
+                🔄 Update the Case — Tell Maya What's New
+              </button>
+              <p className="text-slate-600 text-xs mt-2">
+                New facts, parties, claims and deadlines merge into the case file automatically — the whole team sees them instantly.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Chat */}
           <div className="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-2xl flex flex-col" style={{ height: '600px' }}>
             {/* Chat header */}
-            <div className="px-4 py-3 border-b border-slate-700">
+            <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between gap-3">
               <AgentHeader agent={maya} compact />
+              {updateMode && activeCase && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-violet-600/20 border border-violet-500/40 text-violet-300 font-semibold whitespace-nowrap">
+                  Updating: {activeCase.clientName}
+                </span>
+              )}
+              {voice.supported && (
+                <button
+                  onClick={() => (voice.live ? voice.stopLive() : voice.startLive())}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors shrink-0 ${
+                    voice.live
+                      ? 'bg-red-600/20 border border-red-500/50 text-red-300'
+                      : 'bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300'
+                  }`}
+                  title={voice.live ? 'End live conversation' : 'Start hands-free live conversation'}
+                >
+                  <span className={`w-2 h-2 rounded-full ${voice.live ? 'bg-red-400 animate-pulse' : 'bg-slate-500'}`} />
+                  {voice.live ? 'LIVE — tap to end' : 'Go Live'}
+                </button>
+              )}
             </div>
 
             {/* Messages */}
@@ -205,6 +311,27 @@ export default function IntakePage() {
 
             {/* Input */}
             <div className="p-3 border-t border-slate-700">
+              {voice.live && (
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  {voice.speaking ? (
+                    <>
+                      <span className="flex gap-0.5 items-end h-3">
+                        <span className="w-1 bg-violet-400 rounded-full animate-pulse" style={{ height: '12px' }} />
+                        <span className="w-1 bg-violet-400 rounded-full animate-pulse" style={{ height: '7px', animationDelay: '150ms' }} />
+                        <span className="w-1 bg-violet-400 rounded-full animate-pulse" style={{ height: '10px', animationDelay: '300ms' }} />
+                      </span>
+                      <span className="text-violet-300 text-xs font-medium">Maya is speaking…</span>
+                    </>
+                  ) : voice.interim ? (
+                    <span className="text-slate-300 text-xs italic truncate">“{voice.interim}”</span>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-green-300 text-xs font-medium">Listening — just talk, it sends when you pause</span>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2">
                 <button
                   onClick={toggleVoice}

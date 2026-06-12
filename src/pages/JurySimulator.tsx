@@ -134,7 +134,7 @@ Respond with valid JSON only:
             plaintiffCount <= 2 ? '🛡️ DEFENSE WINS' : '⚖️ HUNG JURY'
           );
           if (activeCase) {
-            logActivity(activeCase.id, 'jules', 'Ran jury simulation', `${mode} — ${plaintiffCount}/6 jurors for plaintiff. ${(parsed.overall_analysis || '').slice(0, 120)}`);
+            logActivity(activeCase.id, 'jules', 'Ran jury simulation', `${mode} — ${plaintiffCount}/6 jurors for plaintiff. ${(parsed.overall_analysis || '').slice(0, 120)}`, 60);
             completeAgentTask(activeCase.id, 'jules');
           }
         }

@@ -1,20 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, Search, AlertTriangle, CheckCircle, Plus, X, Loader2, Download } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
+import ActiveCaseBar from '../components/ActiveCaseBar';
 import { AGENTS } from '../agents/personas';
-
-const lex = AGENTS.lex;
+import { useCases, useActiveCase, logActivity, completeAgentTask } from '../lib/caseStore';
 
 interface Party { id: string; name: string; role: string; aliases: string; }
 interface ConflictResult { severity: 'high' | 'medium' | 'low' | 'clear'; party: string; matchedCase: string; details: string; rule: string; }
 
 export default function ConflictChecker() {
+  const allCases = useCases();
+  const activeCase = useActiveCase();
   const [parties, setParties] = useState<Party[]>([{ id: '1', name: '', role: 'Client', aliases: '' }]);
   const [checking, setChecking] = useState(false);
   const [results, setResults] = useState<ConflictResult[] | null>(null);
   const [caseType, setCaseType] = useState('Civil Rights');
   const [jurisdiction, setJurisdiction] = useState('Federal');
+
+  // Prefill the party list from the active case file (Maya's intake handoff)
+  useEffect(() => {
+    if (!activeCase) return;
+    const prefilled: Party[] = [
+      { id: '1', name: activeCase.clientName, role: 'Client', aliases: '' },
+      ...activeCase.parties
+        .filter(p => p.toLowerCase() !== activeCase.clientName.toLowerCase())
+        .map((p, i) => ({ id: `p${i}`, name: p, role: 'Opposing Party', aliases: '' })),
+    ];
+    setParties(prev => (prev.length === 1 && !prev[0].name.trim()) ? prefilled : prev);
+    setCaseType(prev => activeCase.caseType || prev);
+    if (activeCase.jurisdiction) setJurisdiction(activeCase.jurisdiction);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.id]);
 
   const addParty = () => setParties(prev => [...prev, { id: Math.random().toString(36).slice(2), name: '', role: 'Opposing Party', aliases: '' }]);
   const removeParty = (id: string) => setParties(prev => prev.filter(p => p.id !== id));
@@ -33,6 +50,9 @@ Jurisdiction: ${jurisdiction}
 
 Parties:
 ${parties.filter(p => p.name.trim()).map(p => `- ${p.name} (${p.role})${p.aliases ? ` — also known as: ${p.aliases}` : ''}`).join('\n')}
+
+EXISTING FIRM CASES TO CROSS-REFERENCE (flag any overlap of clients or adverse parties):
+${allCases.filter(c => c.id !== activeCase?.id).map(c => `- ${c.clientName} (${c.caseType}) — parties: ${c.parties.join(', ') || 'n/a'}`).join('\n') || '- No other cases on file'}
 
 For each party, check:
 1. Could any party have a direct adverse relationship with another?
@@ -64,6 +84,10 @@ Respond with a JSON array of findings. Each finding: { "severity": "high|medium|
           }
           setResults(mockResults);
         }
+        if (activeCase) {
+          logActivity(activeCase.id, 'maya', 'Ran conflict of interest check', `Cross-referenced ${parties.filter(p => p.name.trim()).length} parties against ${allCases.length - 1} other case(s).`, 30);
+          completeAgentTask(activeCase.id, 'maya', '/conflict-checker');
+        }
       }
     } catch {
       setResults([{ severity: 'low', party: 'System', matchedCase: 'Analysis error', details: 'Unable to complete AI analysis. Please verify manually.', rule: 'N/A' }]);
@@ -92,13 +116,19 @@ Respond with a JSON array of findings. Each finding: { "severity": "high|medium|
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">Conflict of Interest Checker</h1>
-        <p className="text-slate-400 text-sm">Lex cross-references parties against ABA Model Rules 1.7–1.10 to flag conflicts before they become problems</p>
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center gap-3">
+        <Shield className="text-amber-400" size={28} />
+        <div>
+          <h1 className="text-2xl font-bold text-white">Conflict of Interest Checker</h1>
+          <p className="text-slate-400 text-sm">Cross-reference parties, flag conflicts, generate waivers — ABA Rules compliant</p>
+        </div>
       </div>
 
-      <AgentHeader agent={lex} subtitle="I check every party, every relationship, every prior representation. One missed conflict can sink a case — and a career." />
+      <AgentHeader agent={AGENTS.lex} subtitle="I check every party, every relationship, every prior representation. One missed conflict can sink a case — and a career." />
+
+
+      <ActiveCaseBar agentId="maya" />
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Input Panel */}
