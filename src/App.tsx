@@ -22,6 +22,8 @@ import ProductTour from './pages/ProductTour';
 import SeoPages from './pages/SeoPages';
 import Settings from './pages/Settings';
 import ContractReview from './pages/ContractReview';
+import Widget from './pages/Widget';
+import WidgetBuilder from './pages/WidgetBuilder';
 import OnboardingModal from './components/OnboardingModal';
 import PwaInstall from './components/PwaInstall';
 import CaseAssistant from './components/CaseAssistant';
@@ -29,7 +31,7 @@ import { initCloudSync } from './lib/caseStore';
 import {
   Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock,
   Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown,
-  ChevronRight, Users, BarChart2, CreditCard, Settings as SettingsIcon, ScrollText,
+  ChevronRight, Users, BarChart2, CreditCard, Settings as SettingsIcon, ScrollText, Code,
 } from 'lucide-react';
 
 interface NavSection {
@@ -41,50 +43,50 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Core',
     items: [
-      { to: '/dashboard', label: 'Dashboard', icon: Scale },
-      { to: '/cases', label: 'Cases', icon: FolderOpen },
-      { to: '/intake', label: 'AI Intake — Maya', icon: UserPlus, agent: 'Maya' },
-      { to: '/deadlines', label: 'Deadlines & SOL — Sol', icon: Clock, agent: 'Sol' },
+      { to: '/dashboard',       label: 'Dashboard',             icon: Scale },
+      { to: '/cases',           label: 'Cases',                 icon: FolderOpen },
+      { to: '/intake',          label: 'AI Intake — Maya',     icon: UserPlus,   agent: 'Maya' },
+      { to: '/deadlines',       label: 'Deadlines & SOL — Sol', icon: Clock,      agent: 'Sol' },
     ],
   },
   {
     title: 'Documents',
     items: [
-      { to: '/documents', label: 'Document Lab — Doc', icon: FileSearch, agent: 'Doc' },
-      { to: '/discovery', label: 'Discovery Miner — Doc', icon: Microscope, agent: 'Doc' },
-      { to: '/contracts', label: 'Contract Review — Nova', icon: ScrollText, agent: 'Nova' },
+      { to: '/documents',   label: 'Document Lab — Doc',       icon: FileSearch,  agent: 'Doc' },
+      { to: '/discovery',   label: 'Discovery Miner — Doc',    icon: Microscope,  agent: 'Doc' },
+      { to: '/contracts',   label: 'Contract Review — Nova',   icon: ScrollText,  agent: 'Nova' },
     ],
   },
   {
     title: 'Research',
     items: [
-      { to: '/research', label: 'Legal Research — Lex', icon: BookOpen, agent: 'Lex' },
-      { to: '/conflict-checker', label: 'Conflict Checker — Lex', icon: Shield, agent: 'Lex' },
-      { to: '/e-filing', label: 'E-Filing — Max', icon: Gavel, agent: 'Max' },
+      { to: '/research',         label: 'Legal Research — Lex',   icon: BookOpen, agent: 'Lex' },
+      { to: '/conflict-checker', label: 'Conflict Checker — Lex', icon: Shield,   agent: 'Lex' },
+      { to: '/e-filing',         label: 'E-Filing — Max',         icon: Gavel,    agent: 'Max' },
     ],
   },
   {
     title: 'Trial Prep',
     items: [
-      { to: '/trial', label: 'Trial Coach — Rex', icon: Swords, agent: 'Rex' },
-      { to: '/witnesses', label: 'Witness Prep — Rex', icon: Users, agent: 'Rex' },
-      { to: '/jury', label: 'Jury Simulator — Jules', icon: BarChart2, agent: 'Jules' },
+      { to: '/trial',     label: 'Trial Coach — Rex',       icon: Swords,   agent: 'Rex' },
+      { to: '/witnesses', label: 'Witness Prep — Rex',      icon: Users,    agent: 'Rex' },
+      { to: '/jury',      label: 'Jury Simulator — Jules',  icon: BarChart2, agent: 'Jules' },
     ],
   },
   {
     title: 'Growth & Sales',
     items: [
       { to: '/legal-secretary', label: 'AI Secretary — Sierra', icon: MessageSquare, agent: 'Sierra' },
-      { to: '/pricing', label: 'Pricing', icon: CreditCard },
-      { to: '/marketplace', label: 'Marketplace', icon: Store },
-      { to: '/seo-pages', label: 'SEO Page Generator', icon: Globe2 },
-      { to: '/video-tour', label: 'Product Tour', icon: PlayCircle },
-      { to: '/settings', label: 'Settings', icon: SettingsIcon },
+      { to: '/widget-builder',  label: 'Widget Builder',              icon: Code },
+      { to: '/pricing',         label: 'Pricing',                     icon: CreditCard },
+      { to: '/marketplace',     label: 'Marketplace',                 icon: Store },
+      { to: '/seo-pages',       label: 'SEO Page Generator',          icon: Globe2 },
+      { to: '/video-tour',      label: 'Product Tour',                icon: PlayCircle },
+      { to: '/settings',        label: 'Settings',                    icon: SettingsIcon },
     ],
   },
 ];
 
-// Agent accent colors for nav
 const AGENT_COLORS: Record<string, string> = {
   Maya:   'text-violet-400',
   Lex:    'text-indigo-400',
@@ -105,7 +107,6 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
     <>
       {open && <div className="fixed inset-0 bg-black/60 z-20 lg:hidden" onClick={() => setOpen(false)} />}
       <aside className={`fixed top-0 left-0 h-full w-64 bg-slate-900 border-r border-slate-800 z-30 flex flex-col transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
-        {/* Logo */}
         <div className="px-4 py-4 border-b border-slate-800">
           <Link to="/" className="flex items-center gap-2 group">
             <Scale size={20} className="text-blue-400" />
@@ -116,7 +117,6 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
           </Link>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
           {NAV_SECTIONS.map(section => (
             <div key={section.title} className="mb-1">
@@ -160,7 +160,6 @@ function AppShell() {
       <OnboardingModal />
       <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />
 
-      {/* Mobile header */}
       <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
         <button onClick={() => setSidebarOpen(true)} className="text-slate-400 hover:text-white">
           <Menu size={20} />
@@ -187,36 +186,35 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/start" element={<PublicIntake />} />
+        {/* Standalone widget — no nav shell */}
+        <Route path="/widget" element={<Widget />} />
 
         <Route element={<AppShell />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/cases" element={<Cases />} />
-          <Route path="/cases/:id" element={<CaseDetail />} />
-          <Route path="/intake" element={<IntakePage />} />
+          <Route path="/dashboard"        element={<Dashboard />} />
+          <Route path="/cases"            element={<Cases />} />
+          <Route path="/cases/:id"        element={<CaseDetail />} />
+          <Route path="/intake"           element={<IntakePage />} />
 
-          {/* Documents */}
-          <Route path="/documents" element={<DocumentLab />} />
-          <Route path="/discovery" element={<DiscoveryMiner />} />
-          <Route path="/contracts" element={<ContractReview />} />
+          <Route path="/documents"        element={<DocumentLab />} />
+          <Route path="/discovery"        element={<DiscoveryMiner />} />
+          <Route path="/contracts"        element={<ContractReview />} />
 
-          {/* Research */}
-          <Route path="/research" element={<LegalResearchHub />} />
+          <Route path="/research"         element={<LegalResearchHub />} />
           <Route path="/conflict-checker" element={<ConflictChecker />} />
-          <Route path="/e-filing" element={<EFiling />} />
-          <Route path="/deadlines" element={<DeadlinesAndSol />} />
+          <Route path="/e-filing"         element={<EFiling />} />
+          <Route path="/deadlines"        element={<DeadlinesAndSol />} />
 
-          {/* Trial Prep */}
-          <Route path="/trial" element={<TrialCenter />} />
-          <Route path="/witnesses" element={<WitnessPrep />} />
-          <Route path="/jury" element={<JurySimulator />} />
+          <Route path="/trial"            element={<TrialCenter />} />
+          <Route path="/witnesses"        element={<WitnessPrep />} />
+          <Route path="/jury"             element={<JurySimulator />} />
 
-          {/* Growth & Sales */}
           <Route path="/legal-secretary" element={<LegalSecretary />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/marketplace" element={<Marketplace />} />
-          <Route path="/seo-pages" element={<SeoPages />} />
-          <Route path="/video-tour" element={<ProductTour />} />
+          <Route path="/widget-builder"  element={<WidgetBuilder />} />
+          <Route path="/settings"        element={<Settings />} />
+          <Route path="/pricing"         element={<Pricing />} />
+          <Route path="/marketplace"     element={<Marketplace />} />
+          <Route path="/seo-pages"       element={<SeoPages />} />
+          <Route path="/video-tour"      element={<ProductTour />} />
         </Route>
       </Routes>
     </BrowserRouter>
