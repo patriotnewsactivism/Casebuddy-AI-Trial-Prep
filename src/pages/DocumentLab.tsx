@@ -1,18 +1,37 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { FileSearch, Upload, Loader2, Gem, AlertTriangle, CheckCircle, ScanLine, FileCheck, Eye, X, FileText } from 'lucide-react';
+import { FileSearch, Upload, Loader2, Gem, AlertTriangle, CheckCircle, ScanLine, FileCheck, Eye, X, FileText, Sparkles, Clock, Users } from 'lucide-react';
 import { analyzeDocument } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
 import ActiveCaseBar from '../components/ActiveCaseBar';
 import { AGENTS } from '../agents/personas';
-import { useActiveCase, buildCaseContext, caseBrief, addCaseDocument, logActivity, completeAgentTask } from '../lib/caseStore';
+import { useActiveCase, buildCaseContext, caseBrief, addCaseDocument, logActivity, completeAgentTask, applyCaseUpdate } from '../lib/caseStore';
 
-type Tab = 'analyze' | 'scan' | 'contract';
+type Tab = 'analyze' | 'scan' | 'extract' | 'contract';
 
 interface ScannedDoc {
   id: string; fileName: string; text: string; analysis: any; scannedAt: string;
 }
 
+interface ExtractResult {
+  fileName: string;
+  summary: string;
+  key_facts: string[];
+  parties: string[];
+  claims: string[];
+  dates: { date: string; event: string; is_deadline: boolean }[];
+  evidence_items: string[];
+  addedToCase: boolean;
+}
+
 const DOC_TYPES = ['Contract', 'Deposition', 'Police Report', 'Medical Record', 'Email', 'Text Messages', 'Financial Record', 'Expert Report', 'Court Filing', 'Other'];
+
+function readFileAsText(file: File): Promise<string> {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target?.result as string || '');
+    reader.readAsText(file);
+  });
+}
 
 export default function DocumentLab() {
   const [tab, setTab] = useState<Tab>('analyze');
@@ -34,7 +53,19 @@ export default function DocumentLab() {
   const [selectedDoc, setSelectedDoc] = useState<ScannedDoc | null>(null);
   const [caseContext, setCaseContext] = useState('');
 
-  // Prefill case context from the active case file so Doc already knows the case
+  // === CONTRACT STATE ===
+  const [contractText, setContractText] = useState('');
+  const [contractLoading, setContractLoading] = useState(false);
+  const [contractResult, setContractResult] = useState<any>(null);
+  const [contractParty, setContractParty] = useState('');
+
+  // === EXTRACT STATE ===
+  const [extractText, setExtractText] = useState('');
+  const [extractFile, setExtractFile] = useState<File | null>(null);
+  const [extractDragOver, setExtractDragOver] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractResults, setExtractResults] = useState<ExtractResult[]>([]);
+
   useEffect(() => {
     if (activeCase) {
       setCaseSummary(prev => prev || caseBrief(activeCase));
@@ -43,12 +74,7 @@ export default function DocumentLab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCase?.id]);
 
-  // === CONTRACT STATE ===
-  const [contractText, setContractText] = useState('');
-  const [contractLoading, setContractLoading] = useState(false);
-  const [contractResult, setContractResult] = useState<any>(null);
-  const [contractParty, setContractParty] = useState('');
-
+  // === ANALYZE HANDLERS ===
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -74,6 +100,9 @@ export default function DocumentLab() {
           ? res.analysis.slice(0, 300)
           : (res.analysis.summary || 'Analysis completed').slice(0, 300);
         addCaseDocument(activeCase.id, { fileName: name, docType, summary, analyzedAt: new Date().toISOString() });
+        if (Array.isArray(res.analysis.key_facts) && res.analysis.key_facts.length) {
+          applyCaseUpdate(activeCase.id, 'doc', { new_facts: res.analysis.key_facts });
+        }
         logActivity(activeCase.id, 'doc', 'Analyzed a document', `${name} — ${summary.slice(0, 120)}`, 60);
         completeAgentTask(activeCase.id, 'doc');
       }
@@ -81,7 +110,7 @@ export default function DocumentLab() {
     setLoading(false);
   };
 
-  // Scan handlers
+  // === SCAN HANDLERS ===
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
     const dropped = Array.from(e.dataTransfer.files);
@@ -92,11 +121,7 @@ export default function DocumentLab() {
     if (files.length === 0) return;
     setScanning(true);
     for (const file of files) {
-      const reader = new FileReader();
-      const fileText = await new Promise<string>(resolve => {
-        reader.onload = e => resolve(e.target?.result as string || '');
-        reader.readAsText(file);
-      });
+      const fileText = await readFileAsText(file);
       const res = await analyzeDocument({
         text: fileText,
         document_type: 'Other',
@@ -111,6 +136,9 @@ export default function DocumentLab() {
       if (activeCase) {
         const summary = (res.analysis?.summary || 'Scanned & analyzed').slice(0, 300);
         addCaseDocument(activeCase.id, { fileName: file.name, docType: 'Scanned', summary, analyzedAt: new Date().toISOString() });
+        if (Array.isArray(res.analysis?.key_facts) && res.analysis.key_facts.length) {
+          applyCaseUpdate(activeCase.id, 'doc', { new_facts: res.analysis.key_facts });
+        }
         logActivity(activeCase.id, 'doc', 'Scanned & analyzed a document', file.name, 45);
       }
     }
@@ -118,7 +146,7 @@ export default function DocumentLab() {
     setFiles([]); setScanning(false);
   };
 
-  // Contract handlers
+  // === CONTRACT HANDLERS ===
   const handleContractFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -155,9 +183,100 @@ Respond in JSON:
     setContractLoading(false);
   };
 
+  // === EXTRACT HANDLERS ===
+  const onExtractDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setExtractDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) { setExtractFile(file); setExtractText(''); }
+  }, []);
+
+  const handleExtractFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) { setExtractFile(file); setExtractText(''); }
+  };
+
+  const runExtract = async () => {
+    const source = extractFile ? await readFileAsText(extractFile) : extractText;
+    if (!source.trim()) return;
+    setExtracting(true);
+
+    const ctx = activeCase ? buildCaseContext(activeCase) : '';
+    const prompt = `You are a forensic legal document analyst. Extract every legally significant entity from this document.
+${ctx ? `CASE CONTEXT:\n${ctx}\n\n` : ''}DOCUMENT:
+${source.substring(0, 10000)}
+
+Reply ONLY with valid JSON — no markdown fences, no extra text:
+{
+  "summary": "2-3 sentence executive summary",
+  "key_facts": ["each critical fact verbatim from the document"],
+  "parties": ["every person, company, or entity named"],
+  "claims": ["every legal claim, cause of action, or allegation"],
+  "dates": [{"date": "YYYY-MM-DD or best approximation", "event": "what happened on this date", "is_deadline": false}],
+  "evidence_items": ["each piece of physical or documentary evidence mentioned"]
+}`;
+
+    const res = await analyzeDocument({ text: prompt, document_type: 'Legal Document', case_summary: ctx });
+
+    let extracted: Partial<ExtractResult & { dates: any[] }> = {};
+    try {
+      const raw = typeof res.analysis === 'string' ? res.analysis : JSON.stringify(res.analysis || '');
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) extracted = JSON.parse(match[0]);
+    } catch {
+      extracted = { summary: String(res.analysis || res.reply || 'Extraction completed') };
+    }
+
+    if (activeCase) {
+      const deadlines = (extracted.dates || [])
+        .filter((d: any) => d.is_deadline)
+        .map((d: any) => ({
+          title: d.event,
+          due_date: d.date,
+          description: `Extracted from ${extractFile?.name || 'pasted text'}`,
+        }));
+
+      applyCaseUpdate(activeCase.id, 'doc', {
+        ...(extracted.key_facts?.length ? { new_facts: extracted.key_facts } : {}),
+        ...(extracted.parties?.length ? { new_parties: extracted.parties } : {}),
+        ...(extracted.claims?.length ? { new_claims: extracted.claims } : {}),
+        ...(deadlines.length ? { new_deadlines: deadlines } : {}),
+      });
+
+      const fname = extractFile?.name || 'Pasted text';
+      addCaseDocument(activeCase.id, {
+        fileName: fname,
+        docType: 'Smart Extract',
+        summary: extracted.summary || '',
+        analyzedAt: new Date().toISOString(),
+      });
+      logActivity(
+        activeCase.id, 'doc', 'Smart-extracted entities from document',
+        `${fname}: ${extracted.key_facts?.length || 0} facts, ${extracted.parties?.length || 0} parties, ${extracted.claims?.length || 0} claims`,
+        75,
+      );
+      completeAgentTask(activeCase.id, 'doc');
+    }
+
+    setExtractResults(prev => [{
+      fileName: extractFile?.name || 'Pasted text',
+      summary: extracted.summary || '',
+      key_facts: extracted.key_facts || [],
+      parties: extracted.parties || [],
+      claims: extracted.claims || [],
+      dates: extracted.dates || [],
+      evidence_items: extracted.evidence_items || [],
+      addedToCase: !!activeCase,
+    }, ...prev]);
+
+    setExtractFile(null);
+    setExtractText('');
+    setExtracting(false);
+  };
+
   const TABS: { id: Tab; label: string; icon: any }[] = [
-    { id: 'analyze', label: 'Analyze & Upload', icon: FileSearch },
-    { id: 'scan', label: 'Batch Scanner', icon: ScanLine },
+    { id: 'analyze', label: 'Analyze', icon: FileSearch },
+    { id: 'scan', label: 'Batch Scan', icon: ScanLine },
+    { id: 'extract', label: 'Smart Extract', icon: Sparkles },
     { id: 'contract', label: 'Contract Review', icon: FileCheck },
   ];
 
@@ -174,7 +293,6 @@ Respond in JSON:
       </div>
 
       <AgentHeader agent={AGENTS.doc} subtitle="Upload any document. I'll find every useful fact, every risk, every contradiction — no detail too small." />
-
 
       <ActiveCaseBar agentId="doc" />
 
@@ -290,7 +408,6 @@ Respond in JSON:
               </div>
             ))}
           </div>
-          {/* Detail Modal */}
           {selectedDoc && (
             <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setSelectedDoc(null)}>
               <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
@@ -305,6 +422,162 @@ Respond in JSON:
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ===== SMART EXTRACT TAB ===== */}
+      {tab === 'extract' && (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
+            <p className="text-slate-300 text-sm leading-relaxed">
+              Drop any legal document — Doc will pull out every party, claim, date, fact, and piece of evidence and automatically add them to your active case file.
+            </p>
+            <div
+              onDrop={onExtractDrop}
+              onDragOver={e => { e.preventDefault(); setExtractDragOver(true); }}
+              onDragLeave={() => setExtractDragOver(false)}
+              className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+                extractDragOver ? 'border-blue-500 bg-blue-500/5' :
+                extractFile ? 'border-green-500 bg-green-500/5' :
+                'border-slate-600 hover:border-slate-500'
+              }`}
+            >
+              {extractFile ? (
+                <div className="space-y-2">
+                  <FileText className="mx-auto text-green-400" size={32} />
+                  <div className="text-green-400 font-medium text-sm">{extractFile.name}</div>
+                  <button onClick={() => setExtractFile(null)} className="text-slate-500 hover:text-red-400 text-xs flex items-center gap-1 mx-auto">
+                    <X size={12} /> Remove
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Sparkles className="mx-auto text-slate-500 mb-2" size={32} />
+                  <div className="text-slate-400 text-sm font-medium">Drop your document here</div>
+                  <div className="text-slate-600 text-xs mt-1">txt, md, csv, or any readable text — or paste below</div>
+                  <input type="file" accept=".txt,.md,.csv,.pdf,.doc,.docx" className="hidden" id="extract-upload" onChange={handleExtractFile} />
+                  <label htmlFor="extract-upload" className="inline-block mt-3 bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm cursor-pointer hover:bg-slate-600">Browse File</label>
+                </>
+              )}
+            </div>
+            {!extractFile && (
+              <div>
+                <label className="text-sm text-slate-400 block mb-2">Or paste document text</label>
+                <textarea
+                  value={extractText}
+                  onChange={e => setExtractText(e.target.value)}
+                  rows={7}
+                  placeholder="Paste any legal document, police report, deposition transcript, email, or contract..."
+                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+            )}
+            <button
+              onClick={runExtract}
+              disabled={extracting || (!extractFile && !extractText.trim())}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
+            >
+              {extracting
+                ? <><Loader2 className="animate-spin" size={18} /> Extracting...</>
+                : <><Sparkles size={18} /> Extract &amp; Add to Case</>
+              }
+            </button>
+            {!activeCase && (
+              <p className="text-slate-500 text-xs text-center">No active case — entities will be shown but not saved. Start a case with Maya to enable auto-population.</p>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {extractResults.length === 0 && !extracting && (
+              <div className="bg-slate-800 border border-slate-700 rounded-xl p-10 text-center text-slate-500">
+                <Sparkles className="mx-auto mb-2 opacity-30" size={40} />
+                <div className="font-medium">Extracted entities appear here</div>
+                <div className="text-xs mt-1">Parties, claims, dates, facts, and evidence — parsed and added to your case in one click</div>
+              </div>
+            )}
+            {extractResults.map((r, idx) => (
+              <div key={idx} className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <FileText size={14} className="text-blue-400 shrink-0" />
+                      <span className="text-white font-semibold text-sm">{r.fileName}</span>
+                    </div>
+                    {r.summary && <p className="text-slate-400 text-xs mt-1 leading-relaxed">{r.summary}</p>}
+                  </div>
+                  {r.addedToCase && (
+                    <span className="shrink-0 flex items-center gap-1 bg-green-500/10 text-green-400 text-xs px-2 py-1 rounded-full border border-green-500/20 whitespace-nowrap">
+                      <CheckCircle size={11} /> Added to case
+                    </span>
+                  )}
+                </div>
+
+                {r.parties.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 text-blue-400 text-xs font-semibold mb-1.5 uppercase tracking-wide">
+                      <Users size={11} /> Parties ({r.parties.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {r.parties.map((p, j) => (
+                        <span key={j} className="bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs px-2 py-0.5 rounded">{p}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {r.claims.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 text-purple-400 text-xs font-semibold mb-1.5 uppercase tracking-wide">
+                      <AlertTriangle size={11} /> Claims ({r.claims.length})
+                    </div>
+                    <div className="space-y-0.5">
+                      {r.claims.map((c, j) => <div key={j} className="text-slate-300 text-xs">• {c}</div>)}
+                    </div>
+                  </div>
+                )}
+
+                {r.key_facts.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 text-yellow-400 text-xs font-semibold mb-1.5 uppercase tracking-wide">
+                      <Gem size={11} /> Key Facts ({r.key_facts.length})
+                    </div>
+                    <div className="space-y-0.5">
+                      {r.key_facts.slice(0, 5).map((f, j) => <div key={j} className="text-slate-300 text-xs">• {f}</div>)}
+                      {r.key_facts.length > 5 && <div className="text-slate-500 text-xs italic">+{r.key_facts.length - 5} more added to case file</div>}
+                    </div>
+                  </div>
+                )}
+
+                {r.dates.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 text-orange-400 text-xs font-semibold mb-1.5 uppercase tracking-wide">
+                      <Clock size={11} /> Dates &amp; Events ({r.dates.length})
+                    </div>
+                    <div className="space-y-1">
+                      {r.dates.slice(0, 6).map((d, j) => (
+                        <div key={j} className="flex items-start gap-2 text-xs">
+                          <span className="text-orange-400 font-mono shrink-0 min-w-[90px]">{d.date}</span>
+                          <span className="text-slate-300 flex-1">{d.event}</span>
+                          {d.is_deadline && <span className="bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded text-xs font-medium shrink-0">deadline</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {r.evidence_items.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 text-green-400 text-xs font-semibold mb-1.5 uppercase tracking-wide">
+                      <CheckCircle size={11} /> Evidence Items ({r.evidence_items.length})
+                    </div>
+                    <div className="space-y-0.5">
+                      {r.evidence_items.map((ev, j) => <div key={j} className="text-slate-300 text-xs">• {ev}</div>)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
