@@ -11,13 +11,13 @@ import { AGENTS } from '../agents/personas';
 export type CaseStage = 'intake' | 'investigation' | 'research' | 'discovery' | 'pretrial' | 'trial' | 'closed';
 
 export const CASE_STAGES: { id: CaseStage; label: string }[] = [
-  { id: 'intake', label: 'Intake' },
+  { id: 'intake',        label: 'Intake' },
   { id: 'investigation', label: 'Investigation' },
-  { id: 'research', label: 'Research' },
-  { id: 'discovery', label: 'Discovery' },
-  { id: 'pretrial', label: 'Pre-Trial' },
-  { id: 'trial', label: 'Trial' },
-  { id: 'closed', label: 'Closed' },
+  { id: 'research',      label: 'Research' },
+  { id: 'discovery',     label: 'Discovery' },
+  { id: 'pretrial',      label: 'Pre-Trial' },
+  { id: 'trial',         label: 'Trial' },
+  { id: 'closed',        label: 'Closed' },
 ];
 
 export interface CaseTask {
@@ -36,11 +36,9 @@ export interface CaseActivity {
   action: string;
   detail?: string;
   at: string;
-  minutesSaved?: number; // estimated billable minutes this action saved
+  minutesSaved?: number;
 }
 
-// A single learned fact — the case brain grows one of these at a time,
-// from any agent, in any conversation, at any point in the case.
 export interface CaseFact {
   id: string;
   agentId: string;
@@ -52,7 +50,7 @@ export interface CaseDeadline {
   id: string;
   title: string;
   deadlineType: string;
-  dueDate: string;          // ISO date
+  dueDate: string;
   description: string;
   isCritical: boolean;
   isCompleted: boolean;
@@ -104,7 +102,7 @@ export interface CaseFile {
   research: CaseResearchNote[];
   activity: CaseActivity[];
   factLog: CaseFact[];
-  source?: 'attorney' | 'client-link'; // where the intake came from
+  source?: 'attorney' | 'client-link';
 }
 
 // ===== Storage & subscriptions =====
@@ -112,7 +110,6 @@ export interface CaseFile {
 const CASES_KEY = 'cb_cases';
 const ACTIVE_KEY = 'cb_active_case';
 
-// Older stored cases may predate newer fields — fill the gaps on load.
 function normalize(c: any): CaseFile {
   const defaults = {
     parties: [], claims: [], nextSteps: [], tasks: [], deadlines: [],
@@ -139,10 +136,6 @@ let version = 0;
 const listeners = new Set<() => void>();
 
 // ===== Cloud sync (Supabase) =====
-// Makes the public intake link real: a case a client creates in their browser
-// lands in the firm's Supabase table and shows up on the attorney's device.
-// Table: create table case_files (id text primary key, data jsonb, updated_at timestamptz);
-// Fully optional — without env keys (or if requests fail) everything stays local.
 
 let cloud: SupabaseClient | null = null;
 try {
@@ -166,11 +159,10 @@ function schedulePush() {
       .filter(c => ids.includes(c.id))
       .map(c => ({ id: c.id, data: c, updated_at: c.updatedAt }));
     if (rows.length === 0) return;
-    try { await cloud!.from('case_files').upsert(rows); } catch { /* offline — stays local */ }
+    try { await cloud!.from('case_files').upsert(rows); } catch { /* offline */ }
   }, 1200);
 }
 
-// Pull cloud cases on startup and merge by most-recent update.
 export async function initCloudSync() {
   if (!cloud) return;
   try {
@@ -194,7 +186,7 @@ export async function initCloudSync() {
       version++;
       listeners.forEach(l => l());
     }
-  } catch { /* unreachable — stay local */ }
+  } catch { /* stay local */ }
 }
 
 function persist(touchedIds?: string[]) {
@@ -286,7 +278,9 @@ function generateHandoffTasks(s: IntakeSummary): CaseTask[] {
       title: 'Calculate SOL & calendar all deadlines',
       detail: s.statute_of_limitations_concern
         ? `⚠️ Maya flagged an SOL concern: ${s.statute_of_limitations_concern}. Verify the limitations period and calendar it immediately.`
-        : `Verify the statute of limitations for ${s.case_type || 'this case'}${s.incident_date ? ` (incident: ${s.incident_date})` : ''} and calendar all filing deadlines.`,
+        : `Verify the statute of limitations for ${s.case_type || 'this case'}${
+            s.incident_date ? ` (incident: ${s.incident_date})` : ''
+          } and calendar all filing deadlines.`,
     },
     {
       id: uid(), agentId: 'doc', status: 'pending', route: '/documents',
@@ -301,9 +295,16 @@ function generateHandoffTasks(s: IntakeSummary): CaseTask[] {
         : 'Identify the strongest legal theories and supporting precedent for this case.',
     },
     {
+      id: uid(), agentId: 'nova', status: 'pending', route: '/contracts',
+      title: 'Review relevant contracts & agreements',
+      detail: 'Analyze any contracts, retainer agreements, or transactional documents connected to this case for risky clauses, missing protections, and redline opportunities.',
+    },
+    {
       id: uid(), agentId: 'max', status: 'pending', route: '/e-filing',
       title: 'Confirm court & filing requirements',
-      detail: `Identify the proper court${s.jurisdiction ? ` in ${s.jurisdiction}` : ''}, formatting rules, filing fees, and service requirements.`,
+      detail: `Identify the proper court${
+        s.jurisdiction ? ` in ${s.jurisdiction}` : ''
+      }, formatting rules, filing fees, and service requirements.`,
     },
     {
       id: uid(), agentId: 'rex', status: 'pending', route: '/witnesses',
@@ -447,10 +448,6 @@ export function addResearchNote(caseId: string, question: string, findings: stri
 }
 
 // ===== Continuous case growth (the case brain) =====
-// Agents don't pass information down a line once — every conversation can
-// surface new facts at any time. Agents emit a <CASE_UPDATE> block whenever
-// they learn something new; we parse it and merge it into the case file so
-// every other agent immediately knows.
 
 export interface CaseUpdate {
   new_facts?: string[];
@@ -463,7 +460,6 @@ export interface CaseUpdate {
   incident_date?: string;
 }
 
-// Appended to every agent's system prompt so the whole firm speaks the protocol.
 export const CASE_UPDATE_DIRECTIVE = `
 IMPORTANT — LIVING CASE FILE PROTOCOL:
 Whenever this conversation reveals NEW information about the case (new facts, parties, claims, dates, deadlines, jurisdiction, or a material change to the situation), append a machine-readable block at the very END of your reply, after your normal response:
@@ -520,20 +516,23 @@ export function applyCaseUpdate(caseId: string, agentId: string, u: CaseUpdate):
     if (u.jurisdiction && !c.jurisdiction) { c.jurisdiction = u.jurisdiction; applied = true; }
     if (u.incident_date && !c.incidentDate) { c.incidentDate = u.incident_date; applied = true; }
     if (u.summary_update) {
-      c.summary = c.summary ? `${c.summary}\n\nUpdate (${new Date().toLocaleDateString()}): ${u.summary_update}` : u.summary_update;
+      c.summary = c.summary
+        ? `${c.summary}\n\nUpdate (${new Date().toLocaleDateString()}): ${u.summary_update}`
+        : u.summary_update;
       applied = true;
     }
     if (applied) {
-      const count = (u.new_facts?.length || 0) + (u.new_parties?.length || 0) + (u.new_claims?.length || 0) + (u.new_deadlines?.length || 0);
+      const count = (u.new_facts?.length || 0) + (u.new_parties?.length || 0)
+        + (u.new_claims?.length || 0) + (u.new_deadlines?.length || 0);
       c.activity = [{
         id: uid(), agentId, at: now,
         action: 'Updated the case file with new information',
         detail: [
-          u.new_facts?.length ? `${u.new_facts.length} new fact(s)` : '',
-          u.new_parties?.length ? `${u.new_parties.length} new part(ies)` : '',
-          u.new_claims?.length ? `${u.new_claims.length} new claim(s)` : '',
+          u.new_facts?.length    ? `${u.new_facts.length} new fact(s)` : '',
+          u.new_parties?.length  ? `${u.new_parties.length} new part(ies)` : '',
+          u.new_claims?.length   ? `${u.new_claims.length} new claim(s)` : '',
           u.new_deadlines?.length ? `${u.new_deadlines.length} new deadline(s)` : '',
-          u.summary_update ? 'summary updated' : '',
+          u.summary_update       ? 'summary updated' : '',
         ].filter(Boolean).join(', ') || 'case details refined',
         minutesSaved: Math.min(30, 5 * Math.max(1, count)),
       }, ...c.activity];
@@ -542,8 +541,6 @@ export function applyCaseUpdate(caseId: string, agentId: string, u: CaseUpdate):
   return applied;
 }
 
-// Convenience: parse an agent reply, merge any update into the case, and
-// return the reply with the protocol block stripped for display/speech.
 export function ingestAgentReply(caseId: string | undefined, agentId: string, reply: string): string {
   if (caseId) {
     const update = extractCaseUpdate(reply);
@@ -553,7 +550,6 @@ export function ingestAgentReply(caseId: string | undefined, agentId: string, re
 }
 
 // ===== AI context injection =====
-// Every module passes this into its AI calls so agents already know the case.
 
 export function buildCaseContext(c: CaseFile): string {
   const lines: string[] = [
@@ -589,7 +585,6 @@ export function buildCaseContext(c: CaseFile): string {
   return lines.join('\n');
 }
 
-// Short one-line case brief used to prefill "case context" inputs.
 export function caseBrief(c: CaseFile): string {
   const parts = [`${c.clientName} — ${c.caseType}`];
   if (c.jurisdiction) parts.push(c.jurisdiction);

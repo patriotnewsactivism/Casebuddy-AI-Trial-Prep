@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { Check, Star, Crown, ArrowRight, Shield, Users, FileText, Sparkles, X, Zap, Lock, Headphones } from 'lucide-react';
 
 const FEATURES = [
-  { category: 'AI Agents (All 8 Included)', items: [
+  { category: 'AI Agents (All 9 Included)', items: [
     'Maya — Smart AI Intake & Case Builder',
     'Doc — Document Lab + Discovery Miner',
+    'Nova — Contract Review & Redline Counsel',
     'Rex — Trial Coach & Witness Prep',
     'Jules — Jury Simulator (6 AI Jurors)',
     'Lex — Legal Research + Conflict Checker',
@@ -49,7 +50,7 @@ const TESTIMONIALS = [
 ];
 
 const FAQ = [
-  { q: 'What happens during my 2-week free trial?', a: 'You get full, unrestricted access to all 8 AI agents, every integration, and unlimited queries for 14 days. No credit card required to start. If you love it (you will), subscribe at the end of your trial.' },
+  { q: 'What happens during my 2-week free trial?', a: 'You get full, unrestricted access to all 9 AI agents, every integration, and unlimited queries for 14 days. No credit card required to start. If you love it (you will), subscribe at the end of your trial.' },
   { q: 'Is my data secure?', a: 'Yes. All data is encrypted at rest and in transit. We use Supabase (PostgreSQL) with row-level security. We never train AI models on your case data. Attorney-client privilege is maintained.' },
   { q: 'Can I cancel anytime?', a: 'Absolutely. No contracts, no commitment. Cancel from your dashboard and your subscription ends at the current billing period. Export all your case data anytime.' },
   { q: 'Which AI model powers CaseBuddy?', a: 'CaseBuddy runs on Gemini 2.5 Pro — Google\'s most capable reasoning model. Every agent has full access to Pro-tier intelligence.' },
@@ -63,8 +64,17 @@ export default function Pricing() {
   const [annual, setAnnual] = useState(false);
 
   const monthlyPrice = 499;
-  const annualMonthly = 399; // ~20% savings
+  const annualMonthly = 399;
   const price = annual ? annualMonthly : monthlyPrice;
+
+  const handleStartTrial = () => {
+    const link = process.env.REACT_APP_STRIPE_PAYMENT_LINK;
+    if (link) {
+      window.open(link, '_blank', 'noopener,noreferrer');
+    } else {
+      window.location.href = 'mailto:support@casebuddy.live?subject=CaseBuddy%20Trial%20Request&body=Hi%2C%20I%27d%20like%20to%20start%20my%20free%20trial.';
+    }
+  };
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-16">
@@ -78,7 +88,7 @@ export default function Pricing() {
           <span className="bg-gradient-to-r from-blue-400 via-violet-400 to-pink-400 bg-clip-text text-transparent">One Price. Everything Included.</span>
         </h1>
         <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-          8 AI agents. Unlimited cases. Unlimited users. Unlimited AI queries.<br />
+          9 AI agents. Unlimited cases. Unlimited users. Unlimited AI queries.<br />
           Two weeks free to prove it.
         </p>
       </div>
@@ -86,7 +96,6 @@ export default function Pricing() {
       {/* Single Pricing Card */}
       <div className="max-w-xl mx-auto">
         <div className="relative bg-slate-800 border-2 border-violet-500/50 rounded-2xl overflow-hidden shadow-2xl shadow-violet-500/10">
-          {/* Header gradient */}
           <div className="bg-gradient-to-br from-violet-600 to-blue-600 p-6 text-center">
             <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-4 shadow-lg">
               <Crown size={30} className="text-white" />
@@ -118,17 +127,20 @@ export default function Pricing() {
             </div>
 
             {/* CTA */}
-            <button className="w-full py-4 rounded-xl font-bold text-base bg-gradient-to-r from-violet-600 to-blue-600 text-white hover:opacity-90 transition-opacity shadow-lg shadow-violet-500/20 mb-6">
+            <button
+              onClick={handleStartTrial}
+              className="w-full py-4 rounded-xl font-bold text-base bg-gradient-to-r from-violet-600 to-blue-600 text-white hover:opacity-90 transition-opacity shadow-lg shadow-violet-500/20 mb-6"
+            >
               Start Your 2-Week Free Trial <ArrowRight size={16} className="inline ml-1" />
             </button>
 
             {/* Key highlights */}
             <div className="grid grid-cols-2 gap-3 mb-2">
               {[
-                { icon: Users, label: 'Unlimited Users' },
-                { icon: Zap, label: 'Unlimited AI Queries' },
+                { icon: Users,    label: 'Unlimited Users' },
+                { icon: Zap,      label: 'Unlimited AI Queries' },
                 { icon: FileText, label: 'Unlimited Cases' },
-                { icon: Lock, label: 'SOC 2 Ready' },
+                { icon: Lock,     label: 'SOC 2 Ready' },
               ].map(({ icon: Icon, label }) => (
                 <div key={label} className="flex items-center gap-2 bg-slate-900/50 rounded-lg p-3">
                   <Icon size={16} className="text-violet-400 flex-shrink-0" />
@@ -164,26 +176,27 @@ export default function Pricing() {
         </div>
       </div>
 
-      {/* Agent Grid */}
+      {/* Agent Grid — all 9 */}
       <div>
         <h2 className="text-white font-bold text-xl text-center mb-2">Meet Your AI Legal Team</h2>
-        <p className="text-slate-400 text-sm text-center mb-8">8 specialized agents, each an expert in their domain.</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <p className="text-slate-400 text-sm text-center mb-8">9 specialized agents, each an expert in their domain.</p>
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
           {[
-            { emoji: '⚖️', name: 'Maya', role: 'Intake Specialist', desc: 'Interviews clients, builds case files' },
-            { emoji: '📄', name: 'Doc', role: 'Document Analyst', desc: 'Analyze any document, find gems' },
-            { emoji: '⚔️', name: 'Rex', role: 'Trial Coach', desc: 'Cross-exam & witness prep' },
-            { emoji: '🎭', name: 'Jules', role: 'Jury Simulator', desc: '6 AI juror personalities' },
-            { emoji: '📚', name: 'Lex', role: 'Legal Researcher', desc: 'Case law, statutes, strategy' },
-            { emoji: '⏱️', name: 'Sol', role: 'Deadline Tracker', desc: 'SOL calculator + reminders' },
-            { emoji: '💼', name: 'Sierra', role: 'Legal Secretary', desc: '24/7 client intake widget' },
-            { emoji: '🗂️', name: 'Max', role: 'E-Filing Clerk', desc: 'Court records + filing guide' },
-          ].map(agent => (
-            <div key={agent.name} className="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center hover:border-violet-500/40 transition-colors">
-              <span className="text-3xl block mb-2">{agent.emoji}</span>
-              <p className="text-white text-sm font-bold">{agent.name}</p>
-              <p className="text-violet-400 text-xs font-medium">{agent.role}</p>
-              <p className="text-slate-500 text-xs mt-1">{agent.desc}</p>
+            { emoji: '⚖️', name: 'Maya',   role: 'Intake Specialist',    desc: 'Interviews clients, builds case files' },
+            { emoji: '🔍', name: 'Doc',    role: 'Document Analyst',      desc: 'Analyze any document, find gems' },
+            { emoji: '📝', name: 'Nova',   role: 'Contract Counsel',      desc: 'Review contracts, flag risky clauses' },
+            { emoji: '⚔️', name: 'Rex',    role: 'Trial Coach',           desc: 'Cross-exam & witness prep' },
+            { emoji: '🎭', name: 'Jules',  role: 'Jury Simulator',        desc: '6 AI juror personalities' },
+            { emoji: '📚', name: 'Lex',    role: 'Legal Researcher',      desc: 'Case law, statutes, strategy' },
+            { emoji: '⏱️', name: 'Sol',    role: 'Deadline Tracker',      desc: 'SOL calculator + reminders' },
+            { emoji: '💼', name: 'Sierra', role: 'Legal Secretary',       desc: '24/7 client intake widget' },
+            { emoji: '🗂️', name: 'Max',    role: 'E-Filing Clerk',        desc: 'Court records + filing guide' },
+          ].map(a => (
+            <div key={a.name} className="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center hover:border-violet-500/40 transition-colors">
+              <span className="text-3xl block mb-2">{a.emoji}</span>
+              <p className="text-white text-sm font-bold">{a.name}</p>
+              <p className="text-violet-400 text-xs font-medium">{a.role}</p>
+              <p className="text-slate-500 text-xs mt-1">{a.desc}</p>
             </div>
           ))}
         </div>
@@ -251,10 +264,13 @@ export default function Pricing() {
       <div className="bg-gradient-to-br from-violet-600/20 to-blue-600/20 border border-violet-500/30 rounded-2xl p-8 text-center">
         <h2 className="text-white text-2xl font-black mb-2">Ready to Win Your Case?</h2>
         <p className="text-slate-300 text-sm mb-4 max-w-xl mx-auto">
-          8 AI agents. Unlimited everything. Two weeks free.
+          9 AI agents. Unlimited everything. Two weeks free.
         </p>
         <div className="flex flex-col items-center gap-3">
-          <button className="bg-gradient-to-r from-violet-600 to-blue-600 text-white font-bold px-8 py-3.5 rounded-xl text-sm hover:opacity-90 transition-opacity shadow-lg shadow-violet-500/20">
+          <button
+            onClick={handleStartTrial}
+            className="bg-gradient-to-r from-violet-600 to-blue-600 text-white font-bold px-8 py-3.5 rounded-xl text-sm hover:opacity-90 transition-opacity shadow-lg shadow-violet-500/20"
+          >
             Start Your 2-Week Free Trial <ArrowRight size={14} className="inline ml-1" />
           </button>
           <p className="text-slate-500 text-xs">No credit card required · Cancel anytime</p>

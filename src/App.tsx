@@ -21,11 +21,16 @@ import Pricing from './pages/Pricing';
 import ProductTour from './pages/ProductTour';
 import SeoPages from './pages/SeoPages';
 import Settings from './pages/Settings';
+import ContractReview from './pages/ContractReview';
 import OnboardingModal from './components/OnboardingModal';
 import PwaInstall from './components/PwaInstall';
 import CaseAssistant from './components/CaseAssistant';
 import { initCloudSync } from './lib/caseStore';
-import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2, CreditCard, Settings as SettingsIcon } from 'lucide-react';
+import {
+  Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock,
+  Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown,
+  ChevronRight, Users, BarChart2, CreditCard, Settings as SettingsIcon, ScrollText,
+} from 'lucide-react';
 
 interface NavSection {
   title: string;
@@ -47,6 +52,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/documents', label: 'Document Lab — Doc', icon: FileSearch, agent: 'Doc' },
       { to: '/discovery', label: 'Discovery Miner — Doc', icon: Microscope, agent: 'Doc' },
+      { to: '/contracts', label: 'Contract Review — Nova', icon: ScrollText, agent: 'Nova' },
     ],
   },
   {
@@ -80,14 +86,15 @@ const NAV_SECTIONS: NavSection[] = [
 
 // Agent accent colors for nav
 const AGENT_COLORS: Record<string, string> = {
-  Maya: 'text-violet-400',
-  Lex: 'text-indigo-400',
-  Doc: 'text-blue-400',
-  Rex: 'text-orange-400',
-  Sol: 'text-yellow-400',
+  Maya:   'text-violet-400',
+  Lex:    'text-indigo-400',
+  Doc:    'text-blue-400',
+  Rex:    'text-orange-400',
+  Sol:    'text-yellow-400',
   Sierra: 'text-cyan-400',
-  Jules: 'text-pink-400',
-  Max: 'text-slate-400',
+  Jules:  'text-pink-400',
+  Max:    'text-slate-400',
+  Nova:   'text-emerald-400',
 };
 
 function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
@@ -127,10 +134,7 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
                       }
                       onClick={() => setOpen(false)}>
                       <Icon size={14} className="flex-shrink-0" />
-                      <span className="truncate">{agent ? (
-                        // Show agent name highlighted
-                        label.replace(` — ${agent}`, '')
-                      ) : label}</span>
+                      <span className="truncate">{agent ? label.replace(` — ${agent}`, '') : label}</span>
                       {agent && <span className={`ml-auto text-xs font-bold ${AGENT_COLORS[agent]} flex-shrink-0`}>{agent}</span>}
                     </NavLink>
                   ))}
@@ -148,7 +152,6 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
   );
 }
 
-// App shell — sidebar + content area for every page except the public landing page
 function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -170,7 +173,6 @@ function AppShell() {
         <Outlet />
       </main>
 
-      {/* Firm-wide voice assistant — talk to the team from any page */}
       <CaseAssistant />
       <PwaInstall />
     </div>
@@ -178,13 +180,11 @@ function AppShell() {
 }
 
 export default function App() {
-  // Pull cloud-synced cases (e.g. intakes clients submitted via /start)
   useEffect(() => { initCloudSync(); }, []);
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public pages — full-bleed, no sidebar */}
         <Route path="/" element={<Landing />} />
         <Route path="/start" element={<PublicIntake />} />
 
@@ -197,6 +197,7 @@ export default function App() {
           {/* Documents */}
           <Route path="/documents" element={<DocumentLab />} />
           <Route path="/discovery" element={<DiscoveryMiner />} />
+          <Route path="/contracts" element={<ContractReview />} />
 
           {/* Research */}
           <Route path="/research" element={<LegalResearchHub />} />
