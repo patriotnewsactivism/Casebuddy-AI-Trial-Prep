@@ -1,30 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { Scale, ArrowRight, Sparkles, Users, FileSearch, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { createDemoCase } from '../lib/caseStore';
 
 const STEPS = [
   {
     title: 'Welcome to CaseBuddy AI',
-    subtitle: 'Your all-in-one AI legal team — 8 specialized agents ready to help you prepare, research, and win.',
+    subtitle: 'Your all-in-one AI legal team — 9 specialized agents ready to help you prepare, research, and win.',
     icon: Scale,
     color: 'from-blue-600 to-violet-600',
     content: (
-      <div className="grid grid-cols-2 gap-3 mt-6">
+      <div className="grid grid-cols-3 gap-2 mt-6">
         {[
-          { emoji: '⚖️', name: 'Maya', role: 'Intake', desc: 'Smart client interviews' },
-          { emoji: '🔍', name: 'Doc', role: 'Documents', desc: 'Analyze & discover' },
-          { emoji: '⚔️', name: 'Rex', role: 'Trial Coach', desc: 'Practice your case' },
-          { emoji: '🎭', name: 'Jules', role: 'Jury Sim', desc: '6 AI juror profiles' },
-          { emoji: '📚', name: 'Lex', role: 'Research', desc: 'Case law & strategy' },
-          { emoji: '⏱️', name: 'Sol', role: 'Deadlines', desc: 'Never miss a date' },
-          { emoji: '💼', name: 'Sierra', role: 'Secretary', desc: '24/7 lead capture' },
+          { emoji: '⚖️', name: 'Maya',   role: 'Intake',     desc: 'Smart client interviews' },
+          { emoji: '🔍', name: 'Doc',    role: 'Documents',  desc: 'Analyze & discover' },
+          { emoji: '⚔️', name: 'Rex',    role: 'Trial Coach', desc: 'Practice your case' },
+          { emoji: '🎭', name: 'Jules',  role: 'Jury Sim',   desc: '6 AI juror profiles' },
+          { emoji: '📚', name: 'Lex',    role: 'Research',   desc: 'Case law & strategy' },
+          { emoji: '⏱️', name: 'Sol',    role: 'Deadlines',  desc: 'Never miss a date' },
+          { emoji: '\ud83d�', name: 'Sierra', role: 'Secretary',  desc: '24/7 lead capture' },
           { emoji: '🗂️', name: 'Max', role: 'E-Filing', desc: 'Court records' },
+          { emoji: '📝', name: 'Nova',   role: 'Contracts',  desc: 'Review & redline' },
         ].map(agent => (
-          <div key={agent.name} className="flex items-center gap-3 bg-slate-800 rounded-xl p-3">
+          <div key={agent.name} className="flex flex-col items-center gap-1.5 bg-slate-800 rounded-xl p-2.5 text-center">
             <span className="text-xl">{agent.emoji}</span>
             <div>
-              <p className="text-white text-xs font-semibold">{agent.name} — {agent.role}</p>
-              <p className="text-slate-500 text-xs">{agent.desc}</p>
+              <p className="text-white text-xs font-semibold">{agent.name}</p>
+              <p className="text-slate-500 text-xs">{agent.role}</p>
             </div>
           </div>
         ))}
@@ -52,7 +54,7 @@ const STEPS = [
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <Sparkles size={12} className="text-violet-400" />
-          <span>Maya auto-creates your case file, identifies claims, and calculates deadlines</span>
+          <span>Maya auto-creates your case file, identifies claims, and briefs all 9 departments</span>
         </div>
       </div>
     ),
@@ -65,10 +67,10 @@ const STEPS = [
     content: (
       <div className="mt-6 space-y-3">
         {[
-          { step: '1', label: 'Upload documents', desc: 'Court filings, contracts, police reports, medical records', color: 'bg-blue-600' },
-          { step: '2', label: 'AI analysis', desc: 'Doc extracts facts, flags risks, finds smoking guns', color: 'bg-cyan-600' },
-          { step: '3', label: 'Prep witnesses', desc: 'Rex generates cross & direct examination questions', color: 'bg-orange-600' },
-          { step: '4', label: 'Practice trial', desc: 'Face an AI judge, opposing counsel, and 6 AI jurors', color: 'bg-red-600' },
+          { step: '1', label: 'AI Intake',          desc: 'Maya interviews the client & briefs all 9 departments', color: 'bg-violet-600' },
+          { step: '2', label: 'Document Analysis',  desc: 'Doc extracts facts, flags risks, finds smoking guns',   color: 'bg-blue-600' },
+          { step: '3', label: 'Research & Contracts', desc: 'Lex researches claims, Nova reviews agreements',      color: 'bg-indigo-600' },
+          { step: '4', label: 'Prep & Practice',    desc: 'Rex prepares witnesses, Jules stress-tests the jury',   color: 'bg-orange-600' },
         ].map(item => (
           <div key={item.step} className="flex items-center gap-3 bg-slate-800 rounded-xl p-3">
             <div className={`w-8 h-8 rounded-lg ${item.color} flex items-center justify-center text-white font-black text-sm flex-shrink-0`}>
@@ -90,6 +92,7 @@ const ONBOARDING_KEY = 'casebuddy_onboarded';
 export default function OnboardingModal() {
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const done = localStorage.getItem(ONBOARDING_KEY);
@@ -99,6 +102,12 @@ export default function OnboardingModal() {
   const dismiss = () => {
     localStorage.setItem(ONBOARDING_KEY, 'true');
     setShow(false);
+  };
+
+  const handleDemo = () => {
+    createDemoCase();
+    dismiss();
+    navigate('/dashboard');
   };
 
   if (!show) return null;
@@ -132,15 +141,23 @@ export default function OnboardingModal() {
             ))}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             {step > 0 && (
               <button onClick={() => setStep(s => s - 1)} className="text-slate-400 hover:text-white text-sm px-4 py-2">Back</button>
             )}
             {isLast ? (
-              <Link to="/intake" onClick={dismiss}
-                className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-blue-600 text-white font-bold px-6 py-2.5 rounded-xl text-sm hover:opacity-90 transition-opacity">
-                Start with Maya <ArrowRight size={14} />
-              </Link>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleDemo}
+                  className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors"
+                >
+                  <Sparkles size={13} className="text-blue-400" /> Try Demo
+                </button>
+                <Link to="/intake" onClick={dismiss}
+                  className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-blue-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm hover:opacity-90 transition-opacity">
+                  Start with Maya <ArrowRight size={14} />
+                </Link>
+              </div>
             ) : (
               <button onClick={() => setStep(s => s + 1)}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors">

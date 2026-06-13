@@ -22,10 +22,10 @@ export const CASE_STAGES: { id: CaseStage; label: string }[] = [
 
 export interface CaseTask {
   id: string;
-  agentId: string;          // persona id from agents/personas.ts
+  agentId: string;
   title: string;
   detail: string;
-  route: string;            // module where the work happens
+  route: string;
   status: 'pending' | 'in_progress' | 'done';
   completedAt?: string;
 }
@@ -364,6 +364,203 @@ export function createBlankCase(clientName: string, caseType: string): CaseFile 
   return createCaseFromIntake({ client_name: clientName, case_type: caseType });
 }
 
+export function createDemoCase(): CaseFile {
+  const now = new Date().toISOString();
+  const d = (offsetDays: number) =>
+    new Date(Date.now() + offsetDays * 86400000).toISOString().split('T')[0];
+
+  const c: CaseFile = {
+    id: uid(),
+    source: 'attorney',
+    createdAt: now,
+    updatedAt: now,
+    clientName: 'Jane Doe (Demo)',
+    caseType: 'Personal Injury — Auto Accident',
+    jurisdiction: 'California',
+    incidentDate: d(-90),
+    parties: [
+      'Jane Doe (Plaintiff)',
+      'Michael Johnson (Defendant)',
+      'State Farm Insurance (Insurer)',
+    ],
+    claims: [
+      'Negligence',
+      'Negligence Per Se (VC §23123 — cell phone use)',
+      'Property Damage',
+      'Lost Wages',
+      'Pain & Suffering',
+    ],
+    summary:
+      'Client Jane Doe was rear-ended at a red light on Hwy 101 by defendant Michael Johnson ' +
+      'who was texting while driving. Jane suffered whiplash (Grade II), herniated disc at L4-L5, ' +
+      'and a concussion. She missed 6 weeks of work as an RN (~$8,400 lost wages). ' +
+      "State Farm offered $12,000 — far below estimated damages of $120,000–$180,000.",
+    viabilityScore: 88,
+    urgency: 'high',
+    solConcern:
+      'California 2-year SOL (CCP §335.1). Incident was 90 days ago. ' +
+      'Must file by ' + d(640) + '.',
+    nextSteps: [
+      'Obtain complete police report & CHP accident reconstruction report',
+      "Subpoena Johnson's cell phone records to confirm VC §23123 violation",
+      'Retain accident reconstruction expert',
+      "Counter State Farm's $12,000 offer with $180,000 demand letter",
+      'Schedule deposition of eyewitness Robert Chen',
+    ],
+    stage: 'investigation',
+    tasks: [
+      {
+        id: uid(), agentId: 'maya', status: 'done', route: '/conflict-checker',
+        title: 'Run conflict of interest check',
+        detail: 'Cross-referenced Jane Doe and Michael Johnson — no conflicts found. Cleared to proceed.',
+        completedAt: new Date(Date.now() - 7200000).toISOString(),
+      },
+      {
+        id: uid(), agentId: 'sol', status: 'done', route: '/deadlines',
+        title: 'Calculate SOL & calendar all deadlines',
+        detail: 'California 2-year SOL confirmed (CCP §335.1). Counter-offer deadline and HIPAA renewal calendared.',
+        completedAt: new Date(Date.now() - 3600000).toISOString(),
+      },
+      {
+        id: uid(), agentId: 'doc', status: 'pending', route: '/documents',
+        title: 'Collect & analyze client documents',
+        detail: 'Police report and ER/MRI records uploaded. Analyze for key facts, legal gems, and risks.',
+      },
+      {
+        id: uid(), agentId: 'lex', status: 'pending', route: '/research',
+        title: 'Research legal claims & strategy',
+        detail: 'Research negligence per se under VC §23123. Find comparable verdicts for rear-end/TBI cases in California.',
+      },
+      {
+        id: uid(), agentId: 'nova', status: 'pending', route: '/contracts',
+        title: 'Review relevant contracts & agreements',
+        detail: 'Review retainer agreement and any insurance policy language regarding UM/UIM coverage.',
+      },
+      {
+        id: uid(), agentId: 'max', status: 'pending', route: '/e-filing',
+        title: 'Confirm court & filing requirements',
+        detail: 'Identify proper California superior court, filing fees, and proof of service requirements.',
+      },
+      {
+        id: uid(), agentId: 'rex', status: 'pending', route: '/witnesses',
+        title: 'Identify & prepare witnesses',
+        detail: 'Prepare Jane Doe and eyewitness Robert Chen for deposition. Build direct + cross outlines.',
+      },
+      {
+        id: uid(), agentId: 'jules', status: 'pending', route: '/jury',
+        title: 'Stress-test the case theory',
+        detail: 'Run $180,000 negligence theory past simulated jury. Identify weaknesses in damages narrative.',
+      },
+    ],
+    deadlines: [
+      {
+        id: uid(), title: 'Statute of Limitations', deadlineType: 'SOL',
+        dueDate: d(640),
+        description: 'California CCP §335.1 — 2 years from incident date.',
+        isCritical: true, isCompleted: false,
+      },
+      {
+        id: uid(), title: 'Counter State Farm Offer', deadlineType: 'Negotiation',
+        dueDate: d(14),
+        description: "Issue demand letter countering State Farm's $12,000 with $180,000.",
+        isCritical: true, isCompleted: false,
+      },
+      {
+        id: uid(), title: 'Medical Records Authorization Expires', deadlineType: 'Discovery',
+        dueDate: d(30),
+        description: "HIPAA authorization for St. Mary's Hospital expires — renew to obtain complete billing records.",
+        isCritical: false, isCompleted: false,
+      },
+    ],
+    documents: [
+      {
+        id: uid(), fileName: 'CHP Police Report — Case #2024-0891.pdf', docType: 'Police Report',
+        summary:
+          'CHP confirms Johnson cited for VC §23123 (cell phone). Eyewitness Robert Chen identified. ' +
+          'Skid marks 12 ft — consistent with 40+ mph impact. No mechanical failure found on plaintiff vehicle.',
+        analyzedAt: new Date(Date.now() - 1800000).toISOString(),
+      },
+      {
+        id: uid(), fileName: "St. Mary's ER Records & MRI Report.pdf", docType: 'Medical Record',
+        summary:
+          'Cervical strain Grade II (whiplash), L4-L5 disc herniation on MRI (objective injury), ' +
+          'mild TBI confirmed. Discharged with PT referral. Radiologist: herniation “consistent with acute traumatic injury.” ' +
+          'No pre-existing conditions.',
+        analyzedAt: new Date(Date.now() - 1500000).toISOString(),
+      },
+    ],
+    witnesses: [
+      {
+        id: uid(), name: 'Robert Chen', side: 'Plaintiff',
+        preparedAt: now,
+        expectedTestimony:
+          "Eyewitness directly behind Johnson's vehicle. Saw Johnson looking down at phone for 3-4 seconds " +
+          'before impact. States Johnson never applied brakes. Strong lay testimony on distracted driving.',
+      },
+    ],
+    research: [
+      {
+        id: uid(),
+        question: 'Negligence per se — texting while driving in California',
+        findings:
+          'California Vehicle Code §23123 prohibits handheld cell phone use while driving. ' +
+          'Under Evidence Code §669, statutory violation creates rebuttable presumption of negligence. ' +
+          'See Deyo v. Kilbourne (1978) 84 Cal.App.3d 789. Strong per se basis — cell records critical.',
+        at: new Date(Date.now() - 900000).toISOString(),
+      },
+    ],
+    activity: [
+      {
+        id: uid(), agentId: 'lex', minutesSaved: 90,
+        at: new Date(Date.now() - 900000).toISOString(),
+        action: 'Researched negligence per se — California VC §23123',
+        detail:
+          'Evid. Code §669 creates rebuttable presumption. ' +
+          'Comparable verdicts: $145K–$210K for similar rear-end/herniation cases.',
+      },
+      {
+        id: uid(), agentId: 'sol', minutesSaved: 45,
+        at: new Date(Date.now() - 3600000).toISOString(),
+        action: 'Calendared SOL and all key deadlines',
+        detail: '2-year SOL under CCP §335.1. Counter-offer and HIPAA renewal deadlines added.',
+      },
+      {
+        id: uid(), agentId: 'maya', minutesSaved: 45,
+        at: new Date(Date.now() - 7200000).toISOString(),
+        action: 'Completed intake interview & opened case file',
+        detail: 'Briefed all 9 departments with handoff assignments. Viability score: 88/100.',
+      },
+    ],
+    factLog: [
+      {
+        id: uid(), agentId: 'doc', at: now,
+        fact: 'Defendant cited for VC §23123 (cell phone) — creates rebuttable presumption of negligence per se',
+      },
+      {
+        id: uid(), agentId: 'doc', at: now,
+        fact: 'MRI confirms L4-L5 disc herniation — objective evidence of serious injury, no pre-existing conditions',
+      },
+      {
+        id: uid(), agentId: 'maya', at: now,
+        fact: 'State Farm offered $12,000 against estimated $120,000–$180,000 total damages — 10 cents on the dollar',
+      },
+      {
+        id: uid(), agentId: 'maya', at: now,
+        fact: 'Plaintiff missed 6 weeks of work as RN ($8,400 lost wages) — documented in employment records',
+      },
+      {
+        id: uid(), agentId: 'doc', at: now,
+        fact: 'Eyewitness Robert Chen saw defendant look at phone 3-4 seconds before impact — no braking observed',
+      },
+    ],
+  };
+
+  cache = [c, ...cache];
+  persist([c.id]);
+  setActiveCaseId(c.id);
+  return c;
+}
+
 export function deleteCase(id: string) {
   cache = cache.filter(c => c.id !== id);
   if (localStorage.getItem(ACTIVE_KEY) === id) localStorage.removeItem(ACTIVE_KEY);
@@ -499,12 +696,12 @@ export function applyCaseUpdate(caseId: string, agentId: string, u: CaseUpdate):
     for (const cl of u.new_claims || []) {
       if (cl && !has(c.claims, cl)) { c.claims = [...c.claims, cl]; applied = true; }
     }
-    for (const d of u.new_deadlines || []) {
-      if (d.title && d.due_date && !c.deadlines.some(x => x.title.toLowerCase() === d.title.toLowerCase())) {
+    for (const dl of u.new_deadlines || []) {
+      if (dl.title && dl.due_date && !c.deadlines.some(x => x.title.toLowerCase() === dl.title.toLowerCase())) {
         c.deadlines = [...c.deadlines, {
-          id: uid(), title: d.title, deadlineType: 'Other', dueDate: d.due_date,
-          description: d.description || `Surfaced by ${AGENTS[agentId]?.name || 'the team'} mid-conversation`,
-          isCritical: !!d.critical, isCompleted: false,
+          id: uid(), title: dl.title, deadlineType: 'Other', dueDate: dl.due_date,
+          description: dl.description || `Surfaced by ${AGENTS[agentId]?.name || 'the team'} mid-conversation`,
+          isCritical: !!dl.critical, isCompleted: false,
         }];
         applied = true;
       }

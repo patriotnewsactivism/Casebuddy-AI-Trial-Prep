@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import {
   Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, Users,
-  BookOpen, Clock, BarChart2, TrendingUp, Link2, Check, Mic, ArrowRight,
+  BookOpen, Clock, BarChart2, TrendingUp, Link2, Check, Mic, ArrowRight, Sparkles,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AGENT_LIST, AGENTS } from '../agents/personas';
-import { useCases, useActiveCase, firmMinutesSaved, formatHoursSaved, cloudSyncEnabled } from '../lib/caseStore';
+import { useCases, useActiveCase, firmMinutesSaved, formatHoursSaved, cloudSyncEnabled, createDemoCase } from '../lib/caseStore';
 
 const BILLABLE_RATE = 250;
 
 const MODULES = [
   { to: '/intake',    label: 'AI Intake',         desc: 'Smart client intake with Maya, your AI paralegal',              icon: UserPlus,  color: 'from-violet-600 to-purple-700',  tag: 'Start Here', agent: 'Maya' },
-  { to: '/documents', label: 'Document Analysis', desc: 'Upload docs — get facts, gems, risks & admissibility',          icon: FileSearch, color: 'from-blue-600 to-cyan-700',    tag: null,        agent: 'Doc' },
+  { to: '/documents', label: 'Document Analysis', desc: 'Upload docs — get facts, gems, risks & admissibility',         icon: FileSearch, color: 'from-blue-600 to-cyan-700',    tag: null,        agent: 'Doc' },
   { to: '/contracts', label: 'Contract Review',   desc: 'Flag risky clauses, missing provisions & redline suggestions',  icon: FileSearch, color: 'from-emerald-600 to-green-700', tag: 'New',        agent: 'Nova' },
   { to: '/discovery', label: 'Discovery Miner',   desc: 'Cross-reference documents to find smoking guns',                icon: Microscope, color: 'from-emerald-600 to-teal-700', tag: null,        agent: 'Doc' },
   { to: '/witnesses', label: 'Witness Prep',       desc: 'AI-generated direct & cross examination questions',             icon: Users,     color: 'from-orange-600 to-red-700',   tag: null,        agent: 'Rex' },
@@ -104,14 +104,23 @@ export default function Dashboard() {
           </div>
           <h2 className="text-white font-bold text-xl mb-2">Start Your Case Journey</h2>
           <p className="text-slate-400 text-sm mb-6 max-w-lg mx-auto">
-            Tell Maya about your situation in plain English. She'll build your full case file and automatically brief all 9 department heads — from Lex on research to Jules in the jury room.
+            Tell Maya about your situation in plain English. She’ll build your full case file and automatically brief all 9 department heads — from Lex on research to Jules in the jury room.
           </p>
-          <Link
-            to="/intake"
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-violet-600 to-purple-700 text-white font-bold px-8 py-3.5 rounded-xl text-sm hover:opacity-90 transition-opacity shadow-lg shadow-violet-900/30"
-          >
-            <UserPlus size={16} /> Start with Maya →
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link
+              to="/intake"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-violet-600 to-purple-700 text-white font-bold px-8 py-3.5 rounded-xl text-sm hover:opacity-90 transition-opacity shadow-lg shadow-violet-900/30"
+            >
+              <UserPlus size={16} /> Start with Maya →
+            </Link>
+            <button
+              onClick={() => createDemoCase()}
+              className="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-semibold px-6 py-3.5 rounded-xl text-sm transition-colors"
+            >
+              <Sparkles size={16} className="text-blue-400" /> Try Demo Case
+            </button>
+          </div>
+          <p className="text-slate-600 text-xs mt-4">Demo loads a pre-built personal injury case with all 9 departments briefed</p>
         </div>
       ) : pendingTasks.length > 0 ? (
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
@@ -223,12 +232,12 @@ export default function Dashboard() {
         <h2 className="text-white font-bold text-base mb-4">⚡ Recommended Workflow</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {[
-            { step: '1', agent: 'Maya',      label: 'AI Intake',           desc: 'Let Maya interview the client and auto-build the case file',        to: '/intake',    color: 'from-violet-600 to-purple-700' },
-            { step: '2', agent: 'Doc',       label: 'Document Analysis',   desc: 'Upload evidence — get instant strategic analysis',                  to: '/documents', color: 'from-blue-600 to-cyan-700' },
-            { step: '3', agent: 'Nova',      label: 'Contract Review',     desc: 'Review any contracts for risky clauses and redlines',               to: '/contracts', color: 'from-emerald-600 to-green-700' },
-            { step: '4', agent: 'Lex',       label: 'Legal Research',      desc: 'Research key legal questions with win probability',                 to: '/research',  color: 'from-indigo-600 to-purple-700' },
-            { step: '5', agent: 'Rex',       label: 'Witness Prep',        desc: 'Generate cross & direct questions for every witness',               to: '/witnesses', color: 'from-orange-600 to-red-700' },
-            { step: '6', agent: 'Rex+Jules', label: 'Trial Coach + Jury',  desc: 'Practice your opening, cross-exam, and closing',                   to: '/trial',     color: 'from-pink-600 to-rose-700' },
+            { step: '1', agent: 'Maya',      label: 'AI Intake',          desc: 'Let Maya interview the client and auto-build the case file',       to: '/intake',    color: 'from-violet-600 to-purple-700' },
+            { step: '2', agent: 'Doc',       label: 'Document Analysis',  desc: 'Upload evidence — get instant strategic analysis',                to: '/documents', color: 'from-blue-600 to-cyan-700' },
+            { step: '3', agent: 'Nova',      label: 'Contract Review',    desc: 'Review any contracts for risky clauses and redlines',              to: '/contracts', color: 'from-emerald-600 to-green-700' },
+            { step: '4', agent: 'Lex',       label: 'Legal Research',     desc: 'Research key legal questions with win probability',                to: '/research',  color: 'from-indigo-600 to-purple-700' },
+            { step: '5', agent: 'Rex',       label: 'Witness Prep',       desc: 'Generate cross & direct questions for every witness',              to: '/witnesses', color: 'from-orange-600 to-red-700' },
+            { step: '6', agent: 'Rex+Jules', label: 'Trial Coach + Jury', desc: 'Practice your opening, cross-exam, and closing',                  to: '/trial',     color: 'from-pink-600 to-rose-700' },
           ].map(({ step, agent, label, desc, to, color }) => (
             <Link key={step} to={to} className="flex items-start gap-3 p-3 bg-slate-700/50 rounded-xl hover:bg-slate-700 transition-colors">
               <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${color} flex items-center justify-center text-white font-black text-sm flex-shrink-0`}>
