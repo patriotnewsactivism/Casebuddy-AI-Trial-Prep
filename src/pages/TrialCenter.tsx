@@ -6,6 +6,7 @@ import ActiveCaseBar from '../components/ActiveCaseBar';
 import { AGENTS } from '../agents/personas';
 import { useActiveCase, buildCaseContext, CASE_UPDATE_DIRECTIVE, ingestAgentReply } from '../lib/caseStore';
 import { useLiveVoice } from '../hooks/useLiveVoice';
+import { track } from '../lib/analytics';
 
 type Tab = 'coach' | 'witness' | 'jury';
 
@@ -112,11 +113,14 @@ export default function TrialCenter() {
     setIsListening(true);
   };
 
-  const startCoach = () => { setShowConfig(false); setStarted(true); setMessages([]); };
+  const startCoach = () => {
+    setShowConfig(false); setStarted(true); setMessages([]);
+    track('trial_session_started', { role: config.role, mode: config.mode, difficulty: config.difficulty });
+  };
 
   // Live two-way courtroom sparring — speak, Rex objects out loud, keeps listening
   const sendCoachRef = useRef<(text: string) => void>(() => {});
-  const liveVoice = useLiveVoice({ onUtterance: text => sendCoachRef.current(text) });
+  const liveVoice = useLiveVoice({ onUtterance: text => sendCoachRef.current(text), voiceModel: AGENTS.rex.voiceModel });
   const coachLoadingRef = useRef(false);
   const coachQueueRef = useRef('');
 

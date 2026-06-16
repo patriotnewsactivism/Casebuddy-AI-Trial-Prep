@@ -1,6 +1,21 @@
 # CaseBuddy AI — Master TODO & Roadmap
-> Last updated: 2026-06-12 | Managed by Superagent
+> Last updated: 2026-06-16 | Managed by Superagent
 > Engineering guide for AI agents & contributors: see `CLAUDE.md`
+
+---
+
+## 🔴 CRITICAL — Authentication & Data Security ✅ Done 2026-06-16
+> The app had **no login at all** — `cb_token` was read but never set, and the
+> documented Supabase setup ("anon read/write policies, or disable RLS") meant
+> every firm's privileged case data was publicly readable/writable by anyone
+> holding the public anon key. Fixed:
+- [x] Supabase Auth (email/password) — `src/lib/authStore.ts`, single shared client `src/lib/supabaseClient.ts`
+- [x] `/login` page (sign in / sign up / forgot password) — `src/pages/Login.tsx`
+- [x] `RequireAuth` gate wraps the entire authenticated app shell in `App.tsx`; fails **closed** if Supabase env vars are missing (no silent open-access fallback)
+- [x] `/` and `/start` (client intake) remain public by design — clients never need an account
+- [x] Locked-down RLS policies for `case_files`: authenticated firm members read/write the shared pool; anonymous `/start` visitors may only INSERT new client-intake rows, never read or modify existing cases (exact SQL in `CLAUDE.md` → "Supabase setup")
+- [x] Sign out + change password — Settings → Account & Security tab
+- [ ] Recommended next: require email confirmation in Supabase dashboard (Authentication → Providers → Email) if not already on; consider 2FA for firm-admin accounts; add an audit log of who signed in/out and from where
 
 ---
 
@@ -180,9 +195,7 @@
 - [x] Case switcher on every module page
 - [x] Case Manager list + Case Detail "war room" (`/cases`, `/cases/:id`) with stage pipeline & firm activity feed
 - [x] Conflict checker cross-references new parties against all existing case files
-- [x] Sync case store to Supabase (localStorage + cloud merge; run once in Supabase SQL editor:
-      `create table case_files (id text primary key, data jsonb, updated_at timestamptz);`
-      and ensure anon insert/select/update policies or disable RLS for this table)
+- [x] Sync case store to Supabase (localStorage + cloud merge; requires firm login — see "Authentication & Data Security" above for the table + locked-down RLS policies, run once in the Supabase SQL editor)
 - [x] Public client intake link at `/start` — clients talk to Maya, case lands in the firm
 - [x] Living case file: agents emit <CASE_UPDATE> blocks, merged into factLog/parties/claims/deadlines
 - [x] Firm-wide floating voice assistant (CaseAssistant) on every app page
@@ -190,10 +203,10 @@
 - [x] Sierra's qualified leads auto-create intake-ready case stubs (`src/lib/leadStore.ts` — Sierra emits `<LEAD_CAPTURED>` in chat, "Send to Maya →" promotes lead to a case file & briefs all departments)
 
 ### 4.4 White-Label Mode (Law Firm Sales)
-- [ ] Platform-wide firm name + color theme customization
+- [x] Platform-wide firm name + color theme customization (`src/lib/firmStore.ts` + Settings → Firm Branding tab)
 - [ ] Custom domain support
-- [ ] Firm logo upload
-- [ ] Remove CaseBuddy branding in white-label mode
+- [ ] Firm logo upload (currently logo-by-URL, not a file upload widget)
+- [x] Remove CaseBuddy branding in white-label mode (sidebar, public intake page, Sierra's widget defaults)
 
 ### 4.5 Mobile PWA Polish
 - [ ] Offline mode for case notes
@@ -214,9 +227,9 @@
 - [ ] "Start with Maya" CTA on dashboard
 
 ### 5.3 Analytics
-- [ ] Add PostHog or Mixpanel
-- [ ] Track: most-used modules, intake completion rate, doc uploads, trial sessions
-- [ ] Admin dashboard for firm usage stats
+- [x] Add PostHog or Mixpanel (`src/lib/analytics.ts`, no-ops without `REACT_APP_POSTHOG_KEY`)
+- [x] Track: most-used modules, intake completion rate, doc uploads, trial sessions (`page_view`, `intake_started`/`intake_completed`, `agent_action`, `trial_session_started`, `lead_captured`/`lead_promoted`, `case_stage_changed`)
+- [ ] Admin dashboard for firm usage stats (use PostHog's own dashboards for now)
 
 ### 5.4 SEO & Marketing
 - [ ] Complete `SeoPages.tsx` — landing pages per practice area + state

@@ -15,6 +15,7 @@ const DG_KEY = process.env.REACT_APP_DEEPGRAM_API_KEY || '';
 interface LiveVoiceOptions {
   onUtterance: (text: string) => void;
   silenceMs?: number; // pause length that counts as "done talking"
+  voiceModel?: string; // Deepgram Aura voice, e.g. 'aura-asteria-en' — gives each agent a distinct voice
 }
 
 function cleanForSpeech(text: string): string {
@@ -27,7 +28,7 @@ function cleanForSpeech(text: string): string {
     .trim();
 }
 
-export function useLiveVoice({ onUtterance, silenceMs = 1600 }: LiveVoiceOptions) {
+export function useLiveVoice({ onUtterance, silenceMs = 1600, voiceModel = 'aura-asteria-en' }: LiveVoiceOptions) {
   const [live, setLive] = useState(false);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -249,7 +250,7 @@ export function useLiveVoice({ onUtterance, silenceMs = 1600 }: LiveVoiceOptions
 
   const speakDeepgram = useCallback(async (clean: string, done: () => void) => {
     try {
-      const res = await fetch('https://api.deepgram.com/v1/speak?model=aura-asteria-en', {
+      const res = await fetch(`https://api.deepgram.com/v1/speak?model=${voiceModel}`, {
         method: 'POST',
         headers: { 'Authorization': `Token ${DG_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: clean.slice(0, 1900) }),
@@ -266,7 +267,7 @@ export function useLiveVoice({ onUtterance, silenceMs = 1600 }: LiveVoiceOptions
     } catch {
       speakBrowser(clean, done); // fall back to browser voice
     }
-  }, [speakBrowser]);
+  }, [speakBrowser, voiceModel]);
 
   const speak = useCallback((text: string) => {
     if (!liveRef.current) return;

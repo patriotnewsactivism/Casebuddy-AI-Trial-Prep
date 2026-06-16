@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, Bell, Shield, Palette, Key, Save, Check, Moon, Sun, Smartphone } from 'lucide-react';
+import { User, Bell, Shield, Palette, Key, Save, Check, Moon, Sun, Smartphone, Building2, Lock, LogOut, Loader2 } from 'lucide-react';
+import { useFirm, setFirm } from '../lib/firmStore';
+import { useAuth, authConfigured, signOut, updatePassword } from '../lib/authStore';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface UserProfile {
@@ -45,11 +47,16 @@ const defaultAppPrefs: AppPrefs = {
 };
 
 export default function Settings() {
-  const [tab, setTab] = useState<'profile' | 'notifications' | 'appearance' | 'api'>('profile');
+  const [tab, setTab] = useState<'profile' | 'account' | 'notifications' | 'appearance' | 'firm' | 'api'>('profile');
+  const firm = useFirm();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [notifications, setNotifications] = useState<NotificationPrefs>(defaultNotifications);
   const [appPrefs, setAppPrefs] = useState<AppPrefs>(defaultAppPrefs);
   const [saved, setSaved] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwMessage, setPwMessage] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     try {
@@ -66,10 +73,28 @@ export default function Settings() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const submitPasswordChange = async () => {
+    if (newPassword.length < 8) {
+      setPwMessage({ text: 'Password must be at least 8 characters.', ok: false });
+      return;
+    }
+    setPwBusy(true);
+    setPwMessage(null);
+    const err = await updatePassword(newPassword);
+    setPwBusy(false);
+    if (err) setPwMessage({ text: err, ok: false });
+    else {
+      setPwMessage({ text: 'Password updated.', ok: true });
+      setNewPassword('');
+    }
+  };
+
   const TABS = [
     { id: 'profile' as const, label: 'Profile', icon: User },
+    { id: 'account' as const, label: 'Account & Security', icon: Lock },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'appearance' as const, label: 'Appearance', icon: Palette },
+    { id: 'firm' as const, label: 'Firm Branding', icon: Building2 },
     { id: 'api' as const, label: 'API Keys', icon: Key },
   ];
 
@@ -149,6 +174,36 @@ export default function Settings() {
         </div>
       )}
 
+      {/* Account & Security Tab */}
+      {tab === 'account' && (
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+          <div>
+            <h2 className="text-white font-semibold text-base mb-1">Signed in</h2>
+            <p className="text-slate-400 text-sm mb-3">{user?.email || 'Not signed in'}</p>
+            <button onClick={() => signOut()}
+              className="flex items-center gap-2 bg-slate-900 hover:bg-slate-700 border border-slate-600 text-slate-200 text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              <LogOut size={14} /> Sign out
+            </button>
+          </div>
+          <div className="border-t border-slate-700 pt-5">
+            <h2 className="text-white font-semibold text-base mb-1">Change Password</h2>
+            <p className="text-slate-400 text-xs mb-3">Choose a strong, unique password — this protects your firm's entire case file.</p>
+            <div className="flex flex-col sm:flex-row gap-2 max-w-md">
+              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                placeholder="New password (min 8 characters)" minLength={8}
+                className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm" />
+              <button onClick={submitPasswordChange} disabled={pwBusy || !newPassword}
+                className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
+                {pwBusy ? <Loader2 size={14} className="animate-spin" /> : 'Update'}
+              </button>
+            </div>
+            {pwMessage && (
+              <p className={`text-xs mt-2 ${pwMessage.ok ? 'text-green-400' : 'text-red-400'}`}>{pwMessage.text}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Notifications Tab */}
       {tab === 'notifications' && (
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
@@ -222,6 +277,65 @@ export default function Settings() {
         </div>
       )}
 
+      {/* Firm Branding Tab */}
+      {tab === 'firm' && (
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+          <div>
+            <h2 className="text-white font-semibold text-base mb-1">White-Label Your Firm</h2>
+            <p className="text-slate-400 text-xs mb-4">
+              Brand the platform as your own firm — your name replaces "CaseBuddy AI" across the sidebar, exported documents, the public intake link, and Sierra's embeddable chat widget. Changes save instantly, no Save button needed.
+            </p>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Firm Name</label>
+                <input value={firm.firmName} onChange={e => setFirm({ firmName: e.target.value })}
+                  placeholder="Smith & Associates" className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Tagline</label>
+                <input value={firm.tagline} onChange={e => setFirm({ tagline: e.target.value })}
+                  placeholder="Legal Intelligence Platform" className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Accent Color</label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={firm.accentColor} onChange={e => setFirm({ accentColor: e.target.value })}
+                    className="w-11 h-10 rounded-lg bg-slate-900 border border-slate-600 cursor-pointer" />
+                  <input value={firm.accentColor} onChange={e => setFirm({ accentColor: e.target.value })}
+                    className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm font-mono" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Logo URL (optional)</label>
+                <input value={firm.logoUrl} onChange={e => setFirm({ logoUrl: e.target.value })}
+                  placeholder="https://yourfirm.com/logo.png" className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm" />
+              </div>
+            </div>
+          </div>
+
+          <Toggle checked={firm.whiteLabel} onChange={v => setFirm({ whiteLabel: v })}
+            label="Hide CaseBuddy AI branding (white-label mode)" />
+
+          {/* Live preview */}
+          <div className="pt-4 border-t border-slate-700">
+            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">Preview</p>
+            <div className="flex items-center gap-2.5 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl">
+              {firm.logoUrl ? (
+                <img src={firm.logoUrl} alt="" className="w-6 h-6 rounded object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              ) : (
+                <div className="w-6 h-6 rounded" style={{ backgroundColor: firm.accentColor }} />
+              )}
+              <div>
+                <div className="text-white font-black text-sm">
+                  {firm.whiteLabel && firm.firmName ? firm.firmName : 'CaseBuddy AI'}
+                </div>
+                <div className="text-xs text-slate-500">{firm.tagline}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* API Keys Tab */}
       {tab === 'api' && (
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
@@ -233,7 +347,7 @@ export default function Settings() {
             </div>
           </div>
           {[
-            { label: 'Supabase', status: 'Connected', color: 'text-green-400' },
+            { label: 'Supabase (case sync + login)', status: authConfigured ? 'Connected' : 'Not Connected', color: authConfigured ? 'text-green-400' : 'text-red-400' },
             { label: 'Gemini AI', status: 'Connected', color: 'text-green-400' },
             { label: 'Deepgram', status: 'Key Saved', color: 'text-yellow-400' },
             { label: 'CourtListener', status: 'Not Connected', color: 'text-slate-500' },

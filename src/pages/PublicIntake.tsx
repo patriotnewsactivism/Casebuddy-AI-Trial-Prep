@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Scale, Send, Loader2, Mic, CheckCircle, Shield } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
-import { AGENTS } from '../agents/personas';
+import { AGENTS, NATURAL_CONVERSATION_DIRECTIVE } from '../agents/personas';
 import { createCaseFromIntake, stripCaseUpdate } from '../lib/caseStore';
+import { useFirm } from '../lib/firmStore';
 import { useLiveVoice } from '../hooks/useLiveVoice';
+import { track } from '../lib/analytics';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -29,6 +31,8 @@ const cleanReply = (reply: string) =>
   stripCaseUpdate(reply.replace(/<INTAKE_SUMMARY>[\s\S]*?<\/INTAKE_SUMMARY>/g, '')).trim();
 
 export default function PublicIntake() {
+  const firm = useFirm();
+  const branded = firm.whiteLabel && firm.firmName;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -38,7 +42,7 @@ export default function PublicIntake() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const sendTextRef = useRef<(text: string) => void>(() => {});
-  const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text) });
+  const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text), voiceModel: maya.voiceModel });
   const loadingRef = useRef(false);
   const queuedRef = useRef('');
 
@@ -48,11 +52,13 @@ export default function PublicIntake() {
 
   const systemPrompt = `${maya.systemPrompt}
 
-CONTEXT: You are speaking directly with a potential CLIENT who opened the firm's intake link — not with an attorney. Use plain language, no legal jargon. Be warm and patient. One question at a time. When you have what you need, give the structured summary and reassure them the legal team will review everything.`;
+CONTEXT: You are speaking directly with a potential CLIENT who opened the firm's intake link — not with an attorney. Use plain language, no legal jargon. Be warm and patient. When you have what you need, give the structured summary and reassure them the legal team will review everything.
+${NATURAL_CONVERSATION_DIRECTIVE}`;
 
   const startIntake = async (liveMode: boolean) => {
     setStarted(true);
     setLoading(true);
+    track('intake_started', { live: liveMode, source: 'client-link' });
     if (liveMode) voice.startLive();
     const res = await aiParalegal({ messages: [], agentPersona: systemPrompt });
     if (res.reply) {
@@ -110,8 +116,16 @@ CONTEXT: You are speaking directly with a potential CLIENT who opened the firm's
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Brand bar */}
       <div className="border-b border-slate-800/60 px-5 py-3.5 flex items-center justify-center gap-2">
-        <Scale size={18} className="text-violet-400" />
-        <span className="font-black text-sm tracking-tight">CaseBuddy <span className="text-violet-400">AI</span></span>
+        {branded && firm.logoUrl ? (
+          <img src={firm.logoUrl} alt="" className="w-[18px] h-[18px] rounded object-contain" />
+        ) : (
+          <Scale size={18} className="text-violet-400" style={branded ? { color: firm.accentColor } : undefined} />
+        )}
+        {branded ? (
+          <span className="font-black text-sm tracking-tight">{firm.firmName}</span>
+        ) : (
+          <span className="font-black text-sm tracking-tight">CaseBuddy <span className="text-violet-400">AI</span></span>
+        )}
         <span className="text-slate-600 text-xs ml-1">· Secure Client Intake</span>
       </div>
 
@@ -250,7 +264,7 @@ CONTEXT: You are speaking directly with a potential CLIENT who opened the firm's
       </div>
 
       <div className="px-5 py-4 text-center text-slate-600 text-xs border-t border-slate-800/60">
-        Powered by CaseBuddy AI · This conversation is not legal advice and does not create an attorney-client relationship until the firm accepts your case.
+        {branded ? `${firm.firmName} · ` : 'Powered by CaseBuddy AI · '}This conversation is not legal advice and does not create an attorney-client relationship until the firm accepts your case.
       </div>
     </div>
   );

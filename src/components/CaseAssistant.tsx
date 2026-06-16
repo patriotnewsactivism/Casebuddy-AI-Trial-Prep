@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Mic, X, Send, Loader2, Sparkles } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import { useActiveCase, buildCaseContext, CASE_UPDATE_DIRECTIVE, ingestAgentReply } from '../lib/caseStore';
+import { AGENTS, NATURAL_CONVERSATION_DIRECTIVE } from '../agents/personas';
 import { useLiveVoice } from '../hooks/useLiveVoice';
 
 interface Message {
@@ -21,7 +22,7 @@ export default function CaseAssistant() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const sendTextRef = useRef<(text: string) => void>(() => {});
-  const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text) });
+  const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text), voiceModel: AGENTS.maya.voiceModel });
   const loadingRef = useRef(false);
   const queuedRef = useRef('');
 
@@ -31,6 +32,7 @@ export default function CaseAssistant() {
 
   const systemPrompt = `You are the CaseBuddy AI firm assistant — the voice of the whole legal team (Maya on intake, Sol on deadlines, Doc on documents, Lex on research, Rex on trial prep, Jules on juries, Max on filing). You answer questions about the case, capture new information the attorney dictates, and suggest which department should act next. Be concise and conversational — your replies are often spoken aloud, so keep them short and clear.
 ${activeCase ? `\n${buildCaseContext(activeCase)}` : '\nNo case file is currently active.'}
+${NATURAL_CONVERSATION_DIRECTIVE}
 ${CASE_UPDATE_DIRECTIVE}`;
 
   const sendText = async (text: string) => {
