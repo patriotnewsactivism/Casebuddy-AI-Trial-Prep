@@ -211,8 +211,7 @@ function useStoreVersion() {
 }
 
 export function useCases(): CaseFile[] {
-  useStoreVersion();
-  return cache;
+  return useSyncExternalStore(subscribe, () => cache);
 }
 
 export function useActiveCase(): CaseFile | null {

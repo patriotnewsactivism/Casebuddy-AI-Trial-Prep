@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { Scale, Loader2, ShieldAlert, Mail, Lock, ArrowRight } from 'lucide-react';
-import { useAuth, authConfigured, signIn, signUp, resetPassword } from '../lib/authStore';
+import { useAuth, authConfigured, signIn, signUp, resetPassword, updatePassword, clearPasswordRecovery } from '../lib/authStore';
 
 type Mode = 'signin' | 'signup' | 'reset';
 
@@ -9,11 +9,12 @@ type Mode = 'signin' | 'signup' | 'reset';
 // agent module) requires a session — only the public marketing page and the
 // client intake link (/start) are reachable without logging in.
 export default function Login() {
-  const { session, loading } = useAuth();
+  const { session, loading, passwordRecovery } = useAuth();
   const location = useLocation();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -22,6 +23,47 @@ export default function Login() {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <Loader2 className="animate-spin text-violet-400" size={28} />
+      </div>
+    );
+  }
+
+  // Supabase establishes a session straight from the reset-password email
+  // link and fires PASSWORD_RECOVERY — catch it here before the generic
+  // "session exists -> go to dashboard" redirect below, otherwise the user
+  // never gets a chance to actually set their new password.
+  if (passwordRecovery) {
+    const submitNewPassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+      setBusy(true);
+      const err = await updatePassword(newPassword);
+      setBusy(false);
+      if (err) setError(err);
+      else clearPasswordRecovery();
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4">
+        <div className="relative w-full max-w-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-7 shadow-2xl shadow-black/40">
+            <h1 className="text-white font-bold text-xl mb-1 text-center">Set a new password</h1>
+            <p className="text-slate-500 text-xs text-center mb-6">You followed a password reset link — choose a new password to finish.</p>
+            <form onSubmit={submitNewPassword} className="space-y-3">
+              <div className="relative">
+                <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input type="password" autoComplete="new-password" required minLength={8}
+                  value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                  placeholder="New password (min 8 characters)"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500" />
+              </div>
+              {error && <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>}
+              <button type="submit" disabled={busy}
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-purple-700 hover:opacity-90 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm transition-opacity">
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <>Update password <ArrowRight size={14} /></>}
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     );
   }

@@ -18,7 +18,7 @@ function distinctId(): string {
 export function track(event: string, properties: Record<string, string | number | boolean> = {}) {
   if (!KEY) return;
   try {
-    void fetch(`${HOST}/capture/`, {
+    fetch(`${HOST}/capture/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       keepalive: true,
@@ -29,7 +29,7 @@ export function track(event: string, properties: Record<string, string | number 
         properties: { ...properties, $current_url: window.location.pathname },
         timestamp: new Date().toISOString(),
       }),
-    });
+    }).catch(() => {});
   } catch {
     // Analytics must never break the app.
   }

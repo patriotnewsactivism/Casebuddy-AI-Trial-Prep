@@ -25,7 +25,7 @@ export default function LegalSecretary() {
     const firm = getFirm();
     return {
       firmName: firm.firmName || 'Your Law Firm',
-      primaryColor: firm.accentColor,
+      primaryColor: firm.accentColor || '#06b6d4',
       greeting: "Hello! I'm the AI legal assistant. How can I help you today?",
       practiceAreas: 'Civil Rights, Personal Injury, Criminal Defense, Family Law',
       bookingUrl: '',

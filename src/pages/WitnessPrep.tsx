@@ -131,7 +131,7 @@ ${result.opening_gambit ? `<h2>🎯 Opening Gambit</h2><p>${escapeHtml(result.op
 <h2 class="danger">⚠️ Danger Zones — Avoid These</h2>
 <ul>${(result.danger_zones || []).map((d: string) => `<li class="danger">${escapeHtml(d)}</li>`).join('')}</ul>
 ${result.closing_question ? `<h2>🏁 Closing Question</h2><p>${escapeHtml(result.closing_question)}</p>` : ''}`;
-    openPrintExport(`Witness Prep — ${form.name}`, body);
+    openPrintExport(`Witness Prep — ${escapeHtml(form.name)}`, body);
   };
 
   const Section = ({ id, title, color, children }: { id: string; title: string; color: string; children: React.ReactNode }) => (

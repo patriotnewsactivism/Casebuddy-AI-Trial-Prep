@@ -50,12 +50,10 @@ function load(): Lead[] {
 }
 
 let cache: Lead[] = load();
-let version = 0;
 const listeners = new Set<() => void>();
 
 function persist() {
   localStorage.setItem(LEADS_KEY, JSON.stringify(cache));
-  version++;
   listeners.forEach(l => l());
 }
 
@@ -65,8 +63,7 @@ const subscribe = (l: () => void) => {
 };
 
 export function useLeads(): Lead[] {
-  useSyncExternalStore(subscribe, () => version);
-  return cache;
+  return useSyncExternalStore(subscribe, () => cache);
 }
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);

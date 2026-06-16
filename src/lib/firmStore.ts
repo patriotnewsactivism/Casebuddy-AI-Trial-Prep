@@ -32,7 +32,6 @@ function load(): FirmProfile {
 }
 
 let cache: FirmProfile = load();
-let version = 0;
 const listeners = new Set<() => void>();
 
 const subscribe = (l: () => void) => {
@@ -41,8 +40,7 @@ const subscribe = (l: () => void) => {
 };
 
 export function useFirm(): FirmProfile {
-  useSyncExternalStore(subscribe, () => version);
-  return cache;
+  return useSyncExternalStore(subscribe, () => cache);
 }
 
 export function getFirm(): FirmProfile {
@@ -52,7 +50,6 @@ export function getFirm(): FirmProfile {
 export function setFirm(update: Partial<FirmProfile>) {
   cache = { ...cache, ...update };
   localStorage.setItem(FIRM_KEY, JSON.stringify(cache));
-  version++;
   listeners.forEach(l => l());
 }
 

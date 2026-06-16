@@ -13,6 +13,10 @@ export const authConfigured = supabaseConfigured;
 
 let session: Session | null = null;
 let loading = supabaseConfigured; // if Supabase isn't configured there's nothing to load
+// Set when Supabase fires the PASSWORD_RECOVERY auth event (user followed a
+// reset-password email link). Login.tsx must show the "set a new password"
+// form instead of redirecting a recovery session straight to the dashboard.
+let passwordRecovery = false;
 let version = 0;
 const listeners = new Set<() => void>();
 
@@ -27,9 +31,10 @@ if (supabase) {
     loading = false;
     notify();
   });
-  supabase.auth.onAuthStateChange((_event, newSession) => {
+  supabase.auth.onAuthStateChange((event, newSession) => {
     session = newSession;
     loading = false;
+    if (event === 'PASSWORD_RECOVERY') passwordRecovery = true;
     notify();
   });
 }
@@ -43,9 +48,16 @@ function useStoreVersion() {
   return useSyncExternalStore(subscribe, () => version);
 }
 
-export function useAuth(): { session: Session | null; user: User | null; loading: boolean } {
+export function useAuth(): { session: Session | null; user: User | null; loading: boolean; passwordRecovery: boolean } {
   useStoreVersion();
-  return { session, user: session?.user ?? null, loading };
+  return { session, user: session?.user ?? null, loading, passwordRecovery };
+}
+
+// Called once the user has successfully set a new password from the
+// recovery form, so Login.tsx falls back to the normal session redirect.
+export function clearPasswordRecovery(): void {
+  passwordRecovery = false;
+  notify();
 }
 
 export function getSession(): Session | null {
