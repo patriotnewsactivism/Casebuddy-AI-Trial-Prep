@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Loader2, CheckCircle, AlertCircle, Mic, MicOff, Briefcase } from 'lucide-react';
+import { Send, Loader2, CheckCircle, AlertCircle, Mic, MicOff, Phone, Briefcase } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
 import { AGENTS, AGENT_LIST, NATURAL_CONVERSATION_DIRECTIVE } from '../agents/personas';
@@ -73,12 +73,30 @@ ${CASE_UPDATE_DIRECTIVE}`;
 
   const systemPrompt = buildMayaPrompt(updateMode);
 
+  // Maya's spoken greeting when she picks up a live call — she always leads.
+  const phoneGreeting = (asUpdate: boolean) =>
+    asUpdate && activeCase
+      ? `Hi, it's Maya again. I've got ${activeCase.clientName}'s file open in front of me. What's new or changed since we last spoke?`
+      : `Hi, this is Maya on intake. I'm ready when you are — go ahead and tell me what happened in your own words, and I'll start building your case file.`;
+
   const startIntake = async (liveMode = false, asUpdate = false) => {
     setUpdateMode(asUpdate);
     setStarted(true);
-    setLoading(true);
     track('intake_started', { live: liveMode, update: asUpdate });
-    if (liveMode) voice.startLive();
+
+    if (liveMode) {
+      // Place the call: ring, Maya picks up and greets, then the mic opens.
+      const greeting = phoneGreeting(asUpdate);
+      voice.startLive({
+        ring: true,
+        greeting,
+        onConnect: () => setMessages([{ role: 'assistant', content: greeting }]),
+      });
+      return;
+    }
+
+    // Text mode: Maya opens via the model.
+    setLoading(true);
     const res = await aiParalegal({
       messages: [],
       agentPersona: buildMayaPrompt(asUpdate),
@@ -86,7 +104,6 @@ ${CASE_UPDATE_DIRECTIVE}`;
     if (res.reply) {
       const clean = ingestAgentReply(asUpdate ? activeCase?.id : undefined, 'maya', res.reply);
       setMessages([{ role: 'assistant', content: clean }]);
-      voice.speak(clean); // no-op unless live mode is on
     }
     setLoading(false);
   };
@@ -225,7 +242,7 @@ ${CASE_UPDATE_DIRECTIVE}`;
                 onClick={() => startIntake(true)}
                 className="bg-slate-700 hover:bg-slate-600 border border-violet-500/50 text-white font-semibold px-8 py-3 rounded-xl transition-colors shadow-lg text-sm flex items-center gap-2"
               >
-                <Mic size={15} className="text-violet-400" /> Talk Live with Maya
+                <Phone size={15} className="text-violet-400" /> Call Maya — Live
               </button>
             )}
           </div>
@@ -319,7 +336,12 @@ ${CASE_UPDATE_DIRECTIVE}`;
             <div className="p-3 border-t border-slate-700">
               {voice.live && (
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  {voice.speaking ? (
+                  {voice.connecting ? (
+                    <>
+                      <Phone size={12} className="text-violet-400 animate-pulse" />
+                      <span className="text-violet-300 text-xs font-medium">Calling Maya… ringing</span>
+                    </>
+                  ) : voice.speaking ? (
                     <>
                       <span className="flex gap-0.5 items-end h-3">
                         <span className="w-1 bg-violet-400 rounded-full animate-pulse" style={{ height: '12px' }} />

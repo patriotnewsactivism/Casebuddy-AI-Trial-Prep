@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Scale, Send, Loader2, Mic, CheckCircle, Shield } from 'lucide-react';
+import { Scale, Send, Loader2, Mic, Phone, CheckCircle, Shield } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import { AGENTS, NATURAL_CONVERSATION_DIRECTIVE } from '../agents/personas';
 import { createCaseFromIntake, stripCaseUpdate } from '../lib/caseStore';
@@ -55,16 +55,35 @@ export default function PublicIntake() {
 CONTEXT: You are speaking directly with a potential CLIENT who opened the firm's intake link — not with an attorney. Use plain language, no legal jargon. Be warm and patient. When you have what you need, give the structured summary and reassure them the legal team will review everything.
 ${NATURAL_CONVERSATION_DIRECTIVE}`;
 
+  // How Maya answers when she picks up the call — a warm, professional
+  // receptionist greeting that always leads the conversation.
+  const phoneGreeting = () => {
+    const who = branded ? firm.firmName : 'CaseBuddy';
+    return `Thank you for reaching out to ${who}. This is Maya, the case intake specialist — I'm here to listen and help. To get started, could you tell me your name and a little about what's going on?`;
+  };
+
   const startIntake = async (liveMode: boolean) => {
     setStarted(true);
-    setLoading(true);
     track('intake_started', { live: liveMode, source: 'client-link' });
-    if (liveMode) voice.startLive();
+
+    if (liveMode) {
+      // Place the "call": ring, Maya picks up and greets, then the mic opens.
+      // She leads — no LLM round-trip to stall her, no race with the caller.
+      const greeting = phoneGreeting();
+      voice.startLive({
+        ring: true,
+        greeting,
+        onConnect: () => setMessages([{ role: 'assistant', content: greeting }]),
+      });
+      return;
+    }
+
+    // Text mode: Maya opens the conversation via the model.
+    setLoading(true);
     const res = await aiParalegal({ messages: [], agentPersona: systemPrompt });
     if (res.reply) {
       const clean = cleanReply(res.reply);
       setMessages([{ role: 'assistant', content: clean }]);
-      voice.speak(clean);
     }
     setLoading(false);
   };
@@ -165,7 +184,7 @@ ${NATURAL_CONVERSATION_DIRECTIVE}`;
               {voice.supported && (
                 <button onClick={() => startIntake(true)}
                   className={`w-full flex items-center justify-center gap-2.5 bg-gradient-to-r ${maya.color} text-white font-bold py-4 rounded-2xl text-base hover:opacity-90 transition-opacity shadow-xl`}>
-                  <Mic size={18} /> Tap & Talk to Maya
+                  <Phone size={18} /> Call Maya now
                 </button>
               )}
               <button onClick={() => startIntake(false)}
@@ -223,7 +242,11 @@ ${NATURAL_CONVERSATION_DIRECTIVE}`;
             {/* Voice status */}
             {voice.live && (
               <div className="flex items-center justify-center gap-2 mb-2">
-                {voice.speaking ? (
+                {voice.connecting ? (
+                  <span className="text-violet-300 text-xs font-medium flex items-center gap-1.5">
+                    <Phone size={12} className="animate-pulse" /> Calling Maya… ringing
+                  </span>
+                ) : voice.speaking ? (
                   <span className="text-violet-300 text-xs font-medium">Maya is speaking…</span>
                 ) : voice.interim ? (
                   <span className="text-slate-300 text-xs italic truncate max-w-full">“{voice.interim}”</span>

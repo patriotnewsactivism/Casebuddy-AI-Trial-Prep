@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
+import { playRingback, Ringback } from '../lib/phoneSound';
 
 // Live two-way voice conversation engine.
 // Flow: mic listens continuously → user pauses → utterance auto-sends (no
@@ -30,6 +31,7 @@ function cleanForSpeech(text: string): string {
 
 export function useLiveVoice({ onUtterance, silenceMs = 1600, voiceModel = 'aura-asteria-en' }: LiveVoiceOptions) {
   const [live, setLive] = useState(false);
+  const [connecting, setConnecting] = useState(false); // "ringing" — Maya is picking up
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [interim, setInterim] = useState('');
@@ -48,6 +50,8 @@ export function useLiveVoice({ onUtterance, silenceMs = 1600, voiceModel = 'aura
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const dgFailedRef = useRef(false);                // fell back to web speech
+  const ringbackRef = useRef<Ringback | null>(null);              // "ringing" tone while connecting
+  const connectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasWebSpeech = typeof window !== 'undefined' &&
     (!!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition) &&
@@ -288,17 +292,48 @@ export function useLiveVoice({ onUtterance, silenceMs = 1600, voiceModel = 'aura
 
   // ===== Session control =====
 
-  const startLive = useCallback(() => {
+  // startLive can behave three ways:
+  //  • startLive()                              → just open the mic (resume mid-call)
+  //  • startLive({ greeting })                  → Maya speaks first, then the mic opens
+  //  • startLive({ ring: true, greeting })      → ring like a phone, Maya "picks up",
+  //                                               greets, then the mic opens
+  // The mic is never opened until Maya has finished her greeting, so the
+  // caller can't talk over her and her opener can't collide with the user.
+  const startLive = useCallback((opts?: { greeting?: string; ring?: boolean; onConnect?: () => void }) => {
     if (!supported) return;
     liveRef.current = true;
     setLive(true);
     if ('speechSynthesis' in window) window.speechSynthesis.getVoices(); // prime async voice list
-    startRecognition();
-  }, [supported, startRecognition]);
+
+    const greeting = opts?.greeting?.trim();
+
+    const pickUp = () => {
+      connectTimerRef.current = null;
+      ringbackRef.current?.stop();
+      ringbackRef.current = null;
+      setConnecting(false);
+      if (!liveRef.current) return;
+      opts?.onConnect?.();
+      if (greeting) speak(greeting); // Maya talks first; speak() opens the mic when she's done
+      else startRecognition();
+    };
+
+    if (opts?.ring) {
+      setConnecting(true);
+      ringbackRef.current = playRingback();
+      connectTimerRef.current = setTimeout(pickUp, 2200); // one ring, then she answers
+    } else {
+      pickUp();
+    }
+  }, [supported, startRecognition, speak]);
 
   const stopLive = useCallback(() => {
     liveRef.current = false;
     setLive(false);
+    setConnecting(false);
+    if (connectTimerRef.current) { clearTimeout(connectTimerRef.current); connectTimerRef.current = null; }
+    ringbackRef.current?.stop();
+    ringbackRef.current = null;
     bufferRef.current = '';
     stopRecognition();
     speakingRef.current = false;
@@ -311,6 +346,8 @@ export function useLiveVoice({ onUtterance, silenceMs = 1600, voiceModel = 'aura
   useEffect(() => () => {
     liveRef.current = false;
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+    ringbackRef.current?.stop();
     try { recRef.current?.stop(); } catch { /* noop */ }
     try {
       if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
@@ -322,5 +359,5 @@ export function useLiveVoice({ onUtterance, silenceMs = 1600, voiceModel = 'aura
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { supported, live, listening, speaking, interim, startLive, stopLive, speak };
+  return { supported, live, connecting, listening, speaking, interim, startLive, stopLive, speak };
 }

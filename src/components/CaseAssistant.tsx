@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, X, Send, Loader2, Sparkles } from 'lucide-react';
+import { Mic, X, Send, Loader2, Sparkles, Phone } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import { useActiveCase, buildCaseContext, CASE_UPDATE_DIRECTIVE, ingestAgentReply } from '../lib/caseStore';
 import { AGENTS, NATURAL_CONVERSATION_DIRECTIVE } from '../agents/personas';
+import { brandName } from '../lib/firmStore';
 import { useLiveVoice } from '../hooks/useLiveVoice';
 
 interface Message {
@@ -68,7 +69,14 @@ ${CASE_UPDATE_DIRECTIVE}`;
 
   const openAndTalk = () => {
     setOpen(true);
-    if (voice.supported) voice.startLive();
+    if (!voice.supported) return;
+    // Maya leads: ring, she picks up and greets, then the mic opens.
+    const greeting = `Hi, this is Maya with your ${brandName()} team.${activeCase ? ` I've got ${activeCase.clientName}'s file in front of me.` : ''} How can I help?`;
+    voice.startLive({
+      ring: true,
+      greeting,
+      onConnect: () => setMessages(prev => (prev.length ? prev : [{ role: 'assistant', content: greeting }])),
+    });
   };
 
   const close = () => {
@@ -146,7 +154,11 @@ ${CASE_UPDATE_DIRECTIVE}`;
           {/* Voice status */}
           {voice.live && (
             <div className="px-4 pb-1.5 flex items-center gap-2">
-              {voice.speaking ? (
+              {voice.connecting ? (
+                <span className="text-violet-300 text-xs font-medium flex items-center gap-1.5">
+                  <Phone size={12} className="animate-pulse" /> Calling Maya… ringing
+                </span>
+              ) : voice.speaking ? (
                 <span className="text-violet-300 text-xs font-medium">Speaking…</span>
               ) : voice.interim ? (
                 <span className="text-slate-300 text-xs italic truncate">“{voice.interim}”</span>
