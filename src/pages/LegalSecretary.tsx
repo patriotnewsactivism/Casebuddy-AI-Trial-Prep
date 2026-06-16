@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { MessageSquare, Send, Loader2, Settings, Copy, CheckCircle, Code, Globe, UserPlus, Calendar, Briefcase, Archive } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
-import { AGENTS } from '../agents/personas';
+import { AGENTS, NATURAL_CONVERSATION_DIRECTIVE } from '../agents/personas';
 import { useLeads, addLead, promoteLead, archiveLead, parseLeadCapture, stripLeadCapture } from '../lib/leadStore';
+import { getFirm } from '../lib/firmStore';
 
 const sierra = AGENTS.sierra;
 
@@ -20,14 +21,17 @@ export default function LegalSecretary() {
   const [loading, setLoading] = useState(false);
   const leads = useLeads().filter(l => l.status !== 'archived');
   const [copied, setCopied] = useState(false);
-  const [config, setConfig] = useState({
-    firmName: 'Your Law Firm',
-    primaryColor: '#3b82f6',
-    greeting: "Hello! I'm the AI legal assistant. How can I help you today?",
-    practiceAreas: 'Civil Rights, Personal Injury, Criminal Defense, Family Law',
-    bookingUrl: '',
-    captureEmail: true,
-    capturePhone: true,
+  const [config, setConfig] = useState(() => {
+    const firm = getFirm();
+    return {
+      firmName: firm.firmName || 'Your Law Firm',
+      primaryColor: firm.accentColor || '#06b6d4',
+      greeting: "Hello! I'm the AI legal assistant. How can I help you today?",
+      practiceAreas: 'Civil Rights, Personal Injury, Criminal Defense, Family Law',
+      bookingUrl: '',
+      captureEmail: true,
+      capturePhone: true,
+    };
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +49,8 @@ export default function LegalSecretary() {
         message: userMsg,
         context: `You are an AI legal intake assistant for ${config.firmName}. Practice areas: ${config.practiceAreas}. Your goals: 1) Understand the potential client's situation, 2) Determine the case type and jurisdiction, 3) Assess urgency and merit, 4) Collect contact info (name, email, phone), 5) Book a consultation. Be professional, empathetic, and clear. Ask qualifying questions. If they share contact info, acknowledge it.
 
-Once you have at minimum the person's name plus their email or phone AND a sense of their legal issue, append a structured lead record to the END of your reply, wrapped exactly in <LEAD_CAPTURED></LEAD_CAPTURED> tags, as JSON with fields: name, email, phone, case_type, jurisdiction, summary (1-2 sentences), urgency (Low/Medium/High). Only emit it once per conversation. Never mention the tags to the client.`,
+Once you have at minimum the person's name plus their email or phone AND a sense of their legal issue, append a structured lead record to the END of your reply, wrapped exactly in <LEAD_CAPTURED></LEAD_CAPTURED> tags, as JSON with fields: name, email, phone, case_type, jurisdiction, summary (1-2 sentences), urgency (Low/Medium/High). Only emit it once per conversation. Never mention the tags to the client.
+${NATURAL_CONVERSATION_DIRECTIVE}`,
         history: messages.map(m => ({ role: m.role === 'bot' ? 'assistant' : 'user', content: m.text })),
       });
       const rawText = res.response || res.message || "I'd be happy to help. Could you tell me more about your situation?";

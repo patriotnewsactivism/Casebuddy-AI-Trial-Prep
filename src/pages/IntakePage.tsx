@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Send, Loader2, CheckCircle, AlertCircle, Mic, MicOff, Briefcase } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import AgentHeader from '../components/AgentHeader';
-import { AGENTS, AGENT_LIST } from '../agents/personas';
+import { AGENTS, AGENT_LIST, NATURAL_CONVERSATION_DIRECTIVE } from '../agents/personas';
 import {
   createCaseFromIntake, useActiveCase, buildCaseContext,
   CASE_UPDATE_DIRECTIVE, ingestAgentReply,
 } from '../lib/caseStore';
 import { useLiveVoice } from '../hooks/useLiveVoice';
+import { track } from '../lib/analytics';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -46,7 +47,7 @@ export default function IntakePage() {
   // Live two-way voice: speak with Maya hands-free — your words auto-send
   // when you pause, and she answers out loud, then keeps listening.
   const sendTextRef = useRef<(text: string) => void>(() => {});
-  const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text) });
+  const voice = useLiveVoice({ onUtterance: text => sendTextRef.current(text), voiceModel: maya.voiceModel });
   // Words spoken while Maya is still thinking get queued, never dropped
   const loadingRef = useRef(false);
   const queuedRef = useRef('');
@@ -57,25 +58,30 @@ export default function IntakePage() {
 
   // In update mode Maya works the EXISTING case: she already knows the file,
   // asks what's new, and merges every new fact straight into the case brain.
-  const systemPrompt = updateMode && activeCase
+  // Single source of truth — used both to kick off the conversation and on
+  // every turn, so the "don't re-ask" rule and case context never drift apart.
+  const buildMayaPrompt = (asUpdate: boolean) => asUpdate && activeCase
     ? `${maya.systemPrompt}
 
 CONTEXT: You are UPDATING an existing case, not starting a new intake. You already know the case file below — do NOT re-ask what you already know. Greet briefly, then ask what's new or changed (new documents, new events, new parties, responses from the other side, anything). Probe for legal significance.
 ${buildCaseContext(activeCase)}
+${NATURAL_CONVERSATION_DIRECTIVE}
 ${CASE_UPDATE_DIRECTIVE}`
     : `${maya.systemPrompt}
+${NATURAL_CONVERSATION_DIRECTIVE}
 ${CASE_UPDATE_DIRECTIVE}`;
+
+  const systemPrompt = buildMayaPrompt(updateMode);
 
   const startIntake = async (liveMode = false, asUpdate = false) => {
     setUpdateMode(asUpdate);
     setStarted(true);
     setLoading(true);
+    track('intake_started', { live: liveMode, update: asUpdate });
     if (liveMode) voice.startLive();
     const res = await aiParalegal({
       messages: [],
-      agentPersona: asUpdate && activeCase
-        ? `${maya.systemPrompt}\n\nCONTEXT: You are UPDATING an existing case. You already know the case file below — greet briefly and ask what's new or changed.\n${buildCaseContext(activeCase)}\n${CASE_UPDATE_DIRECTIVE}`
-        : `${maya.systemPrompt}\n${CASE_UPDATE_DIRECTIVE}`,
+      agentPersona: buildMayaPrompt(asUpdate),
     });
     if (res.reply) {
       const clean = ingestAgentReply(asUpdate ? activeCase?.id : undefined, 'maya', res.reply);

@@ -32,7 +32,7 @@ time** — changing one requires a redeploy. Never commit real keys (see
 | Var | Purpose |
 |---|---|
 | `REACT_APP_BASE44_API_URL` | Backend functions host (default `https://superagent-344f8b2b.base44.app`) |
-| `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` | Optional cloud sync of case files. App runs fine without them (localStorage only). |
+| `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` | **Required for production.** Powers both Supabase Auth (firm login — see "Authentication & security" below) and cloud sync of case files. Without them the app **fails closed**: `/login` shows an "authentication not configured" notice and the whole `<AppShell>` stays locked, it does not fall back to open access. |
 | `REACT_APP_GEMINI_API_KEY` | Reserved; AI calls currently go through Base44, not directly to Gemini. |
 
 ---
@@ -46,10 +46,16 @@ src/
 │   ├── api.ts              ← Base44 backend client (the only AI gateway). 60s timeout;
 │   │                          failures return { reply: friendlyError, serviceError } —
 │   │                          agents never go silent, so don't re-wrap errors in pages.
+│   ├── supabaseClient.ts   ← the ONE Supabase client instance — auth, caseStore, and
+│   │                          anything else touching Supabase import this, never call
+│   │                          createClient() again (one auth session for the app).
+│   ├── authStore.ts        ← firm login (Supabase Auth): useAuth(), signIn/signUp/
+│   │                          signOut/resetPassword/updatePassword, authConfigured.
 │   ├── caseStore.ts        ← THE SPINE. Shared case file: tasks, deadlines, docs,
 │   │                          witnesses, research, activity log, factLog. localStorage +
 │   │                          useSyncExternalStore. Also home to: the handoff engine,
-│   │                          built-in Supabase cloud sync (initCloudSync/schedulePush),
+│   │                          built-in Supabase cloud sync (initCloudSync/schedulePush —
+│   │                          only pulled once a session exists, see App.tsx),
 │   │                          the <CASE_UPDATE> living-case-brain (CASE_UPDATE_DIRECTIVE,
 │   │                          ingestAgentReply, applyCaseUpdate), and ROI tracking
 │   │                          (minutesSaved on activity → firmMinutesSaved).
@@ -63,9 +69,10 @@ src/
 │   ├── OnboardingModal.tsx / PwaInstall.tsx
 ├── pages/                  ← one page per module, routed in App.tsx
 │   ├── Landing.tsx         ← public marketing page at /  (full-bleed, no sidebar)
+│   ├── Login.tsx           ← firm sign-in/sign-up/reset at /login (full-bleed, no sidebar)
 │   └── PublicIntake.tsx    ← shareable client intake at /start → case lands in the firm
-└── App.tsx                 ← routes: / and /start are public; everything else inside
-                               <AppShell> (sidebar, dashboard at /dashboard)
+└── App.tsx                 ← routes: /, /start, /login are public; everything else sits
+                               behind <RequireAuth> → <AppShell> (sidebar, /dashboard)
 ```
 
 There is **no app server in this repo**. All AI calls go through
@@ -127,6 +134,33 @@ import the persona.
 **When you add or change any agent feature, preserve this loop.** A module
 that doesn't read the case context and write back its results breaks the firm.
 
+## Authentication & security
+
+The case file holds privileged, confidential client data — it must never be
+reachable by an unauthenticated stranger. The security model:
+
+- **Login is Supabase Auth** (email/password). `src/lib/authStore.ts` wraps
+  `supabase.auth` in the same `useSyncExternalStore` pattern as the other
+  stores. `RequireAuth` in `App.tsx` wraps the entire `<AppShell>` route —
+  every module (`/dashboard`, `/cases`, `/documents`, …) requires a session.
+- **It's a shared firm login, not per-seat multi-tenancy.** Every signed-in
+  user at the firm sees the same case pool (matches "8 agents share one case
+  file"). This is account security — keeping the case file out of strangers'
+  hands — not data isolation between individual attorneys.
+- **Fails closed.** If `REACT_APP_SUPABASE_URL`/`REACT_APP_SUPABASE_ANON_KEY`
+  aren't set, `authConfigured` is `false` and `/login` shows an admin-facing
+  "not configured" notice instead of ever falling back to open access.
+  Never change this to fail open.
+- **`/` and `/start` stay public on purpose** — `/` is the marketing page and
+  `/start` is the client intake link (clients aren't firm users and must
+  never need an account). The anonymous Supabase `anon` role is restricted at
+  the database level (RLS) to INSERT-only on rows shaped like a client-link
+  intake; it cannot read or modify any existing case. See "Supabase setup"
+  below for the exact policies — **do not loosen them** to make `/start`'s
+  write path "simpler."
+- Changing a password or signing out lives in `Settings.tsx` → **Account &
+  Security** tab, backed by `updatePassword`/`signOut` from `authStore.ts`.
+
 ## Conventions (follow these exactly)
 
 ### Structured output from the LLM
@@ -156,18 +190,54 @@ page's existing shape). To get JSON out of a reply:
 - Empty states: big emoji, bold one-liner, supportive sub-text (never blank panels).
 
 ### State
-- App state = the two stores (`caseStore`, `leadStore`): module-level cache +
-  `localStorage` (`cb_cases`, `cb_active_case`, `cb_leads`, token `cb_token`) +
-  `useSyncExternalStore` hooks (`useCases`, `useActiveCase`, `useLeads`).
+- App state = the stores (`caseStore`, `leadStore`, `authStore`, `firmStore`):
+  module-level cache + `localStorage` (`cb_cases`, `cb_active_case`, `cb_leads`)
+  + `useSyncExternalStore` hooks (`useCases`, `useActiveCase`, `useLeads`,
+  `useAuth`, `useFirm`).
   Mutate **only** through the exported store functions so listeners fire and
   cloud sync runs. No Redux/Zustand — don't introduce them.
 - Supabase sync is **built into caseStore and best-effort/silent**: dirty case
   ids are debounce-pushed to the `case_files` table on every persist, and
-  `initCloudSync()` (called once from `App`) pulls + merges on startup (newer
-  `updatedAt` wins). It must never throw into the UI; without env keys it's a
-  no-op. One-time setup in the Supabase SQL editor:
-  `create table case_files (id text primary key, data jsonb, updated_at timestamptz);`
-  (plus anon read/write policies, or disable RLS for the table).
+  `initCloudSync()` (called from `RequireAuth` once a session exists, not on
+  every page load) pulls + merges on startup (newer `updatedAt` wins). It must
+  never throw into the UI; without env keys it's a no-op.
+
+  **Supabase setup (run once in the Supabase SQL editor) — do this exactly,
+  do not use permissive "anon read/write" or "disable RLS" shortcuts, that
+  was the old setup and it leaked every firm's case data to anyone holding
+  the public anon key.** Safe to re-run / safe if `case_files` already exists
+  from before this fix — it drops any old permissive policies first:
+  ```sql
+  create table if not exists case_files (id text primary key, data jsonb, updated_at timestamptz);
+  alter table case_files enable row level security;
+
+  drop policy if exists "Public read access" on case_files;
+  drop policy if exists "Public insert access" on case_files;
+  drop policy if exists "Public update access" on case_files;
+  drop policy if exists "Public delete access" on case_files;
+  drop policy if exists "Enable read access for all users" on case_files;
+  drop policy if exists "Firm members read cases" on case_files;
+  drop policy if exists "Firm members insert cases" on case_files;
+  drop policy if exists "Firm members update cases" on case_files;
+  drop policy if exists "Firm members delete cases" on case_files;
+  drop policy if exists "Public intake can create client cases" on case_files;
+
+  -- Signed-in firm members (any authenticated user) can read/write the shared case pool.
+  create policy "Firm members read cases" on case_files for select to authenticated using (true);
+  create policy "Firm members insert cases" on case_files for insert to authenticated with check (true);
+  create policy "Firm members update cases" on case_files for update to authenticated using (true);
+  create policy "Firm members delete cases" on case_files for delete to authenticated using (true);
+
+  -- Anonymous /start visitors may ONLY create a new client-intake case — never read or modify existing rows.
+  create policy "Public intake can create client cases" on case_files
+    for insert to anon with check (data->>'source' = 'client-link');
+  ```
+  If your project had RLS **disabled** rather than open policies, the
+  `drop policy if exists` lines are no-ops — `alter table ... enable row
+  level security` is the line that actually closes the hole.
+  Also enable **Email** auth under Supabase → Authentication → Providers (on
+  by default), and add your production URL to Authentication → URL
+  Configuration → Redirect URLs so password-reset links work.
 
 ### Adding a new agent module (checklist)
 1. Add the persona to `AGENTS` in `src/agents/personas.ts` (unique accent color, first-person `systemPrompt` with numbered duties).
@@ -182,7 +252,11 @@ page's existing shape). To get JSON out of a reply:
 - `react-scripts test` exists but there's effectively no test suite beyond the
   CRA default — **verify changes with `npm run build`** (it typechecks and
   lints) before pushing.
-- `supabase` export can be **null**; never call it unguarded.
+- The `supabase` export from `lib/supabaseClient.ts` can be **null**; never
+  call it unguarded — check `supabaseConfigured`/`authConfigured` first.
+- `localStorage.getItem('cb_token')` in `api.ts` is legacy/unrelated to
+  `authStore.ts` — it's a Base44 hint, never set by anything, and has nothing
+  to do with firm login. Don't confuse the two.
 - `WitnessPrep`/`JurySimulator` call `trialCoach` but pass the *persona prompt
   inside the user message* — the `config.role` field is a legacy backend hint.
   Keep both.

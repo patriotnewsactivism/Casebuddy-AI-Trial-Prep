@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Link, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Link, Outlet, useLocation, Navigate } from 'react-router-dom';
 import Landing from './pages/Landing';
 import PublicIntake from './pages/PublicIntake';
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
 import CaseDetail from './pages/CaseDetail';
@@ -25,7 +26,10 @@ import OnboardingModal from './components/OnboardingModal';
 import PwaInstall from './components/PwaInstall';
 import CaseAssistant from './components/CaseAssistant';
 import { initCloudSync } from './lib/caseStore';
-import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2, CreditCard, Settings as SettingsIcon } from 'lucide-react';
+import { useFirm } from './lib/firmStore';
+import { useAuth, authConfigured, signOut } from './lib/authStore';
+import { track } from './lib/analytics';
+import { Scale, FolderOpen, UserPlus, FileSearch, Microscope, Swords, BookOpen, Clock, Menu, Shield, Gavel, MessageSquare, Store, PlayCircle, Globe2, ChevronDown, ChevronRight, Users, BarChart2, CreditCard, Settings as SettingsIcon, Loader2, LogOut } from 'lucide-react';
 
 interface NavSection {
   title: string;
@@ -90,9 +94,20 @@ const AGENT_COLORS: Record<string, string> = {
   Max: 'text-slate-400',
 };
 
+// Fires once per route change — the only signal analytics needs to surface
+// "most-used modules" (PostHog already attaches $current_url per event).
+function PageViewTracker() {
+  const location = useLocation();
+  useEffect(() => { track('page_view'); }, [location.pathname]);
+  return null;
+}
+
 function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleSection = (title: string) => setCollapsed(prev => ({ ...prev, [title]: !prev[title] }));
+  const firm = useFirm();
+  const branded = firm.whiteLabel && firm.firmName;
+  const { user } = useAuth();
 
   return (
     <>
@@ -101,10 +116,14 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
         {/* Logo */}
         <div className="px-4 py-4 border-b border-slate-800">
           <Link to="/" className="flex items-center gap-2 group">
-            <Scale size={20} className="text-blue-400" />
+            {branded && firm.logoUrl ? (
+              <img src={firm.logoUrl} alt="" className="w-5 h-5 rounded object-contain flex-shrink-0" />
+            ) : (
+              <Scale size={20} className="text-blue-400 flex-shrink-0" style={branded ? { color: firm.accentColor } : undefined} />
+            )}
             <div>
-              <span className="text-white font-black text-sm group-hover:text-blue-300 transition-colors">CaseBuddy AI</span>
-              <div className="text-xs text-slate-500">Legal Intelligence Platform</div>
+              <span className="text-white font-black text-sm group-hover:text-blue-300 transition-colors">{branded ? firm.firmName : 'CaseBuddy AI'}</span>
+              <div className="text-xs text-slate-500">{firm.tagline}</div>
             </div>
           </Link>
         </div>
@@ -140,17 +159,52 @@ function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => vo
           ))}
         </nav>
 
-        <div className="px-4 py-3 border-t border-slate-800 text-xs text-slate-600">
-          Powered by Gemini 2.5 Flash
-        </div>
+        {user && (
+          <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-between gap-2">
+            <span className="text-slate-400 text-xs truncate" title={user.email || ''}>{user.email}</span>
+            <button onClick={() => signOut()} title="Sign out"
+              className="text-slate-500 hover:text-red-400 transition-colors flex-shrink-0">
+              <LogOut size={14} />
+            </button>
+          </div>
+        )}
+        {!branded && (
+          <div className="px-4 py-3 border-t border-slate-800 text-xs text-slate-600">
+            Powered by Gemini 2.5 Flash
+          </div>
+        )}
       </aside>
     </>
   );
 }
 
+// Gates every authenticated module behind a Supabase session. Fails closed:
+// if auth isn't configured at all, the firm's case file stays locked rather
+// than silently letting anyone in (see Login.tsx for the admin-facing notice).
+function RequireAuth() {
+  const { session, loading } = useAuth();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (session) initCloudSync();
+  }, [session]);
+
+  if (!authConfigured || loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        {!authConfigured ? <Navigate to="/login" replace /> : <Loader2 className="animate-spin text-violet-400" size={28} />}
+      </div>
+    );
+  }
+  if (!session) return <Navigate to="/login" state={{ from: location }} replace />;
+  return <AppShell />;
+}
+
 // App shell — sidebar + content area for every page except the public landing page
 function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const firm = useFirm();
+  const brandLabel = firm.whiteLabel && firm.firmName ? firm.firmName : 'CaseBuddy AI';
 
   return (
     <div className="min-h-screen bg-slate-950 text-white lg:pl-64">
@@ -162,7 +216,7 @@ function AppShell() {
         <button onClick={() => setSidebarOpen(true)} className="text-slate-400 hover:text-white">
           <Menu size={20} />
         </button>
-        <span className="text-white font-bold text-sm">CaseBuddy AI</span>
+        <span className="text-white font-bold text-sm">{brandLabel}</span>
         <div className="w-5" />
       </div>
 
@@ -178,17 +232,16 @@ function AppShell() {
 }
 
 export default function App() {
-  // Pull cloud-synced cases (e.g. intakes clients submitted via /start)
-  useEffect(() => { initCloudSync(); }, []);
-
   return (
     <BrowserRouter>
+      <PageViewTracker />
       <Routes>
-        {/* Public pages — full-bleed, no sidebar */}
+        {/* Public pages — full-bleed, no sidebar, no login required */}
         <Route path="/" element={<Landing />} />
         <Route path="/start" element={<PublicIntake />} />
+        <Route path="/login" element={<Login />} />
 
-        <Route element={<AppShell />}>
+        <Route element={<RequireAuth />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/cases" element={<Cases />} />
           <Route path="/cases/:id" element={<CaseDetail />} />

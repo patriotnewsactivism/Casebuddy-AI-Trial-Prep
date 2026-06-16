@@ -5,8 +5,9 @@
 // Persists to localStorage; mirrors to Supabase when configured (cloudSync).
 
 import { useSyncExternalStore } from 'react';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AGENTS } from '../agents/personas';
+import { track } from './analytics';
+import { supabase as cloud, supabaseConfigured } from './supabaseClient';
 
 export type CaseStage = 'intake' | 'investigation' | 'research' | 'discovery' | 'pretrial' | 'trial' | 'closed';
 
@@ -141,17 +142,12 @@ const listeners = new Set<() => void>();
 // ===== Cloud sync (Supabase) =====
 // Makes the public intake link real: a case a client creates in their browser
 // lands in the firm's Supabase table and shows up on the attorney's device.
-// Table: create table case_files (id text primary key, data jsonb, updated_at timestamptz);
-// Fully optional — without env keys (or if requests fail) everything stays local.
+// Table + RLS policies: see CLAUDE.md "Supabase setup". Fully optional —
+// without env keys (or if requests fail) everything stays local. Pulling the
+// shared case pool requires an authenticated firm session (RLS-enforced);
+// initCloudSync() is only called once a session exists (see App.tsx).
 
-let cloud: SupabaseClient | null = null;
-try {
-  const url = process.env.REACT_APP_SUPABASE_URL;
-  const key = process.env.REACT_APP_SUPABASE_ANON_KEY;
-  if (url && key && key !== 'your_anon_key_here') cloud = createClient(url, key);
-} catch { cloud = null; }
-
-export const cloudSyncEnabled = !!cloud;
+export const cloudSyncEnabled = supabaseConfigured;
 
 const dirtyIds = new Set<string>();
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -215,8 +211,7 @@ function useStoreVersion() {
 }
 
 export function useCases(): CaseFile[] {
-  useStoreVersion();
-  return cache;
+  return useSyncExternalStore(subscribe, () => cache);
 }
 
 export function useActiveCase(): CaseFile | null {
@@ -356,6 +351,7 @@ export function createCaseFromIntake(s: IntakeSummary, source: 'attorney' | 'cli
   cache = [c, ...cache];
   persist([c.id]);
   if (source !== 'client-link') setActiveCaseId(c.id);
+  track('intake_completed', { source, caseType: c.caseType });
   return c;
 }
 
@@ -372,11 +368,13 @@ export function deleteCase(id: string) {
 
 export function setCaseStage(id: string, stage: CaseStage) {
   mutate(id, c => { c.stage = stage; });
+  track('case_stage_changed', { stage });
 }
 
 // ===== Activity & department write-backs =====
 
 export function logActivity(caseId: string, agentId: string, action: string, detail?: string, minutesSaved?: number) {
+  track('agent_action', { agentId, action });
   mutate(caseId, c => {
     c.activity = [{ id: uid(), agentId, action, detail, at: new Date().toISOString(), minutesSaved }, ...c.activity];
   });

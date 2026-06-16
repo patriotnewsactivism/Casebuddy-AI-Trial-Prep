@@ -6,6 +6,7 @@
 
 import { useSyncExternalStore } from 'react';
 import { createCaseFromIntake, CaseFile } from './caseStore';
+import { track } from './analytics';
 
 export interface Lead {
   id: string;
@@ -49,12 +50,10 @@ function load(): Lead[] {
 }
 
 let cache: Lead[] = load();
-let version = 0;
 const listeners = new Set<() => void>();
 
 function persist() {
   localStorage.setItem(LEADS_KEY, JSON.stringify(cache));
-  version++;
   listeners.forEach(l => l());
 }
 
@@ -64,8 +63,7 @@ const subscribe = (l: () => void) => {
 };
 
 export function useLeads(): Lead[] {
-  useSyncExternalStore(subscribe, () => version);
-  return cache;
+  return useSyncExternalStore(subscribe, () => cache);
 }
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -74,6 +72,7 @@ export function addLead(lead: Omit<Lead, 'id' | 'capturedAt' | 'status'>): Lead 
   const l: Lead = { ...lead, id: uid(), capturedAt: new Date().toISOString(), status: 'new' };
   cache = [l, ...cache];
   persist();
+  track('lead_captured', { caseType: l.caseType, urgency: l.urgency });
   return l;
 }
 
@@ -98,6 +97,7 @@ export function promoteLead(id: string): CaseFile | null {
   });
   cache = cache.map(l => l.id === id ? { ...l, status: 'promoted' as const, caseId: c.id } : l);
   persist();
+  track('lead_promoted', { caseType: lead.caseType });
   return c;
 }
 
