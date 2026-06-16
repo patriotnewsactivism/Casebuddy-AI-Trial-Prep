@@ -205,10 +205,22 @@ page's existing shape). To get JSON out of a reply:
   **Supabase setup (run once in the Supabase SQL editor) — do this exactly,
   do not use permissive "anon read/write" or "disable RLS" shortcuts, that
   was the old setup and it leaked every firm's case data to anyone holding
-  the public anon key:**
+  the public anon key.** Safe to re-run / safe if `case_files` already exists
+  from before this fix — it drops any old permissive policies first:
   ```sql
-  create table case_files (id text primary key, data jsonb, updated_at timestamptz);
+  create table if not exists case_files (id text primary key, data jsonb, updated_at timestamptz);
   alter table case_files enable row level security;
+
+  drop policy if exists "Public read access" on case_files;
+  drop policy if exists "Public insert access" on case_files;
+  drop policy if exists "Public update access" on case_files;
+  drop policy if exists "Public delete access" on case_files;
+  drop policy if exists "Enable read access for all users" on case_files;
+  drop policy if exists "Firm members read cases" on case_files;
+  drop policy if exists "Firm members insert cases" on case_files;
+  drop policy if exists "Firm members update cases" on case_files;
+  drop policy if exists "Firm members delete cases" on case_files;
+  drop policy if exists "Public intake can create client cases" on case_files;
 
   -- Signed-in firm members (any authenticated user) can read/write the shared case pool.
   create policy "Firm members read cases" on case_files for select to authenticated using (true);
@@ -220,6 +232,9 @@ page's existing shape). To get JSON out of a reply:
   create policy "Public intake can create client cases" on case_files
     for insert to anon with check (data->>'source' = 'client-link');
   ```
+  If your project had RLS **disabled** rather than open policies, the
+  `drop policy if exists` lines are no-ops — `alter table ... enable row
+  level security` is the line that actually closes the hole.
   Also enable **Email** auth under Supabase → Authentication → Providers (on
   by default), and add your production URL to Authentication → URL
   Configuration → Redirect URLs so password-reset links work.
