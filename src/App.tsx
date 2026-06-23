@@ -239,6 +239,7 @@ export default function App() {
         {/* Public pages — full-bleed, no sidebar, no login required */}
         <Route path="/" element={<Landing />} />
         <Route path="/start" element={<PublicIntake />} />
+        <Route path="/start/:token" element={<PublicIntake />} />
         <Route path="/login" element={<Login />} />
 
         <Route element={<RequireAuth />}>
