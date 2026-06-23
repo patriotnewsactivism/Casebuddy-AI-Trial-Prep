@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { Scale, Send, Loader2, Mic, CheckCircle, Shield } from 'lucide-react';
 import { aiParalegal } from '../lib/api';
 import { AGENTS, NATURAL_CONVERSATION_DIRECTIVE } from '../agents/personas';
@@ -6,6 +7,7 @@ import { createCaseFromIntake, stripCaseUpdate } from '../lib/caseStore';
 import { useFirm } from '../lib/firmStore';
 import { useLiveVoice } from '../hooks/useLiveVoice';
 import { track } from '../lib/analytics';
+import { resolveFirmToken, saveIntakeSubmission } from '../lib/intakeStore';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -32,7 +34,19 @@ const cleanReply = (reply: string) =>
 
 export default function PublicIntake() {
   const firm = useFirm();
-  const branded = firm.whiteLabel && firm.firmName;
+  const { token } = useParams<{ token?: string }>();
+  const [firmId, setFirmId] = React.useState<string>('');
+  const [resolvedFirmName, setResolvedFirmName] = React.useState<string>('');
+
+  // Resolve the intake token → firm_id on mount
+  React.useEffect(() => {
+    if (token) {
+      resolveFirmToken(token).then(r => {
+        if (r) { setFirmId(r.firm_id); setResolvedFirmName(r.firm_name); }
+      });
+    }
+  }, [token]);
+  const branded = (firm.whiteLabel && firm.firmName) || resolvedFirmName;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -101,7 +115,7 @@ ${NATURAL_CONVERSATION_DIRECTIVE}`;
   };
   sendTextRef.current = sendText;
 
-  const submitCase = () => {
+  const submitCase = async () => {
     if (!summary) return;
     voice.stopLive();
     const transcript = messages.map(m => `${m.role === 'user' ? 'Client' : 'Maya'}: ${m.content}`).join('\n');
@@ -109,7 +123,22 @@ ${NATURAL_CONVERSATION_DIRECTIVE}`;
       { ...summary, summary: summary.summary || transcript.slice(0, 600) },
       'client-link'
     );
+    // Tag submission with firm_id for multi-tenant isolation
+    if (firmId) {
+      await saveIntakeSubmission({
+        firm_id:      firmId,
+        client_name:  c.clientName,
+        client_email: summary.email  || '',
+        client_phone: summary.phone  || '',
+        case_type:    c.caseType,
+        summary:      c.summary,
+        transcript,
+        case_ref:     c.id,
+        source:       'client-link',
+      });
+    }
     setSubmitted({ id: c.id, client: c.clientName });
+    track('intake_submitted', { firm_id: firmId, source: 'client-link' });
   };
 
   return (
@@ -117,7 +146,7 @@ ${NATURAL_CONVERSATION_DIRECTIVE}`;
       {/* Brand bar */}
       <div className="border-b border-slate-800/60 px-5 py-3.5 flex items-center justify-center gap-2">
         {branded && firm.logoUrl ? (
-          <img src={firm.logoUrl} alt="" className="w-[18px] h-[18px] rounded object-contain" />
+          <img src={firm.logoUrl} alt={resolvedFirmName || firm.firmName} className="w-[18px] h-[18px] rounded object-contain" />
         ) : (
           <Scale size={18} className="text-violet-400" style={branded ? { color: firm.accentColor } : undefined} />
         )}
@@ -264,7 +293,7 @@ ${NATURAL_CONVERSATION_DIRECTIVE}`;
       </div>
 
       <div className="px-5 py-4 text-center text-slate-600 text-xs border-t border-slate-800/60">
-        {branded ? `${firm.firmName} · ` : 'Powered by CaseBuddy AI · '}This conversation is not legal advice and does not create an attorney-client relationship until the firm accepts your case.
+        {branded ? `${resolvedFirmName || firm.firmName} · ` : 'Powered by CaseBuddy AI · '}This conversation is not legal advice and does not create an attorney-client relationship until the firm accepts your case.
       </div>
     </div>
   );
