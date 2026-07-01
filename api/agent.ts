@@ -9,6 +9,9 @@
 const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.REACT_APP_GEMINI_API_KEY || '';
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const FALLBACK_MODEL = 'gemini-2.0-flash';
+const COHERE_KEY = process.env.COHERE_API_KEY || '';
+const COHERE_DOC_MODEL = 'command-a-plus-05-2026'; // 256K context, best for legal docs
+const COHERE_VISION_MODEL = 'command-a-vision-07-2025'; // vision/OCR analysis
 
 interface ChatMessage { role: string; content: string; }
 
@@ -43,7 +46,37 @@ async function callGemini(model: string, system: string, messages: ChatMessage[]
   return text;
 }
 
+async function callCohere(model: string, system: string, messages: ChatMessage[]): Promise<string> {
+  const cohereMessages = [
+    { role: 'system', content: system },
+    ...messages.map(m => ({ role: m.role, content: m.content })),
+  ];
+  const res = await fetch('https://api.cohere.com/v2/chat', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${COHERE_KEY}`,
+      'Content-Type': 'application/json',
+      'X-Client-Name': 'casebuddy-trial-prep',
+    },
+    body: JSON.stringify({ model, messages: cohereMessages, max_tokens: 8192 }),
+  });
+  const data: any = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Cohere HTTP ${res.status}`);
+  const parts = data?.message?.content || [];
+  const text = parts.filter((p: any) => p.type === 'text').map((p: any) => p.text || '').join('').trim();
+  if (!text) throw new Error('Empty Cohere response');
+  return text;
+}
+
 async function generate(system: string, messages: ChatMessage[]): Promise<string> {
+  // Cohere first: 256K context, excellent for long trial documents
+  if (COHERE_KEY) {
+    try {
+      return await callCohere(COHERE_DOC_MODEL, system, messages);
+    } catch (e: any) {
+      console.warn('[trial-prep] Cohere failed, falling back to Gemini:', e?.message);
+    }
+  }
   try {
     return await callGemini(PRIMARY_MODEL, system, messages);
   } catch (e) {
